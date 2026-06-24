@@ -1,0 +1,487 @@
+/* Fonts imported via index.html */
+
+:root {
+  /* PMS / Modern Theme Colors */
+  --primary: #4f46e5; /* Indigo 600 */
+  --primary-dark: #4338ca; /* Indigo 700 */
+  --secondary: #1e1b4b; /* Indigo 950 */
+  --accent: #f43f5e; /* Rose 500 */
+
+  /* Core UI Variables (used by onboarding forms) */
+  --border-color: #d1d5db;
+  --surface-card: #ffffff;
+  --text-color: #1f2937;
+  --text-secondary: #6b7280;
+
+  /* Professional Theme Vars - Enhanced */
+  --prof-bg: #e8edff;
+  --prof-card-bg: #FFFFFF;
+  --prof-border: #E2E8F0;
+  --prof-text-main: #363636;
+  --prof-text-muted: #8B8B8B;
+  --prof-accent: #24C6A1; /* Teal */
+  --prof-primary: #3949AB; /* Navy */
+  
+  /* Additional Vibrant Accents */
+  --prof-amber: #F59E0B;
+  --prof-indigo: #6366F1;
+  --prof-emerald: #10B981;
+  --prof-rose: #F43F5E;
+  --prof-slate: #64748B;
+
+  /* Sophisticated Gradients */
+  --grad-primary: linear-gradient(135deg, #3949AB 0%, #1A237E 100%);
+  --grad-teal: linear-gradient(135deg, #24C6A1 0%, #0D9488 100%);
+  --grad-amber: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  --grad-indigo: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%);
+
+  --prof-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --prof-shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  --prof-shadow-glow: 0 0 20px rgba(57, 73, 171, 0.1);
+}
+
+
+/* Dark Mode Disabled as per user request */
+
+* {
+  box-sizing: border-box;
+  font-family: "Inter", "Roboto", "Open Sans", "Geneva", sans-serif;
+}
+
+body {
+  background-color: var(--prof-bg);
+  background-image: none;
+  color: var(--text-color);
+  min-height: 100vh;
+}
+
+.prof-card {
+  background: var(--prof-card-bg);
+  border: 1px solid var(--prof-border);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.04);
+  border-radius: 24px;
+  border-radius: 24px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.prof-card-hover:hover {
+  box-shadow: var(--prof-shadow-lg);
+  transform: translateY(-2px) scale(1.005);
+  border-color: rgba(57, 73, 171, 0.2);
+}
+
+.prof-header {
+  background: #FFFFFF;
+  border-bottom: 1px solid var(--prof-border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.prof-input {
+  background: #FFFFFF;
+  border: 1.5px solid #F1F5F9;
+  border-radius: 16px;
+  padding: 14px 20px;
+  color: var(--prof-text-main);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  font-size: 0.95rem;
+}
+
+.prof-input:focus {
+  border-color: var(--prof-primary);
+  box-shadow: 0 0 0 4px rgba(57, 73, 171, 0.1);
+  outline: none;
+  transform: scale(1.005);
+}
+
+.prof-input::placeholder {
+  color: #CBD5E1;
+  font-weight: 500;
+}
+
+.prof-button {
+  background: #5830E0;
+  color: white;
+  border: none;
+  border-radius: 16px;
+  padding: 14px 28px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 25px -5px rgba(88, 48, 224, 0.2);
+}
+
+.prof-button::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: 0.5s;
+}
+
+.prof-button:hover::after {
+  left: 100%;
+}
+
+.prof-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(57, 73, 171, 0.3);
+  filter: contrast(1.1);
+}
+
+.prof-button:active {
+  transform: translateY(0);
+}
+
+.prof-button-secondary {
+  background: white;
+  color: var(--prof-primary);
+  border: 1.5px solid var(--prof-border);
+}
+
+.prof-button-secondary:hover {
+  background: #F1F5F9;
+  border-color: var(--prof-primary);
+}
+
+/* Enhanced Animations */
+/* Enhanced Animations - Smooth & Professional */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(15px); filter: blur(4px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); filter: blur(4px); }
+  to { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes logoPulse {
+  0% { transform: scale(1); opacity: 0.8; filter: drop-shadow(0 0 0px rgba(88, 48, 224, 0)); }
+  50% { transform: scale(1.05); opacity: 1; filter: drop-shadow(0 0 20px rgba(88, 48, 224, 0.3)); }
+  100% { transform: scale(1); opacity: 0.8; filter: drop-shadow(0 0 0px rgba(88, 48, 224, 0)); }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-logo-pulse {
+  animation: logoPulse 2s infinite ease-in-out;
+}
+
+/* Directional Step Transitions */
+.slide-next-enter-active,
+.slide-next-leave-active,
+.slide-prev-enter-active,
+.slide-prev-leave-active {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* slide-next: Slide content from RIGHT to LEFT (Continue) */
+.slide-next-enter-from {
+  opacity: 0;
+  transform: translateX(40px);
+  filter: blur(4px);
+}
+.slide-next-leave-to {
+  opacity: 0;
+  transform: translateX(-40px);
+  filter: blur(4px);
+}
+
+/* slide-prev: Slide content from LEFT to RIGHT (Back) */
+.slide-prev-enter-from {
+  opacity: 0;
+  transform: translateX(-40px);
+  filter: blur(4px);
+}
+.slide-prev-leave-to {
+  opacity: 0;
+  transform: translateX(40px);
+  filter: blur(4px);
+}
+
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Inter", "Geneva", "Work Sans", "Poppins", sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: normal;
+  line-height: 1.2;
+  margin: 0;
+}
+h4 {
+  margin: 5px 0px;
+}
+
+#milogo {
+  .p-splitbutton-button {
+    padding: 0px;
+    width: 0px;
+    display: none !important;
+  }
+  .p-splitbutton-dropdown {
+    padding: 0px;
+    width: max-content;
+    background-color: transparent !important;
+    border: 0;
+  }
+  .p-icon {
+    width: 15px !important ;
+    height: auto !important;
+  }
+}
+.p-tieredmenu-overlay {
+  z-index: 6000 !important;
+}
+.group:not([class*="focus"]):not([class*="hover:"]) {
+  border: 1px solid #e2e8f0;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-radius: 12px;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  transition: box-shadow 0.25s ease;
+  overflow: hidden;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  }
+
+  & > *:not(h3) {
+    margin: 0px 12px;
+    margin-top: 12px;
+  }
+
+  & > h3 {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+    padding: 12px 18px;
+    text-align: center;
+    color: white;
+    border-radius: 11px 11px 0px 0px;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  & > div {
+    padding: 12px;
+  }
+
+  & > button,
+  .inbutton {
+    padding: 8px 22px;
+    cursor: pointer;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    background: #4f46e5;
+    color: white;
+    border: none;
+    font-size: 0.85rem;
+  }
+
+  & > button:hover,
+  .inbutton:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(79,70,229,0.2);
+    background: #4338ca;
+  }
+}
+
+label:not(.radio):not(.login-label) {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  color: #4b5563;
+  letter-spacing: 0.01em;
+}
+input:not([type="radio"]):not(.prof-input):not(.login-input),
+select,
+textarea {
+  padding: 10px 14px;
+  width: 100%;
+  outline: 0;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #1f2937;
+  font-size: 0.85rem;
+  transition: all 0.2s ease-in-out;
+
+  &:hover {
+    border-color: #9ca3af;
+  }
+
+  &:focus {
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    background-color: #fafaff;
+  }
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+}
+.one {
+  margin-bottom: 18px;
+}
+.double {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.double > div {
+  flex: 1;
+}
+.triple {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.triple > div {
+  flex: 1;
+}
+
+.inline {
+  display: flex !important;
+  gap: 10px;
+  margin-bottom: 15px;
+  & > div {
+    flex: 1;
+
+    & label {
+      white-space: nowrap;
+    }
+  }
+  & > span {
+    align-self: end;
+
+    & button {
+      width: 30px;
+      height: 30px;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+  }
+}
+
+.inlinewrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: normal;
+
+  & > div {
+    width: calc(50% - 5px);
+  }
+
+  & ~ span {
+    display: block;
+    margin-top: 10px;
+    text-align: right;
+
+    & button {
+      padding: 5px 10px;
+      margin-right: 10px;
+    }
+  }
+}
+
+.radiobuttoncontainer {
+  padding: 6px 2px 2px;
+  display: inline-flex;
+  gap: 15px;
+}
+/* label container */
+.radio-button-container {
+  display: inline-block;
+  position: relative;
+  padding-left: 25px;
+  cursor: pointer;
+  font-size: 18px;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Hide the browser's default radio button */
+.radio-button-container input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Create a custom radio button */
+.checkmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 20px;
+  width: 20px;
+  background-color: rgba(0, 0, 0, 0);
+  border-radius: 50%;
+  border: 2px solid var(--primary);
+  transition: all 0.3s;
+}
+
+/* On mouse-over, add a grey background color */
+.radio-button-container:hover input ~ .checkmark {
+  border-color: rgba(0, 0, 0, 0.5);
+}
+
+/* When the radio button is checked */
+.radio-button-container input:checked ~ .checkmark {
+  background-color: rgba(0, 0, 0, 0);
+  border-color: var(--accent);
+}
+
+/* Create the indicator (the dot/circle - hidden when not checked) */
+.checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+}
+
+/* Show the indicator (dot/circle) when checked */
+.radio-button-container input:checked ~ .checkmark:after {
+  display: block;
+}
+
+/* Style the indicator (dot/circle) */
+.radio-button-container .checkmark:after {
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+}
