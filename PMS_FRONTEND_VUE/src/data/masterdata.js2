@@ -1,0 +1,316 @@
+const mstatus = [{id:1,name:'SINGLE'},{id:2,name:'MARRIED'},{id:3,name:'DIVORCED'},{id:4,name:'NOT DISCLOSED'},{id:5,name:'Others'}]
+const bankaccounttype = [{id:1,name:'CURRENT'},{id:2,name:'SAVING'}]
+const relations = [{id:1,name:'COLLEAGUE'},{id:2,name:'FAMILY'},{id:3,name:'FRIEND'}]
+
+const genders = [{id:'M',name:'MALE'},{id:'F',name:'FEMALE'}]
+
+const companies = [{id:1,name:'CENTURY'}, {id:2,name:'CROWN STAR'}, {id:3,name:'EAD'},{id:5,name:'SBP'},{id:6,name:'MELCOM'}]
+
+const depts = [{id:1,name:'ACCOUNTS'},{id:2,name:'ADMINISTRATION'},{id:3,name:'AUDIT'},{id:4,name:'CUSTOMER SERVICE'},{id:5,name:'DIGITAL COMMERCE'},{id:6,name:'HR'},{id:7,name:'IMPORT'},{id:8,name:'IT'},{id:9,name:'MAINTENANCE'},{id:10,name:'MARKETING'},{id:11,name:'MERCHANDISE'},{id:12,name:'MIS'},{id:13,name:'OPERATIONS'},{id:14,name:'PIZZA HUT'},{id:15,name:'PROJECT'}]
+
+const regions = [{id:1,name:'AHAFO REGION', code:'AF'},{id:2,name:'ASHANTI REGION', code:'AR'},{id:3,name:'BRONG AHAFO', code:'BA'},{id:4,name:'BONO EAST', code:'BE'},{id:5,name:'CENTRAL REGION', code:'CR'},{id:6,name:'EASTERN REGION', code:'ER'},{id:7,name:'GREATER ACCRA', code:'GA'},{id:8,name:'NORTHERN REGION', code:'NR'},{id:9,name:'NORTH EAST', code:'NE'},{id:10,name:'OTI REGION', code:'0R'},{id:11,name:'SAVANNAH REGION', code:'SR'},{id:12,name:'UPPER EAST', code:'UE'},{id:13,name:'UPPER WEST', code:'UW'},{id:14,name:'WESTERN NORTH', code:'WN'},{id:15,name:'WESTERN REGION', code:'WR'},{id:16,name:'VOLTA REGION', code:'VR'}]
+
+const branchs = [{id:1,name:'ACCRA STORE'},{id:82,name:'ACHIMOTA'},{id:2,name:'AFIENYA'},{id:3,name:'AFLAO STORE'}, {id:4,name:'AMASAMAN'}, {id:5,name:'MELCOM COMMUNITY 25'}, {id:6,name:'ARCADIA SHOP (WEST HILLS)'},{id:7,name:'ASHIAMAN BRANCH'}, {id:8,name:'ASHALEY BOTWE'}, {id:9,name:'ASHONGMAN'}, {id:10,name:'CAPECOAST STORE'}, {id:11,name:'DANSOMAN STORE'}, {id:12,name:'EAST LEGON'}, {id:13,name:'EAST LEGON-SPECIALTY'}, {id:14,name:'FRAFRAHA'}, {id:15,name:'GIO-ACHIMOTA'}, {id:16,name:'GIO-EAST LEGON'}, {id:17,name:'GIO-FRAFRAH'},{id:18,name:'GIO-LFS'}, {id:19,name:'GIO-SANTASHI'}, {id:20,name:'GIO-SPINTEX MALL'}, {id:21,name:'GIO-TAKORADI'}, {id:22,name:'GIO-WESTHILL'}, {id:23,name:'HAATSO'}, {id:24,name:'HAMPTON SQUARE'}, {id:25,name:'HOHOE STORE'}, {id:26,name:'HOV STORE'}, {id:27,name:'KISSIEMAN'}, {id:28,name:'KOFORIDUA STORE - II'}, {id:29,name:'KOFORIDUA-HOME'}, {id:30,name:'KUMASI 6-SUAME'}, {id:31,name:'KUMASI II STORE'},{id:32,name:'KUMASI KS4 STORE'}, {id:33,name:'KUMASI SANTASI'}, {id:34,name:'KUMASI STORE'}, {id:35,name:'KUMASI V STORE'}, {id:36,name:'LABADI'}, {id:37,name:'LAPAZ SHOP'}, {id:38,name:'MELCOM LFS'}, {id:39,name:'MADINA STORE'}, {id:40,name:'MANKESSIM)'}, {id:41,name:'MELCOM ELECTRIC-TEMA'}, {id:42,name:'MELCOM ACTIVE 8'}, {id:43,name:'MELCOM ADENTA'}, {id:44,name:'MELCOM ARCADIA'}, {id:45,name:'MELCOM ASAMANKESE'}, {id:46,name:'MELCOM ASSIN FOSU STORE'}, {id:47,name:'MELCOM BIBIANI'}, {id:48,name:'MELCOM COMMUNITY 25'}, {id:49,name:'MELCOM DANSOMAN MINI'}, {id:50,name:'MELCOM DOME MINI'}, {id:51,name:'MELCOM GBAWE'}, {id:52,name:'MELCOM HOME TEMA'}, {id:53,name:'MELCOM KAS'}, {id:54,name:'MELCOM KASOA MINI'}, {id:55,name:'MELCOM KASOA-II SHOP'}, {id:56,name:'MELCOM KUMASI III STORE'}, {id:57,name:'MELCOM LABONE'}, {id:58,name:'MELCOM MINI-2'}, {id:59,name:'MELCOM OLEBU (ABLEKUMA)'}, {id:60,name:'MELCOM SAKUMONO'}, {id:61,name:'MELCOM SEFWI-WIASO'}, {id:62,name:'MELCOM SHIASHIE'}, {id:63,name:'MELCOM TARKWA STORE'}, {id:64,name:'MELCOM TEPA'}, {id:65,name:'MELCOM-UPSA'}, {id:66,name:'MELCOM WENCHI'}, {id:67,name:'NANAKROM'}, {id:68,name:'NEW BOLGA'}, {id:69,name:'NKAWKAW STORE -NEW'}, {id:70,name:'SPINTEX NEW'}, {id:71,name:'SPINTEX NEW MALL'}, {id:72,name:'SUNYANI II STORE'}, {id:73,name:'SWEDRU STORE'}, {id:74,name:'TAFO-KUMASI 8'}, {id:75,name:'TAKORADI STORE'}, {id:76,name:'TAMALE STORE'}, {id:77,name:'TECHIMAN'}, {id:78,name:'TECHIMAN-NEW'}, {id:79,name:'TEMA PLUS STORE'}, {id:80,name:'WA SHOP'}, {id:81,name:'WEIJA SHOP'}]
+
+const qualtypes = [{id:1,name:'SCHOOLING'},{id:2,name:'DIPLOMA/HND/UNDERGRADUATE'},{id:3,name:'GRADUATE'}, {id:4,name:'POST GRADUATE'}, {id:5,name:'PHD'}, {id:6,name:'OTHER'}]
+const banks = [{id:1,name:'ACCESS BANK'},{id:2,name:'PRUDENTIAL BANK'}]
+
+const familyrelation = [{id:1,name:'FATHER'},{id:2,name:'MOTHER'},{id:3,name:'SIBLING'},{id:4,name:'UNCLE'},{id:5,name:'AUNTY'},{id:6,name:'COUSIN'},{id:7,name:'SON-IN-LAW'},{id:8,name:'MOTHER-IN-LAW'},{id:9,name:'GRANDMOTHER'},{id:10,name:'GRANDFATHER'},{id:11,name:'NIECE'},{id:12,name:'NEPHEW'},{id:13,name:'DAUGHTER-IN-LAW'},{id:14,name:'BROTHER-IN-LAW'},{id:15,name:'SISTER-IN-LAW'},{id:16,name:'FATHER-IN-LAW'},{id:17,name:'MOTHER-IN-LAW'},{id:18,name:'STEPMOTHER'},{id:19,name:'STEPFATHER'}]
+
+
+const countries = [ 
+    {name: 'Afghanistan', code: 'AF'}, 
+    {name: 'Åland Islands', code: 'AX'}, 
+    {name: 'Albania', code: 'AL'}, 
+    {name: 'Algeria', code: 'DZ'}, 
+    {name: 'American Samoa', code: 'AS'}, 
+    {name: 'AndorrA', code: 'AD'}, 
+    {name: 'Angola', code: 'AO'}, 
+    {name: 'Anguilla', code: 'AI'}, 
+    {name: 'Antarctica', code: 'AQ'}, 
+    {name: 'Antigua and Barbuda', code: 'AG'}, 
+    {name: 'Argentina', code: 'AR'}, 
+    {name: 'Armenia', code: 'AM'}, 
+    {name: 'Aruba', code: 'AW'}, 
+    {name: 'Australia', code: 'AU'}, 
+    {name: 'Austria', code: 'AT'}, 
+    {name: 'Azerbaijan', code: 'AZ'}, 
+    {name: 'Bahamas', code: 'BS'}, 
+    {name: 'Bahrain', code: 'BH'}, 
+    {name: 'Bangladesh', code: 'BD'}, 
+    {name: 'Barbados', code: 'BB'}, 
+    {name: 'Belarus', code: 'BY'}, 
+    {name: 'Belgium', code: 'BE'}, 
+    {name: 'Belize', code: 'BZ'}, 
+    {name: 'Benin', code: 'BJ'}, 
+    {name: 'Bermuda', code: 'BM'}, 
+    {name: 'Bhutan', code: 'BT'}, 
+    {name: 'Bolivia', code: 'BO'}, 
+    {name: 'Bosnia and Herzegovina', code: 'BA'}, 
+    {name: 'Botswana', code: 'BW'}, 
+    {name: 'Bouvet Island', code: 'BV'}, 
+    {name: 'Brazil', code: 'BR'}, 
+    {name: 'British Indian Ocean Territory', code: 'IO'}, 
+    {name: 'Brunei Darussalam', code: 'BN'}, 
+    {name: 'Bulgaria', code: 'BG'}, 
+    {name: 'Burkina Faso', code: 'BF'}, 
+    {name: 'Burundi', code: 'BI'}, 
+    {name: 'Cambodia', code: 'KH'}, 
+    {name: 'Cameroon', code: 'CM'}, 
+    {name: 'Canada', code: 'CA'}, 
+    {name: 'Cape Verde', code: 'CV'}, 
+    {name: 'Cayman Islands', code: 'KY'}, 
+    {name: 'Central African Republic', code: 'CF'}, 
+    {name: 'Chad', code: 'TD'}, 
+    {name: 'Chile', code: 'CL'}, 
+    {name: 'China', code: 'CN'}, 
+    {name: 'Christmas Island', code: 'CX'}, 
+    {name: 'Cocos (Keeling) Islands', code: 'CC'}, 
+    {name: 'Colombia', code: 'CO'}, 
+    {name: 'Comoros', code: 'KM'}, 
+    {name: 'Congo', code: 'CG'}, 
+    {name: 'Congo, The Democratic Republic of the', code: 'CD'}, 
+    {name: 'Cook Islands', code: 'CK'}, 
+    {name: 'Costa Rica', code: 'CR'}, 
+    {name: 'Cote D\'Ivoire', code: 'CI'}, 
+    {name: 'Croatia', code: 'HR'}, 
+    {name: 'Cuba', code: 'CU'}, 
+    {name: 'Cyprus', code: 'CY'}, 
+    {name: 'Czech Republic', code: 'CZ'}, 
+    {name: 'Denmark', code: 'DK'}, 
+    {name: 'Djibouti', code: 'DJ'}, 
+    {name: 'Dominica', code: 'DM'}, 
+    {name: 'Dominican Republic', code: 'DO'}, 
+    {name: 'Ecuador', code: 'EC'}, 
+    {name: 'Egypt', code: 'EG'}, 
+    {name: 'El Salvador', code: 'SV'}, 
+    {name: 'Equatorial Guinea', code: 'GQ'}, 
+    {name: 'Eritrea', code: 'ER'}, 
+    {name: 'Estonia', code: 'EE'}, 
+    {name: 'Ethiopia', code: 'ET'}, 
+    {name: 'Falkland Islands (Malvinas)', code: 'FK'}, 
+    {name: 'Faroe Islands', code: 'FO'}, 
+    {name: 'Fiji', code: 'FJ'}, 
+    {name: 'Finland', code: 'FI'}, 
+    {name: 'France', code: 'FR'}, 
+    {name: 'French Guiana', code: 'GF'}, 
+    {name: 'French Polynesia', code: 'PF'}, 
+    {name: 'French Southern Territories', code: 'TF'}, 
+    {name: 'Gabon', code: 'GA'}, 
+    {name: 'Gambia', code: 'GM'}, 
+    {name: 'Georgia', code: 'GE'}, 
+    {name: 'Germany', code: 'DE'}, 
+    {name: 'Ghana', code: 'GH'}, 
+    {name: 'Gibraltar', code: 'GI'}, 
+    {name: 'Greece', code: 'GR'}, 
+    {name: 'Greenland', code: 'GL'}, 
+    {name: 'Grenada', code: 'GD'}, 
+    {name: 'Guadeloupe', code: 'GP'}, 
+    {name: 'Guam', code: 'GU'}, 
+    {name: 'Guatemala', code: 'GT'}, 
+    {name: 'Guernsey', code: 'GG'}, 
+    {name: 'Guinea', code: 'GN'}, 
+    {name: 'Guinea-Bissau', code: 'GW'}, 
+    {name: 'Guyana', code: 'GY'}, 
+    {name: 'Haiti', code: 'HT'}, 
+    {name: 'Heard Island and Mcdonald Islands', code: 'HM'}, 
+    {name: 'Holy See (Vatican City State)', code: 'VA'}, 
+    {name: 'Honduras', code: 'HN'}, 
+    {name: 'Hong Kong', code: 'HK'}, 
+    {name: 'Hungary', code: 'HU'}, 
+    {name: 'Iceland', code: 'IS'}, 
+    {name: 'India', code: 'IN'}, 
+    {name: 'Indonesia', code: 'ID'}, 
+    {name: 'Iran, Islamic Republic Of', code: 'IR'}, 
+    {name: 'Iraq', code: 'IQ'}, 
+    {name: 'Ireland', code: 'IE'}, 
+    {name: 'Isle of Man', code: 'IM'}, 
+    {name: 'Israel', code: 'IL'}, 
+    {name: 'Italy', code: 'IT'}, 
+    {name: 'Jamaica', code: 'JM'}, 
+    {name: 'Japan', code: 'JP'}, 
+    {name: 'Jersey', code: 'JE'}, 
+    {name: 'Jordan', code: 'JO'}, 
+    {name: 'Kazakhstan', code: 'KZ'}, 
+    {name: 'Kenya', code: 'KE'}, 
+    {name: 'Kiribati', code: 'KI'}, 
+    {name: 'Korea, Democratic People\'S Republic of', code: 'KP'}, 
+    {name: 'Korea, Republic of', code: 'KR'}, 
+    {name: 'Kuwait', code: 'KW'}, 
+    {name: 'Kyrgyzstan', code: 'KG'}, 
+    {name: 'Lao People\'S Democratic Republic', code: 'LA'}, 
+    {name: 'Latvia', code: 'LV'}, 
+    {name: 'Lebanon', code: 'LB'}, 
+    {name: 'Lesotho', code: 'LS'}, 
+    {name: 'Liberia', code: 'LR'}, 
+    {name: 'Libyan Arab Jamahiriya', code: 'LY'}, 
+    {name: 'Liechtenstein', code: 'LI'}, 
+    {name: 'Lithuania', code: 'LT'}, 
+    {name: 'Luxembourg', code: 'LU'}, 
+    {name: 'Macao', code: 'MO'}, 
+    {name: 'Macedonia, The Former Yugoslav Republic of', code: 'MK'}, 
+    {name: 'Madagascar', code: 'MG'}, 
+    {name: 'Malawi', code: 'MW'}, 
+    {name: 'Malaysia', code: 'MY'}, 
+    {name: 'Maldives', code: 'MV'}, 
+    {name: 'Mali', code: 'ML'}, 
+    {name: 'Malta', code: 'MT'}, 
+    {name: 'Marshall Islands', code: 'MH'}, 
+    {name: 'Martinique', code: 'MQ'}, 
+    {name: 'Mauritania', code: 'MR'}, 
+    {name: 'Mauritius', code: 'MU'}, 
+    {name: 'Mayotte', code: 'YT'}, 
+    {name: 'Mexico', code: 'MX'}, 
+    {name: 'Micronesia, Federated States of', code: 'FM'}, 
+    {name: 'Moldova, Republic of', code: 'MD'}, 
+    {name: 'Monaco', code: 'MC'}, 
+    {name: 'Mongolia', code: 'MN'}, 
+    {name: 'Montserrat', code: 'MS'}, 
+    {name: 'Morocco', code: 'MA'}, 
+    {name: 'Mozambique', code: 'MZ'}, 
+    {name: 'Myanmar', code: 'MM'}, 
+    {name: 'Namibia', code: 'NA'}, 
+    {name: 'Nauru', code: 'NR'}, 
+    {name: 'Nepal', code: 'NP'}, 
+    {name: 'Netherlands', code: 'NL'}, 
+    {name: 'Netherlands Antilles', code: 'AN'}, 
+    {name: 'New Caledonia', code: 'NC'}, 
+    {name: 'New Zealand', code: 'NZ'}, 
+    {name: 'Nicaragua', code: 'NI'}, 
+    {name: 'Niger', code: 'NE'}, 
+    {name: 'Nigeria', code: 'NG'}, 
+    {name: 'Niue', code: 'NU'}, 
+    {name: 'Norfolk Island', code: 'NF'}, 
+    {name: 'Northern Mariana Islands', code: 'MP'}, 
+    {name: 'Norway', code: 'NO'}, 
+    {name: 'Oman', code: 'OM'}, 
+    {name: 'Pakistan', code: 'PK'}, 
+    {name: 'Palau', code: 'PW'}, 
+    {name: 'Palestinian Territory, Occupied', code: 'PS'}, 
+    {name: 'Panama', code: 'PA'}, 
+    {name: 'Papua New Guinea', code: 'PG'}, 
+    {name: 'Paraguay', code: 'PY'}, 
+    {name: 'Peru', code: 'PE'}, 
+    {name: 'Philippines', code: 'PH'}, 
+    {name: 'Pitcairn', code: 'PN'}, 
+    {name: 'Poland', code: 'PL'}, 
+    {name: 'Portugal', code: 'PT'}, 
+    {name: 'Puerto Rico', code: 'PR'}, 
+    {name: 'Qatar', code: 'QA'}, 
+    {name: 'Reunion', code: 'RE'}, 
+    {name: 'Romania', code: 'RO'}, 
+    {name: 'Russian Federation', code: 'RU'}, 
+    {name: 'RWANDA', code: 'RW'}, 
+    {name: 'Saint Helena', code: 'SH'}, 
+    {name: 'Saint Kitts and Nevis', code: 'KN'}, 
+    {name: 'Saint Lucia', code: 'LC'}, 
+    {name: 'Saint Pierre and Miquelon', code: 'PM'}, 
+    {name: 'Saint Vincent and the Grenadines', code: 'VC'}, 
+    {name: 'Samoa', code: 'WS'}, 
+    {name: 'San Marino', code: 'SM'}, 
+    {name: 'Sao Tome and Principe', code: 'ST'}, 
+    {name: 'Saudi Arabia', code: 'SA'}, 
+    {name: 'Senegal', code: 'SN'}, 
+    {name: 'Serbia and Montenegro', code: 'CS'}, 
+    {name: 'Seychelles', code: 'SC'}, 
+    {name: 'Sierra Leone', code: 'SL'}, 
+    {name: 'Singapore', code: 'SG'}, 
+    {name: 'Slovakia', code: 'SK'}, 
+    {name: 'Slovenia', code: 'SI'}, 
+    {name: 'Solomon Islands', code: 'SB'}, 
+    {name: 'Somalia', code: 'SO'}, 
+    {name: 'South Africa', code: 'ZA'}, 
+    {name: 'South Georgia and the South Sandwich Islands', code: 'GS'}, 
+    {name: 'Spain', code: 'ES'}, 
+    {name: 'Sri Lanka', code: 'LK'}, 
+    {name: 'Sudan', code: 'SD'}, 
+    {name: 'Suriname', code: 'SR'}, 
+    {name: 'Svalbard and Jan Mayen', code: 'SJ'}, 
+    {name: 'Swaziland', code: 'SZ'}, 
+    {name: 'Sweden', code: 'SE'}, 
+    {name: 'Switzerland', code: 'CH'}, 
+    {name: 'Syrian Arab Republic', code: 'SY'}, 
+    {name: 'Taiwan, Province of China', code: 'TW'}, 
+    {name: 'Tajikistan', code: 'TJ'}, 
+    {name: 'Tanzania, United Republic of', code: 'TZ'}, 
+    {name: 'Thailand', code: 'TH'}, 
+    {name: 'Timor-Leste', code: 'TL'}, 
+    {name: 'Togo', code: 'TG'}, 
+    {name: 'Tokelau', code: 'TK'}, 
+    {name: 'Tonga', code: 'TO'}, 
+    {name: 'Trinidad and Tobago', code: 'TT'}, 
+    {name: 'Tunisia', code: 'TN'}, 
+    {name: 'Turkey', code: 'TR'}, 
+    {name: 'Turkmenistan', code: 'TM'}, 
+    {name: 'Turks and Caicos Islands', code: 'TC'}, 
+    {name: 'Tuvalu', code: 'TV'}, 
+    {name: 'Uganda', code: 'UG'}, 
+    {name: 'Ukraine', code: 'UA'}, 
+    {name: 'United Arab Emirates', code: 'AE'}, 
+    {name: 'United Kingdom', code: 'GB'}, 
+    {name: 'United States', code: 'US'}, 
+    {name: 'United States Minor Outlying Islands', code: 'UM'}, 
+    {name: 'Uruguay', code: 'UY'}, 
+    {name: 'Uzbekistan', code: 'UZ'}, 
+    {name: 'Vanuatu', code: 'VU'}, 
+    {name: 'Venezuela', code: 'VE'}, 
+    {name: 'Viet Nam', code: 'VN'}, 
+    {name: 'Virgin Islands, British', code: 'VG'}, 
+    {name: 'Virgin Islands, U.S.', code: 'VI'}, 
+    {name: 'Wallis and Futuna', code: 'WF'}, 
+    {name: 'Western Sahara', code: 'EH'}, 
+    {name: 'Yemen', code: 'YE'}, 
+    {name: 'Zambia', code: 'ZM'}, 
+    {name: 'Zimbabwe', code: 'ZW'} 
+]
+
+const idtypes = [{id:1, name:'Passport'}, {id:2, name:'Country ID Card'}]
+
+const findrelation = (rel) => {
+    return  relations.find((r) => r.id == rel ).name.toUpperCase()
+}
+
+const findgender = (gen) => {
+    return  genders.find((g) => g.id == gen ).name.toUpperCase()
+}
+
+const findcompany = (c) => {
+    const found = companies.find((comp) => comp.id == c )
+    if(found) return found.name.toUpperCase()
+    else return 'No Company'
+}
+
+const findcountry = (country) => {
+    return  countries.find((c) => c.code == country ).name.toUpperCase()
+}
+
+const findidtypes = (idtype) => {
+    return  idtypes.find((i) => i.id == idtype ).name.toUpperCase()
+}
+
+const findfamilyrelation = (rel) => {
+    return  familyrelation.find((r) => r.id == rel ).name.toUpperCase()
+}
+const findmarital = (mar) => {
+    return  mstatus.find((m) => m.id == mar ).name.toUpperCase()
+}
+const findqual = (e) => {
+    return  qualtypes.find((item) => item.id == e ).name.toUpperCase()
+}
+const finddept = (e) => {
+    return  depts.find((item) => item.id == e ).name.toUpperCase()
+}
+const findregion = (e) => {
+    return  regions.find((item) => item.id == e ).name.toUpperCase()
+}
+const findbranch = (e) => {
+    return  branchs.find((item) => item.id == e ).name.toUpperCase()
+}
+const findbankaccounttype = (e) => {
+    return  bankaccounttype.find((item) => item.id == e ).name.toUpperCase()
+}
+const findbank = (e) => {
+    return  banks.find((item) => item.id == e ).name.toUpperCase()
+}
+
+export { mstatus,  bankaccounttype, relations, depts, regions, branchs,qualtypes, banks,familyrelation, countries, idtypes, genders, companies, findrelation, findmarital, findqual, finddept, findregion, findbranch, findbankaccounttype, findbank, findfamilyrelation, findcountry, findidtypes, findgender, findcompany}
