@@ -740,4 +740,40 @@ onMounted(() => {
     font-weight: 700;
     font-size: 11px;
 }
+
+/* Dark Mode */
+:global(body.dark-mode) .p-multiselect-panel,
+:global(body.dark-mode) .custom-pms-panel {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+:global(body.dark-mode) .p-multiselect-panel .p-multiselect-items-wrapper,
+:global(body.dark-mode) .p-multiselect-panel .p-multiselect-items {
+    background-color: #1e293b !important;
+}
+:global(body.dark-mode) .p-multiselect-panel .p-multiselect-header {
+    background: #1a2332 !important;
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+:global(body.dark-mode) .p-multiselect-panel .p-multiselect-item {
+    color: #f1f5f9 !important;
+}
+:global(body.dark-mode) .p-multiselect-panel .p-multiselect-item:hover {
+    background: #334155 !important;
+}
+:global(body.dark-mode) .p-multiselect-panel .p-multiselect-filter-container .p-inputtext {
+    background: #0f172a !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
+}
+:global(body.dark-mode) :deep(.custom-pms-multiselect) {
+    background: #0f172a !important;
+    border-color: #475569 !important;
+}
+:global(body.dark-mode) :deep(.custom-pms-multiselect .p-multiselect-token) {
+    background: #334155 !important;
+    color: #f1f5f9 !important;
+}
 </style>

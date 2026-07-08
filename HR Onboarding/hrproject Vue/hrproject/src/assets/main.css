@@ -41,7 +41,502 @@
 }
 
 
-/* Dark Mode Disabled as per user request */
+/* ===== DARK MODE THEME ===== */
+body.dark-mode {
+  /* Core UI Variables */
+  --prof-bg: #0f172a;
+  --prof-card-bg: #1e293b;
+  --prof-border: #334155;
+  --prof-text-main: #f1f5f9;
+  --prof-text-muted: #94a3b8;
+  --prof-primary: #818cf8;
+  --prof-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --prof-shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  --prof-shadow-glow: 0 0 20px rgba(129, 140, 248, 0.15);
+
+  --border-color: #475569;
+  --surface-card: #1e293b;
+  --text-color: #f1f5f9;
+  --text-secondary: #94a3b8;
+
+  --primary: #818cf8;
+  --primary-dark: #6366f1;
+  --secondary: #312e81;
+
+  color-scheme: dark;
+}
+
+/* Dark Mode - Background & Text Overrides */
+body.dark-mode {
+  background-color: var(--prof-bg) !important;
+  color: var(--prof-text-main) !important;
+}
+
+/* Override Tailwind's default border-color on all elements */
+body.dark-mode *,
+body.dark-mode *::before,
+body.dark-mode *::after {
+  border-color: #334155;
+}
+
+/* Main content area */
+body.dark-mode #mainview {
+  background: #0f172a !important;
+}
+
+/* Cards, panels, white backgrounds */
+body.dark-mode .prof-card,
+body.dark-mode .prof-header {
+  background: var(--prof-card-bg) !important;
+  border-color: var(--prof-border) !important;
+}
+
+/* Override Tailwind bg-white */
+body.dark-mode .bg-white {
+  background-color: #1e293b !important;
+}
+body.dark-mode .bg-gray-50 {
+  background-color: #1a2332 !important;
+}
+body.dark-mode .bg-gray-100 {
+  background-color: #1e293b !important;
+}
+body.dark-mode .bg-gray-200 {
+  background-color: #334155 !important;
+}
+body.dark-mode .bg-slate-50 {
+  background-color: #1a2332 !important;
+}
+body.dark-mode .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+body.dark-mode .bg-slate-200 {
+  background-color: #334155 !important;
+}
+
+/* Light tinted backgrounds - exact class matches only (not substring) */
+body.dark-mode .bg-indigo-50,
+body.dark-mode .bg-blue-50,
+body.dark-mode .bg-teal-50,
+body.dark-mode .bg-emerald-50,
+body.dark-mode .bg-amber-50,
+body.dark-mode .bg-orange-50,
+body.dark-mode .bg-red-50,
+body.dark-mode .bg-green-50,
+body.dark-mode .bg-purple-50,
+body.dark-mode .bg-rose-50,
+body.dark-mode .bg-violet-50,
+body.dark-mode .bg-cyan-50,
+body.dark-mode .bg-yellow-50 {
+  background-color: rgba(30, 41, 59, 0.5) !important;
+}
+
+/* Tailwind opacity variants (escaped slashes) */
+body.dark-mode .bg-slate-50\/30,
+body.dark-mode .bg-slate-50\/40,
+body.dark-mode .bg-slate-50\/50,
+body.dark-mode .bg-slate-50\/70,
+body.dark-mode .bg-gray-50\/50,
+body.dark-mode .bg-indigo-50\/10,
+body.dark-mode .bg-indigo-50\/20,
+body.dark-mode .bg-indigo-50\/30,
+body.dark-mode .bg-indigo-50\/50,
+body.dark-mode .bg-indigo-50\/70,
+body.dark-mode .bg-teal-50\/50,
+body.dark-mode .bg-blue-50\/40,
+body.dark-mode .bg-amber-50\/40,
+body.dark-mode .bg-orange-50\/30,
+body.dark-mode .bg-emerald-50\/30 {
+  background-color: rgba(30, 41, 59, 0.5) !important;
+}
+
+body.dark-mode .bg-indigo-100,
+body.dark-mode .bg-blue-100,
+body.dark-mode .bg-teal-100,
+body.dark-mode .bg-emerald-100,
+body.dark-mode .bg-purple-100 {
+  background-color: rgba(51, 65, 85, 0.5) !important;
+}
+
+/* Override !bg-white and !bg-gray-50 (Tailwind important modifier) */
+body.dark-mode .\!bg-white {
+  background-color: #1e293b !important;
+}
+body.dark-mode .\!bg-gray-50 {
+  background-color: #1a2332 !important;
+}
+
+/* Override Tailwind text colors */
+body.dark-mode .text-gray-900,
+body.dark-mode .text-gray-800,
+body.dark-mode .text-gray-700,
+body.dark-mode .text-slate-900,
+body.dark-mode .text-slate-800,
+body.dark-mode .text-slate-700 {
+  color: #f1f5f9 !important;
+}
+body.dark-mode .text-gray-600,
+body.dark-mode .text-gray-500,
+body.dark-mode .text-slate-600,
+body.dark-mode .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+body.dark-mode .text-gray-400,
+body.dark-mode .text-gray-300,
+body.dark-mode .text-slate-400,
+body.dark-mode .text-slate-300 {
+  color: #94a3b8 !important;
+}
+body.dark-mode .text-indigo-900 {
+  color: #c7d2fe !important;
+}
+body.dark-mode .text-blue-800 {
+  color: #93c5fd !important;
+}
+body.dark-mode .text-amber-800 {
+  color: #fcd34d !important;
+}
+
+/* Colored border overrides for dark mode cards */
+body.dark-mode .border-emerald-200,
+body.dark-mode .border-orange-200,
+body.dark-mode .border-indigo-200,
+body.dark-mode .border-blue-200,
+body.dark-mode .border-amber-200,
+body.dark-mode .border-emerald-100,
+body.dark-mode .border-orange-100,
+body.dark-mode .border-indigo-100,
+body.dark-mode .border-blue-100,
+body.dark-mode .border-amber-100,
+body.dark-mode .border-slate-100,
+body.dark-mode .border-slate-200 {
+  border-color: #334155 !important;
+}
+
+/* Override Tailwind border colors */
+body.dark-mode .border-gray-100,
+body.dark-mode .border-gray-200,
+body.dark-mode .border-gray-300,
+body.dark-mode .border-slate-100,
+body.dark-mode .border-slate-200,
+body.dark-mode .border-slate-300 {
+  border-color: #334155 !important;
+}
+body.dark-mode .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+body.dark-mode .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #334155 !important;
+}
+
+/* Form Inputs */
+body.dark-mode input:not([type="radio"]):not(.prof-input):not(.login-input),
+body.dark-mode select,
+body.dark-mode textarea {
+  background-color: #0f172a !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+body.dark-mode input::placeholder,
+body.dark-mode textarea::placeholder {
+  color: #64748b !important;
+}
+body.dark-mode input:focus,
+body.dark-mode select:focus,
+body.dark-mode textarea:focus {
+  border-color: #818cf8 !important;
+  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15) !important;
+}
+
+body.dark-mode .prof-input {
+  background: #0f172a !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+body.dark-mode .prof-input:focus {
+  border-color: #818cf8 !important;
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.15) !important;
+}
+
+/* .group card containers (onboarding forms) */
+body.dark-mode .group:not([class*="focus"]):not([class*="hover:"]) {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+}
+body.dark-mode .group:not([class*="focus"]):not([class*="hover:"]):hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+}
+
+/* Labels */
+body.dark-mode label:not(.radio):not(.login-label) {
+  color: #cbd5e1 !important;
+}
+
+/* Tables */
+body.dark-mode table {
+  color: #f1f5f9;
+}
+body.dark-mode th {
+  background-color: #1a2332 !important;
+  color: #cbd5e1 !important;
+  border-color: #334155 !important;
+}
+body.dark-mode td {
+  border-color: #334155 !important;
+}
+body.dark-mode tr:hover td {
+  background-color: #1a2332 !important;
+}
+
+/* PrimeVue Component Overrides */
+body.dark-mode .p-dialog,
+body.dark-mode .p-dialog-content,
+body.dark-mode .p-dialog-header {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+body.dark-mode .p-dialog-header .p-dialog-title {
+  color: #f1f5f9 !important;
+}
+body.dark-mode .p-inputtext {
+  background: #0f172a !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+body.dark-mode .p-select,
+body.dark-mode .p-dropdown {
+  background: #0f172a !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+body.dark-mode .p-select-overlay,
+body.dark-mode .p-dropdown-panel,
+body.dark-mode .p-autocomplete-overlay {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+}
+body.dark-mode .p-select-option,
+body.dark-mode .p-dropdown-item,
+body.dark-mode .p-autocomplete-option {
+  color: #f1f5f9 !important;
+}
+body.dark-mode .p-select-option:hover,
+body.dark-mode .p-dropdown-item:hover,
+body.dark-mode .p-autocomplete-option:hover {
+  background: #334155 !important;
+}
+body.dark-mode .p-datatable .p-datatable-thead > tr > th {
+  background: #1a2332 !important;
+  color: #cbd5e1 !important;
+  border-color: #334155 !important;
+}
+body.dark-mode .p-datatable .p-datatable-tbody > tr {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+body.dark-mode .p-datatable .p-datatable-tbody > tr:hover {
+  background: #253347 !important;
+}
+body.dark-mode .p-datatable .p-datatable-tbody > tr > td {
+  border-color: #334155 !important;
+}
+body.dark-mode .p-paginator {
+  background: #1e293b !important;
+  color: #94a3b8 !important;
+}
+body.dark-mode .p-tag {
+  color: white !important;
+}
+body.dark-mode .p-tabview-panels,
+body.dark-mode .p-tabview-panel {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+body.dark-mode .p-tabview-nav {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+}
+body.dark-mode .p-toast {
+  color: #f1f5f9 !important;
+}
+body.dark-mode .p-confirmpopup {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+/* Scrollbar in dark mode */
+body.dark-mode ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+body.dark-mode ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+body.dark-mode ::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+body.dark-mode ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Specific hardcoded backgrounds override */
+body.dark-mode [style*="background-color: white"],
+body.dark-mode [style*="background-color: #fff"],
+body.dark-mode [style*="background: white"],
+body.dark-mode [style*="background: #fff"] {
+  background-color: #1e293b !important;
+}
+body.dark-mode [style*="color: #1f2937"],
+body.dark-mode [style*="color: #363636"] {
+  color: #f1f5f9 !important;
+}
+
+/* Stat cards with colored backgrounds should keep their colors */
+body.dark-mode .prof-card[class*="!bg-[#"] {
+  /* Don't override colored stat cards */
+}
+
+/* ApexCharts dark mode */
+body.dark-mode .apexcharts-canvas {
+  background: transparent !important;
+}
+body.dark-mode .apexcharts-text {
+  fill: #94a3b8 !important;
+}
+body.dark-mode .apexcharts-legend-text {
+  color: #cbd5e1 !important;
+}
+body.dark-mode .apexcharts-gridline {
+  stroke: #334155 !important;
+}
+body.dark-mode .apexcharts-tooltip {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+body.dark-mode .apexcharts-tooltip-title {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+/* Dark Mode - Sidebar */
+body.dark-mode .sidebar-container {
+  background: linear-gradient(180deg, #050713 0%, #030510 100%) !important;
+  border-right-color: rgba(255, 255, 255, 0.04) !important;
+}
+body.dark-mode .sidebar-top {
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.02), transparent) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.05) !important;
+}
+body.dark-mode .sidebar-container .sub-menu {
+  background: rgba(2, 3, 12, 0.7) !important;
+}
+body.dark-mode .sidebar-footer {
+  background: rgba(2, 3, 12, 0.8) !important;
+  border-top-color: rgba(255, 255, 255, 0.05) !important;
+}
+body.dark-mode .sidebar-container .menu-item:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+body.dark-mode .sidebar-container .router-link-active,
+body.dark-mode .sidebar-container .showMenu > .menu-item {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* NProgress bar in dark mode */
+body.dark-mode #nprogress .bar {
+  background: #818cf8 !important;
+}
+body.dark-mode #nprogress .peg {
+  box-shadow: 0 0 10px #818cf8, 0 0 5px #818cf8 !important;
+}
+
+/* Catch-all for elements with hardcoded white backgrounds in scoped styles */
+body.dark-mode .p-datatable-header,
+body.dark-mode .p-datatable-footer,
+body.dark-mode .poppop,
+body.dark-mode .detail-modal,
+body.dark-mode .modal-content,
+body.dark-mode .card,
+body.dark-mode .panel,
+body.dark-mode .form-container,
+body.dark-mode .detail-card,
+body.dark-mode .employee-detail,
+body.dark-mode .popover-content {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+/* SweetAlert2 dark mode */
+body.dark-mode .swal2-popup {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+body.dark-mode .swal2-title {
+  color: #f1f5f9 !important;
+}
+body.dark-mode .swal2-html-container {
+  color: #cbd5e1 !important;
+}
+body.dark-mode .swal2-input {
+  background: #0f172a !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+
+/* Popup/Modal overlay component */
+body.dark-mode .popup-overlay .popup-content,
+body.dark-mode .popup-inner {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+/* Receipt component print won't be affected */
+
+/* LoadingOverlay dark mode */
+body.dark-mode .loading-overlay {
+  background: rgba(15, 23, 42, 0.8) !important;
+}
+
+/* Signature pad area */
+body.dark-mode canvas {
+  background-color: #0f172a !important;
+}
+
+/* Badge/chip elements */
+body.dark-mode .p-chip {
+  background: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+/* Misc overrides for common patterns */
+body.dark-mode hr {
+  border-color: #334155 !important;
+}
+
+body.dark-mode .shadow-sm,
+body.dark-mode .shadow,
+body.dark-mode .shadow-md,
+body.dark-mode .shadow-lg {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Ring colors for focus states */
+body.dark-mode .ring-gray-200,
+body.dark-mode .ring-gray-300 {
+  --tw-ring-color: #475569 !important;
+}
+
+/* Placeholder text */
+body.dark-mode .placeholder\:text-gray-400::placeholder,
+body.dark-mode .placeholder\:text-gray-300::placeholder {
+  color: #64748b !important;
+}
 
 * {
   box-sizing: border-box;

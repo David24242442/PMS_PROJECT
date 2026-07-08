@@ -605,4 +605,52 @@
     .selected .card-label {
         color: #312E81 !important; /* Indigo 900 */
     }
+
+    /* Dark Mode */
+    :global(body.dark-mode) #tableheader {
+        background-color: #1a2332 !important;
+        color: #94a3b8 !important;
+        border-color: #334155 !important;
+    }
+    :global(body.dark-mode) #tablebody {
+        background-color: #1e293b !important;
+        border-color: #334155 !important;
+    }
+    :global(body.dark-mode) #tablebody > div {
+        border-color: #334155 !important;
+    }
+    :global(body.dark-mode) #tablebody > div:hover {
+        background-color: #253347 !important;
+    }
+    :global(body.dark-mode) #tablebody > div > span {
+        color: #cbd5e1 !important;
+    }
+    :global(body.dark-mode) .premium-input {
+        background: #0f172a !important;
+        border-color: #475569 !important;
+        color: #f1f5f9 !important;
+    }
+    :global(body.dark-mode) .premium-input:focus {
+        background: #1a2332 !important;
+    }
+    :global(body.dark-mode) .permission-card {
+        background: #1a2332 !important;
+        border-color: #475569 !important;
+    }
+    :global(body.dark-mode) .permission-card:hover {
+        background: #253347 !important;
+    }
+    :global(body.dark-mode) .permission-card.selected {
+        background: rgba(99, 102, 241, 0.15) !important;
+    }
+    :global(body.dark-mode) .card-checkbox {
+        background: #0f172a !important;
+        border-color: #475569 !important;
+    }
+    :global(body.dark-mode) .card-label {
+        color: #cbd5e1 !important;
+    }
+    :global(body.dark-mode) .selected .card-label {
+        color: #a5b4fc !important;
+    }
 </style>

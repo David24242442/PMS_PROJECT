@@ -15,7 +15,23 @@
 
     // State for Sidebar Collapse
     const isCollapsed = ref(localStorage.getItem('hr-sidebar-collapsed') === 'true');
-    // Removed isDarkMode state as requested
+
+    // Dark Mode State
+    const isDarkMode = ref(localStorage.getItem('hr-theme') === 'dark');
+
+    const applyTheme = (dark) => {
+        if (dark) {
+            document.body.classList.add('dark-mode');
+        } else {
+            document.body.classList.remove('dark-mode');
+        }
+    };
+
+    const toggleDarkMode = () => {
+        isDarkMode.value = !isDarkMode.value;
+        localStorage.setItem('hr-theme', isDarkMode.value ? 'dark' : 'light');
+        applyTheme(isDarkMode.value);
+    };
 
     // State for Dropdown Menus
     // We default them to closed or open depending on preference. 
@@ -48,9 +64,8 @@
     };
 
     onMounted(async () => {
-        // Ensure we are in "light mode" globally by removing the class
-        document.body.classList.remove('dark-mode');
-        localStorage.removeItem('hr-theme'); // Clear preference
+        // Apply saved theme preference
+        applyTheme(isDarkMode.value);
 
         // Check for pending appraisals for navigation status
         if (loguser?.permissions?.includes('/pms/appraisal') || loguser?.position_id === 4) {
@@ -207,7 +222,11 @@
                 <i class="pi pi-user"></i>
             </div>
             
-            <!-- Theme Toggler Removed -->
+            <!-- Dark/Light Mode Toggle -->
+            <button class="theme-toggle-btn" @click="toggleDarkMode" :title="isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+                <i :class="isDarkMode ? 'pi pi-sun' : 'pi pi-moon'"></i>
+                <span v-show="!isCollapsed" class="theme-toggle-label">{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</span>
+            </button>
         </div>
     </aside>
 </template>
@@ -481,5 +500,46 @@
     .collapsed .sidebar-footer {
         padding: 16px 10px;
     }
+
+    /* Theme Toggle Button */
+    .theme-toggle-btn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px 14px;
+        margin-top: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        color: rgba(255, 255, 255, 0.9);
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+
+    .theme-toggle-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .theme-toggle-btn .pi {
+        font-size: 1rem;
+        color: #fbbf24 !important;
+        min-width: 20px;
+        text-align: center;
+    }
+
+    .theme-toggle-label {
+        font-weight: 500;
+        letter-spacing: 0.01em;
+    }
+
+    .collapsed .theme-toggle-btn {
+        justify-content: center;
+        padding: 10px;
+    }
+
 
 </style>

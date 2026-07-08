@@ -103,4 +103,18 @@ const userStore = useUsersStore();
 .fade-leave-to {
   opacity: 0;
 }
+
+/* Dark Mode */
+:global(body.dark-mode) .loading-overlay {
+  background: rgba(15, 23, 42, 0.75) !important;
+}
+:global(body.dark-mode) .loading-text {
+  color: #818cf8 !important;
+}
+:global(body.dark-mode) .loading-bar {
+  background: rgba(129, 140, 248, 0.15) !important;
+}
+:global(body.dark-mode) .loading-bar-progress {
+  background: linear-gradient(90deg, transparent, #818cf8, transparent) !important;
+}
 </style>

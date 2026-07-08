@@ -511,4 +511,27 @@
         font-size: 9px;
     }
 }
+
+/* Dark Mode Login */
+:global(body.dark-mode) .form-panel {
+    background: #1e293b !important;
+}
+:global(body.dark-mode) .form-panel::before {
+    background: linear-gradient(to bottom, transparent 10%, #334155 50%, transparent 90%) !important;
+}
+:global(body.dark-mode) .login-input {
+    background: #0f172a !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
+}
+:global(body.dark-mode) .login-input:focus {
+    background: #1a2332 !important;
+    border-color: #a855f7 !important;
+}
+:global(body.dark-mode) .login-input::placeholder {
+    color: #64748b !important;
+}
+:global(body.dark-mode) .login-label {
+    color: #94a3b8 !important;
+}
 </style>

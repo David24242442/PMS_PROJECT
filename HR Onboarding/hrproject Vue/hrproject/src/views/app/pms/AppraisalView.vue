@@ -708,4 +708,14 @@ onMounted(() => {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+/* Dark Mode */
+:global(body.dark-mode) .step-inactive {
+    background-color: #1e293b !important;
+    color: #94a3b8 !important;
+    border-color: #475569 !important;
+}
+:global(body.dark-mode) .prof-input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.8) !important;
+}
 </style>

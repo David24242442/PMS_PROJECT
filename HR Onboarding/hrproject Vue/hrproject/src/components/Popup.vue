@@ -60,6 +60,14 @@
         height: calc(100% - 50px);
     }
 
+    :global(body.dark-mode) .poppopin {
+        background-color: #1e293b !important;
+        color: #f1f5f9 !important;
+    }
+    :global(body.dark-mode) .poppop {
+        background-color: rgba(0, 0, 0, 0.7) !important;
+    }
+
     .poppopclose {
         padding: 10px;
         cursor: pointer;

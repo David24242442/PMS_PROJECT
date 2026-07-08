@@ -1307,4 +1307,9 @@ input[type=range]::-webkit-slider-runnable-track {
       color: #1e293b !important; /* Force darker text */
   }
 }
+
+/* Dark Mode */
+:global(body.dark-mode) input[type=range]::-webkit-slider-runnable-track {
+    background: #475569 !important;
+}
 </style>
