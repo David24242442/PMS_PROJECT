@@ -102,41 +102,37 @@
 
         <!-- Right: Form Panel -->
         <div class="form-panel">
+            <!-- Decorative background elements -->
+            <div class="form-bg-pattern"></div>
+            <div class="form-bg-glow"></div>
+
             <div class="form-wrapper animate-fadeIn">
                 <!-- Top Brand Identity -->
-                <div class="brand-header mb-12">
+                <div class="brand-header">
                     <img :src="logoo" alt="Melcom" class="brand-logo-img">
                 </div>
 
                 <form @submit.prevent="login" class="login-form">
                     <!-- Welcome Section -->
-                    <div class="mb-8">
-                        <div class="flex items-center gap-2 mb-4">
-                            <div class="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center border border-indigo-100/50 shadow-sm">
-                                <i class="pi pi-shield text-[#1A237E] text-sm"></i>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-[#1A237E] uppercase tracking-[0.2em]">Authorized Access Only</span>
-                            </div>
+                    <div class="welcome-section">
+                        <div class="welcome-badge">
+                            <i class="pi pi-shield"></i>
+                            <span>Secure Portal</span>
                         </div>
-                        <h1 class="text-3xl font-black text-slate-900 tracking-tight mb-2 flex flex-col">
-                            <span class="text-indigo-600 -mb-1">Please sign in.</span>
-                        </h1>
-                        <p class="text-sm text-slate-400 font-medium">Identify yourself to access the <span class="text-slate-600 font-bold">Performance Hub</span></p>
+                        <h1 class="welcome-title">Welcome back</h1>
+                        <p class="welcome-sub">Sign in to continue to your <span>Performance Hub</span></p>
                     </div>
-                    
-                    <div class="space-y-5">
+
+                    <div class="fields-wrapper">
                         <!-- Username -->
-                        <div class="space-y-1.5">
-                            <label for="username" class="login-label text-black">Username</label>
-                            <div class="relative input-group">
-                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-700">
-                                    <i class="pi pi-user text-xs"></i>
-                                </div>
-                                <input 
+                        <div class="field-group">
+                            <label for="username" class="login-label">Username</label>
+                            <div class="input-shell">
+                                <i class="pi pi-user field-icon"></i>
+                                <input
                                     id="username"
-                                    type="text" 
-                                    v-model="username" 
+                                    type="text"
+                                    v-model="username"
                                     placeholder="Enter your username"
                                     required
                                     @keydown="cancelErreur"
@@ -146,65 +142,58 @@
                         </div>
 
                         <!-- Password -->
-                        <div class="space-y-1.5">
-                            <label for="password" class="login-label text-black">Password</label>
-                            <div class="relative input-group">
-                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-700">
-                                    <i class="pi pi-lock text-xs"></i>
-                                </div>
-                                <input 
+                        <div class="field-group">
+                            <label for="password" class="login-label">Password</label>
+                            <div class="input-shell">
+                                <i class="pi pi-lock field-icon"></i>
+                                <input
                                     id="password"
-                                    :type="showingpass ? 'text' : 'password'" 
-                                    v-model="password" 
-                                    placeholder="••••••••"
-                                    required 
+                                    :type="showingpass ? 'text' : 'password'"
+                                    v-model="password"
+                                    placeholder="Enter your password"
+                                    required
                                     @keydown="cancelErreur"
                                     class="login-input"
                                 >
-                                <button 
+                                <button
                                     type="button"
                                     @click="showingpass = !showingpass"
-                                    class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-300 hover:text-gray-600 transition-colors"
+                                    class="pass-toggle"
                                 >
-                                    <i :class="showingpass ? 'pi pi-eye-slash' : 'pi pi-eye'" class="text-xs"></i>
+                                    <i :class="showingpass ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
                                 </button>
                             </div>
                         </div>
 
                         <!-- Error Alert -->
-                        <div v-if="erreur" class="p-3.5 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 animate-shake">
-                            <div class="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-red-500 shrink-0">
-                                <i class="pi pi-exclamation-triangle text-[10px]"></i>
-                            </div>
-                            <span class="text-[10px] font-bold text-red-600">Invalid username or password. Please try again.</span>
+                        <div v-if="erreur" class="error-alert animate-shake">
+                            <i class="pi pi-exclamation-circle"></i>
+                            <span>Invalid credentials. Please check your username and password.</span>
                         </div>
 
                         <!-- Submit Button -->
-                        <div class="pt-2">
-                            <button
-                                type="submit"
-                                class="login-button"
-                                :disabled="!password || !username || loading"
-                            >
-                                <div v-if="loading" class="flex items-center justify-center gap-3">
-                                    <i class="pi pi-spin pi-spinner text-sm"></i>
-                                    <span class="tracking-wider font-black uppercase text-xs">Verifying...</span>
-                                </div>
-                                <div v-else class="flex items-center justify-center gap-2">
-                                    <span class="tracking-wider font-black uppercase text-xs">Sign In</span>
-                                    <i class="pi pi-arrow-right text-[10px] transition-transform btn-arrow"></i>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Footer -->
-                    <div class="mt-10 pt-6 border-t border-gray-100 text-center">
-                        <p class="text-[9px] text-gray-300 font-bold uppercase tracking-normal">
-                            Melcom Group &copy; {{ new Date().getFullYear() }} &bull; Secure Access
-                        </p>
+                        <button
+                            type="submit"
+                            class="login-button"
+                            :disabled="!password || !username || loading"
+                        >
+                            <div v-if="loading" class="btn-content">
+                                <i class="pi pi-spin pi-spinner"></i>
+                                <span>Authenticating...</span>
+                            </div>
+                            <div v-else class="btn-content">
+                                <span>Sign In</span>
+                                <i class="pi pi-arrow-right btn-arrow"></i>
+                            </div>
+                        </button>
                     </div>
                 </form>
+
+                <!-- Footer -->
+                <div class="login-footer">
+                    <div class="footer-line"></div>
+                    <p>Melcom Group &copy; {{ new Date().getFullYear() }}</p>
+                </div>
             </div>
         </div>
     </div>
@@ -292,36 +281,56 @@
     letter-spacing: 0.1em;
 }
 
-/* Right Form Panel */
+/* ══════════════════════════════════════════════════════════════
+   RIGHT FORM PANEL
+   ══════════════════════════════════════════════════════════════ */
 .form-panel {
-    width: 480px;
-    min-width: 480px;
+    width: 500px;
+    min-width: 500px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #FFFFFF;
+    background: linear-gradient(165deg, #f8faff 0%, #f0f4ff 40%, #faf5ff 100%);
     position: relative;
+    overflow: hidden;
 }
 
-.form-panel::before {
-    content: '';
+/* Subtle dot pattern */
+.form-bg-pattern {
     position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 1px;
-    background: linear-gradient(to bottom, transparent 10%, #e2e8f0 50%, transparent 90%);
+    inset: 0;
+    background-image: radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.04) 1px, transparent 0);
+    background-size: 28px 28px;
+    pointer-events: none;
+}
+
+/* Soft color glow */
+.form-bg-glow {
+    position: absolute;
+    top: -120px;
+    right: -80px;
+    width: 350px;
+    height: 350px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
+    pointer-events: none;
 }
 
 .form-wrapper {
     width: 100%;
-    padding: 60px;
+    padding: 56px 52px;
     display: flex;
     flex-direction: column;
+    position: relative;
+    z-index: 1;
+}
+
+/* Brand */
+.brand-header {
+    margin-bottom: 40px;
 }
 
 .brand-logo-img {
-    height: 48px;
+    height: 42px;
     width: auto;
     object-fit: contain;
 }
@@ -330,100 +339,246 @@
     width: 100%;
 }
 
-/* Form Elements */
+/* Welcome */
+.welcome-section {
+    margin-bottom: 32px;
+}
+
+.welcome-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 8px;
+    background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+    border: 1px solid rgba(129, 140, 248, 0.2);
+    border-radius: 20px;
+    margin-bottom: 16px;
+}
+
+.welcome-badge i {
+    font-size: 10px;
+    color: #6366f1;
+}
+
+.welcome-badge span {
+    font-size: 10px;
+    font-weight: 800;
+    color: #4f46e5;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.welcome-title {
+    font-size: 28px;
+    font-weight: 900;
+    color: #0f172a;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 8px;
+}
+
+.welcome-sub {
+    font-size: 13px;
+    color: #94a3b8;
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+.welcome-sub span {
+    color: #475569;
+    font-weight: 700;
+}
+
+/* Fields */
+.fields-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
 .login-label {
     display: block;
-    font-size: 10px;
-    font-weight: 900;
-    color: #9ca3af;
+    font-size: 11px;
+    font-weight: 800;
+    color: #64748b;
     text-transform: uppercase;
-    letter-spacing: 0.15em;
+    letter-spacing: 0.1em;
     margin-left: 2px;
-    margin-bottom: 0 !important;
+}
+
+.input-shell {
+    position: relative;
+}
+
+.field-icon {
+    position: absolute;
+    top: 50%;
+    left: 16px;
+    transform: translateY(-50%);
+    font-size: 13px;
+    color: #a5b4c8;
+    transition: color 0.2s ease;
+    pointer-events: none;
+}
+
+.input-shell:focus-within .field-icon {
+    color: #6366f1;
 }
 
 .login-input {
     width: 100%;
-    padding: 14px 16px 14px 42px;
-    background: #f8fafc;
-    border: 1.5px solid #f1f5f9;
-    border-radius: 14px;
-    font-size: 13px;
+    padding: 15px 16px 15px 44px;
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 13.5px;
     font-weight: 600;
     color: #1e293b;
-    transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+    transition: all 0.25s ease;
     outline: none;
 }
 
 .login-input:focus {
-    background: #ffffff;
-    border-color: #a855f7;
-    box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.08);
+    border-color: #818cf8;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1), 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .login-input::placeholder {
-    color: #cbd5e1;
+    color: #c1cdd9;
     font-weight: 500;
+    font-size: 13px;
+}
+
+.pass-toggle {
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: #c1cdd9;
+    transition: color 0.2s ease;
+    font-size: 13px;
+}
+
+.pass-toggle:hover {
+    color: #6366f1;
+}
+
+/* Error */
+.error-alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #fff5f5, #fef2f2);
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+}
+
+.error-alert i {
+    font-size: 14px;
+    color: #ef4444;
+    flex-shrink: 0;
+}
+
+.error-alert span {
     font-size: 12px;
+    font-weight: 600;
+    color: #dc2626;
+    line-height: 1.4;
 }
 
-.input-group:focus-within .text-gray-400 {
-    color: #a855f7;
-}
-
+/* Button */
 .login-button {
     width: 100%;
-    padding: 16px 28px;
-    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    padding: 15px 28px;
+    margin-top: 4px;
+    background: linear-gradient(135deg, #4f46e5 0%, #6d28d9 50%, #7c3aed 100%);
+    background-size: 200% 200%;
     color: white;
     border: none;
-    border-radius: 14px;
-    font-weight: 800;
+    border-radius: 12px;
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
     position: relative;
     overflow: hidden;
-    box-shadow: 0 8px 24px -4px rgba(124, 58, 237, 0.25);
-}
-
-.login-button::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
-    transition: 0.5s;
-}
-
-.login-button:hover::after {
-    left: 100%;
+    box-shadow: 0 4px 16px -2px rgba(79, 70, 229, 0.3), 0 2px 4px rgba(0,0,0,0.06);
 }
 
 .login-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 28px -4px rgba(124, 58, 237, 0.35);
-}
-
-.login-button:hover .btn-arrow {
-    transform: translateX(3px);
+    background-position: 100% 0;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px -4px rgba(79, 70, 229, 0.4), 0 4px 8px rgba(0,0,0,0.08);
 }
 
 .login-button:active {
     transform: translateY(0);
 }
 
+.btn-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-content span {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.btn-content i {
+    font-size: 12px;
+}
+
+.btn-arrow {
+    transition: transform 0.3s ease;
+}
+
+.login-button:hover .btn-arrow {
+    transform: translateX(4px);
+}
+
 .login-button:disabled {
-    opacity: 0.4;
-    background: #cbd5e1;
+    opacity: 0.35;
+    background: #94a3b8;
     cursor: not-allowed;
     box-shadow: none;
     transform: none;
 }
 
-.login-button:disabled::after {
-    display: none;
+/* Footer */
+.login-footer {
+    margin-top: 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.footer-line {
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, #c7d2fe, #ddd6fe);
+    border-radius: 1px;
+}
+
+.login-footer p {
+    font-size: 10px;
+    font-weight: 700;
+    color: #c1cdd9;
+    letter-spacing: 0.06em;
 }
 
 /* Animations */
@@ -480,13 +635,11 @@
         min-width: unset;
     }
 
-    .form-panel::before {
-        display: none;
-    }
+    .form-bg-glow { display: none; }
 
     .form-wrapper {
-        padding: 32px 24px;
-        max-width: 420px;
+        padding: 32px 28px;
+        max-width: 440px;
     }
 }
 
@@ -510,28 +663,67 @@
     .panel-subtitle {
         font-size: 9px;
     }
+
+    .form-wrapper {
+        padding: 28px 20px;
+    }
+
+    .welcome-title {
+        font-size: 24px;
+    }
 }
 
 /* Dark Mode Login */
 :global(body.dark-mode) .form-panel {
-    background: #1e293b !important;
+    background: linear-gradient(165deg, #0f172a 0%, #1a1f3d 40%, #1e1b3a 100%) !important;
 }
-:global(body.dark-mode) .form-panel::before {
-    background: linear-gradient(to bottom, transparent 10%, #334155 50%, transparent 90%) !important;
+:global(body.dark-mode) .form-bg-pattern {
+    background-image: radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.06) 1px, transparent 0) !important;
 }
-:global(body.dark-mode) .login-input {
-    background: #0f172a !important;
-    border-color: #475569 !important;
+:global(body.dark-mode) .form-bg-glow {
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%) !important;
+}
+:global(body.dark-mode) .welcome-badge {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1)) !important;
+    border-color: rgba(129, 140, 248, 0.2) !important;
+}
+:global(body.dark-mode) .welcome-title {
     color: #f1f5f9 !important;
 }
-:global(body.dark-mode) .login-input:focus {
-    background: #1a2332 !important;
-    border-color: #a855f7 !important;
-}
-:global(body.dark-mode) .login-input::placeholder {
+:global(body.dark-mode) .welcome-sub {
     color: #64748b !important;
+}
+:global(body.dark-mode) .welcome-sub span {
+    color: #94a3b8 !important;
 }
 :global(body.dark-mode) .login-label {
     color: #94a3b8 !important;
+}
+:global(body.dark-mode) .login-input {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+:global(body.dark-mode) .login-input:focus {
+    border-color: #818cf8 !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+}
+:global(body.dark-mode) .login-input::placeholder {
+    color: #475569 !important;
+}
+:global(body.dark-mode) .field-icon {
+    color: #475569 !important;
+}
+:global(body.dark-mode) .input-shell:focus-within .field-icon {
+    color: #818cf8 !important;
+}
+:global(body.dark-mode) .pass-toggle {
+    color: #475569 !important;
+}
+:global(body.dark-mode) .footer-line {
+    background: linear-gradient(90deg, #334155, #3b3566) !important;
+}
+:global(body.dark-mode) .login-footer p {
+    color: #475569 !important;
 }
 </style>

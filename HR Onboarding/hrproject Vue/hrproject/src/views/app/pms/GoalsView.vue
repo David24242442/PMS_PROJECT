@@ -6,6 +6,7 @@ import { useUsersStore } from '@/stores/user';
 import { showAlert, showConfirm } from '@/helpers/essential';
 import AutoComplete from 'primevue/autocomplete';
 import { finddept, findbranch } from '@/data/masterdata';
+import melcomLogo from '@/assets/img/melcom_logo.png';
 
 const userstore = useUsersStore();
 const { loguser } = userstore;
@@ -493,6 +494,31 @@ const viewGoalDetail = (goal) => {
     showDetailModal.value = true;
 };
 
+const getManagerRating = (goal) => {
+    const data = typeof goal.appraisal_data === 'string' ? JSON.parse(goal.appraisal_data || '{}') : (goal.appraisal_data || {});
+    // First: compute from competency managerRatings (the actual review scores)
+    const comps = data.competencies || [];
+    const rated = comps.filter(c => parseFloat(c.managerRating) > 0);
+    if (rated.length > 0) {
+        const total = rated.reduce((sum, c) => sum + parseFloat(c.managerRating), 0);
+        return (total / rated.length).toFixed(1);
+    }
+    // Fallback: overall_rating from DB
+    if (goal.overall_rating) return parseFloat(goal.overall_rating).toFixed(1);
+    return null;
+};
+
+const getSelfRating = (goal) => {
+    const data = typeof goal.appraisal_data === 'string' ? JSON.parse(goal.appraisal_data || '{}') : (goal.appraisal_data || {});
+    const comps = data.competencies || [];
+    const rated = comps.filter(c => parseFloat(c.selfRating) > 0);
+    if (rated.length > 0) {
+        const total = rated.reduce((sum, c) => sum + parseFloat(c.selfRating), 0);
+        return (total / rated.length).toFixed(1);
+    }
+    return null;
+};
+
 const getSmartScore = (goal) => {
     if (!goal.smart_criteria) return 0;
     const criteria = goal.smart_criteria;
@@ -579,7 +605,85 @@ const saveDraft = async (toServer = false) => {
 };
 
 const triggerPrint = () => {
-    window.print();
+    const source = document.getElementById('protocol-report');
+    if (!source) return;
+
+    // Clone report content into a standalone wrapper appended to body
+    const printContainer = document.createElement('div');
+    printContainer.id = 'print-clone';
+    printContainer.innerHTML = source.innerHTML;
+    document.body.appendChild(printContainer);
+
+    // Add a style tag for the clone
+    const printStyle = document.createElement('style');
+    printStyle.id = 'print-clone-style';
+    printStyle.textContent = `
+        @media print {
+            body > *:not(#print-clone):not(#print-clone-style) {
+                display: none !important;
+            }
+            #print-clone {
+                display: block !important;
+                position: static !important;
+                width: 100% !important;
+                overflow: visible !important;
+            }
+            #print-clone .doc-page {
+                padding: 10mm !important;
+                margin: 0 !important;
+                width: 100% !important;
+                min-height: auto !important;
+                max-height: none !important;
+                height: auto !important;
+                box-shadow: none !important;
+                border: none !important;
+                page-break-after: always !important;
+                break-after: page !important;
+                display: block !important;
+                overflow: visible !important;
+                border-radius: 0 !important;
+            }
+            #print-clone .doc-page:last-child {
+                page-break-after: avoid !important;
+            }
+            #print-clone .no-print { display: none !important; }
+            #print-clone table { page-break-inside: auto !important; }
+            #print-clone tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+            #print-clone thead { display: table-header-group !important; }
+            #print-clone .space-y-4 > *, #print-clone .space-y-6 > *, #print-clone .space-y-8 > *, #print-clone .space-y-10 > * {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            #print-clone .grid { page-break-inside: avoid !important; break-inside: avoid !important; }
+            #print-clone .mt-auto { margin-top: 10mm !important; }
+            #print-clone .watermark-logo {
+                position: absolute !important;
+                top: 50% !important;
+                left: 50% !important;
+                transform: translate(-50%, -50%) !important;
+                width: 280px !important;
+                opacity: 0.04 !important;
+                pointer-events: none !important;
+                z-index: 0 !important;
+                display: block !important;
+            }
+            @page { size: A4 portrait; margin: 8mm 5mm; }
+        }
+        @media screen {
+            #print-clone { display: none !important; }
+        }
+    `;
+    document.head.appendChild(printStyle);
+
+    // Small delay to let browser render, then print
+    setTimeout(() => {
+        window.print();
+        // Cleanup after print dialog closes
+        setTimeout(() => {
+            document.body.removeChild(printContainer);
+            document.head.removeChild(printStyle);
+        }, 500);
+    }, 300);
 };
 
 const getDossierId = (goal) => {
@@ -615,43 +719,72 @@ const downloadCSV = () => {
 
 const downloadSingleCSV = (goal) => {
     const recordId = getDossierId(goal);
-    
-    // Define elaborate horizontal headers
+    const ad = typeof goal.appraisal_data === 'string' ? JSON.parse(goal.appraisal_data || '{}') : (goal.appraisal_data || {});
+    const comps = ad.competencies || [];
+
+    // Build comprehensive horizontal headers
     const headers = [
         'Record ID', 'Candidate Name', 'Employee Code', 'Department', 'Location', 'Year',
-        'Goal Title', 'Category', 'Target %', 'Status',
-        'Q1 Target', 'Q2 Target', 'Q3 Target', 'Q4 Target',
-        'Strategic Objectives', 'Appraisal Rating', 'HOD Approval', 'Director Approval'
+        'Goal Title', 'Category', 'Target %', 'Status', 'Manager Name',
+        'Description/Objectives', 'Purposes', 'Challenges',
+        'SMART-Specific', 'SMART-Measurable', 'SMART-Attainable', 'SMART-Relevant', 'SMART-TimeBound'
     ];
 
-    // Flatten Objectives
-    const objectives = parseList(goal.description).join('; ');
-
-    // Map Quarterly Data
-    const qData = [1, 2, 3, 4].map(idx => {
-        const q = goal.quarterly_tracking?.find(qt => qt.quarter === `q${idx}`) || 
-                  goal.quarterly_tracking?.[idx-1];
-        return q ? parseList(q.target_measures).join('; ') : 'N/A';
+    // Quarterly headers
+    [1, 2, 3, 4].forEach(q => {
+        headers.push(`Q${q} Start Date`, `Q${q} End Date`, `Q${q} Target Measures`, `Q${q} Evidence`);
     });
 
-    // Final Data Row
+    // Competency headers
+    comps.forEach(c => {
+        headers.push(`${c.title} (Weight)`, `${c.title} (Self)`, `${c.title} (Mgr)`);
+    });
+
+    // Appraisal fields
+    headers.push(
+        'Overall Manager Rating', 'Performance Rating', 'Potential Rating',
+        'What Impressed Most', 'What Impressed Least', 'General Comments',
+        'HOD Comments', 'Director Remarks',
+        'Employee Signature', 'Manager Signature', 'Signature Date',
+        'HOD Signature', 'HOD Signature Date', 'Director Signature', 'Director Signature Date'
+    );
+
+    // Build data row
+    const smart = goal.smart_criteria || {};
     const row = [
-        recordId,
-        goal.candidate_name,
-        goal.employee_code,
-        goal.department || 'N/A',
-        goal.location || 'N/A',
-        goal.year,
-        goal.title,
-        goal.category || 'General',
-        `${goal.target}%`,
-        goal.status,
-        ...qData,
-        objectives,
-        goal.appraisal_data?.performanceRating || 'Pending',
-        goal.appraisal_data?.hod_signature_name || 'Pending',
-        goal.appraisal_data?.director_signature_name || 'Pending'
+        recordId, goal.candidate_name, goal.employee_code,
+        goal.department || 'N/A', goal.location || 'N/A', goal.year,
+        goal.title, goal.category || 'General', `${goal.target}%`, goal.status,
+        goal.manager_name || 'N/A',
+        parseList(goal.description).join('; '),
+        parseList(goal.purposes).join('; '),
+        parseList(goal.challenges).join('; '),
+        smart.specific ? 'Yes' : 'No', smart.measurable ? 'Yes' : 'No',
+        smart.attainable ? 'Yes' : 'No', smart.relevant ? 'Yes' : 'No',
+        smart.time_bound ? 'Yes' : 'No'
     ];
+
+    // Quarterly data
+    [1, 2, 3, 4].forEach(idx => {
+        const q = goal.quarterly_tracking?.find(qt => qt.quarter === `q${idx}`) || goal.quarterly_tracking?.[idx-1] || {};
+        row.push(q.start_date || 'N/A', q.end_date || 'N/A',
+            parseList(q.target_measures).filter(m => m).join('; ') || 'N/A',
+            q.evidence || 'N/A');
+    });
+
+    // Competency data
+    comps.forEach(c => {
+        row.push(`${c.weight}%`, c.selfRating || 0, c.managerRating || 0);
+    });
+
+    // Appraisal data
+    row.push(
+        getManagerRating(goal) || 'N/A', ad.performanceRating || 'N/A', ad.potentialRating || 'N/A',
+        ad.impressedMost || '', ad.impressedLeast || '', ad.comments || '',
+        ad.hod_comments || '', ad.director_remarks || '',
+        ad.candidate_signature_name || '', ad.manager_signature_name || '', ad.signature_date || '',
+        ad.hod_signature_name || '', ad.hod_signature_date || '', ad.director_signature_name || '', ad.director_signature_date || ''
+    );
 
     const csvContent = "\ufeff" + headers.join(",") + "\n" + row.map(v => `"${(v+'').replace(/"/g, '""')}"`).join(",");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1223,8 +1356,8 @@ const removeAttachment = (qIndex, fileIndex) => {
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 text-center font-black text-[11px]">
-                                    <span v-if="goal.appraisal_data?.authorization?.line_manager_rating" class="px-2 py-1 bg-slate-100 text-slate-700 rounded border border-slate-200" :title="goal.appraisal_data.authorization.line_manager_rating">
-                                        {{ goal.appraisal_data.authorization.line_manager_rating.split(' ')[0] }}
+                                    <span v-if="getManagerRating(goal)" class="px-2 py-1 bg-slate-100 text-slate-700 rounded border border-slate-200" :title="'Manager avg: ' + getManagerRating(goal) + '/5'">
+                                        {{ getManagerRating(goal) }}
                                     </span>
                                     <span v-else class="text-gray-300">-</span>
                                 </td>
@@ -1805,11 +1938,12 @@ const removeAttachment = (qIndex, fileIndex) => {
                     <div id="protocol-report" class="w-full max-w-[210mm] space-y-8 print:m-0 print:shadow-none print:w-full no-scrollbar">
                         
                         <!-- Page 1: Profile & Definitions -->
-                        <div class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 min-h-[297mm] flex flex-col">
+                        <div class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 w-[210mm] min-h-[297mm] flex flex-col relative">
+                            <img :src="melcomLogo" class="watermark-logo" alt="" />
                             <!-- Header -->
                             <div class="flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
                                 <div>
-                                    <div class="text-[10px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-3">PMS SMART GOALS PROTOCOL</div>
+                                    <div class="text-[10px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-3">MELCOM HR PMS</div>
                                     <h1 class="text-4xl font-black text-slate-900 tracking-tighter uppercase leading-tight">{{ selectedGoal.candidate_name }}</h1>
                                     <div class="flex items-center gap-3 mt-4">
                                         <span class="px-3 py-1 bg-slate-100 text-slate-600 text-[9px] font-black uppercase rounded">{{ selectedGoal.employee_code || 'EMP-XXXX' }}</span>
@@ -1820,6 +1954,7 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 <div class="text-right">
                                     <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Fiscal Cycle</div>
                                     <div class="text-2xl font-black text-slate-900">{{ selectedGoal.year }}</div>
+                                    <div class="text-[9px] font-bold text-slate-400 mt-1">Created: {{ formatDate(selectedGoal.created_at) }}</div>
                                 </div>
                             </div>
 
@@ -1828,7 +1963,7 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 <div>
                                     <div class="flex items-center gap-4 mb-6">
                                         <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">01. STRATEGIC MISSION</span>
+                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">YEARLY SMART GOALS SETTING</span>
                                         <div class="flex-1 h-[1px] bg-slate-200"></div>
                                     </div>
                                     <div class="space-y-6">
@@ -1860,7 +1995,7 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 <div>
                                     <div class="flex items-center gap-4 mb-6">
                                         <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">02. PURPOSE & VALUE</span>
+                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">PURPOSE & VALUE</span>
                                         <div class="flex-1 h-[1px] bg-slate-200"></div>
                                     </div>
                                     <div class="grid grid-cols-1 gap-4">
@@ -1870,6 +2005,60 @@ const removeAttachment = (qIndex, fileIndex) => {
                                         </div>
                                     </div>
                                 </div>
+
+                                <!-- Challenges -->
+                                <div v-if="parseList(selectedGoal.challenges).filter(c => c && c.trim()).length">
+                                    <div class="flex items-center gap-4 mb-6">
+                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
+                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">CHALLENGES & RISKS</span>
+                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
+                                    </div>
+                                    <div class="grid grid-cols-1 gap-4">
+                                        <div v-for="(c, cIdx) in parseList(selectedGoal.challenges)" :key="cIdx" class="flex gap-4 p-4 bg-red-50/50 border border-red-100 rounded-xl">
+                                            <div class="w-2 h-2 rounded-full bg-red-400 mt-1.5 shrink-0"></div>
+                                            <p class="text-[11px] font-bold text-slate-600 leading-normal">{{ c }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- SMART Criteria -->
+                                <div v-if="selectedGoal.smart_criteria">
+                                    <div class="flex items-center gap-4 mb-6">
+                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
+                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">SMART CRITERIA CHECKLIST</span>
+                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
+                                    </div>
+                                    <table class="w-full text-left text-xs border-collapse">
+                                        <thead class="bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest">
+                                            <tr>
+                                                <th class="px-5 py-3 rounded-tl-xl">My Goal Is...</th>
+                                                <th class="px-5 py-3 text-center rounded-tr-xl w-20">Check</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-100 bg-white border-x border-b border-slate-100">
+                                            <tr v-for="(item, key) in { specific: { letter: 'S', label: 'Specific', color: 'bg-indigo-600', desc: 'Clearly defines what needs to be accomplished' }, measurable: { letter: 'M', label: 'Measurable', color: 'bg-purple-600', desc: 'Has quantifiable indicators of progress' }, attainable: { letter: 'A', label: 'Attainable', color: 'bg-emerald-600', desc: 'Realistic and achievable with available resources' }, relevant: { letter: 'R', label: 'Relevant', color: 'bg-red-500', desc: 'Aligned with broader business objectives' }, time_bound: { letter: 'T', label: 'Time-Bound', color: 'bg-violet-600', desc: 'Has a clear deadline or timeframe' } }" :key="key">
+                                                <td class="px-5 py-4">
+                                                    <div class="flex items-center gap-3">
+                                                        <span class="w-7 h-7 rounded-lg text-white text-[10px] font-black flex items-center justify-center shrink-0" :class="item.color">{{ item.letter }}</span>
+                                                        <div>
+                                                            <p class="text-[11px] font-black text-slate-800">{{ item.label }}</p>
+                                                            <p class="text-[9px] text-slate-400">{{ item.desc }}</p>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td class="px-5 py-4 text-center">
+                                                    <i class="pi text-base" :class="selectedGoal.smart_criteria[key] ? 'pi-check-square text-emerald-500' : 'pi-stop text-slate-300'"></i>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="bg-slate-50">
+                                            <tr>
+                                                <td class="px-5 py-3 text-[10px] font-black text-slate-500 uppercase">{{ Object.values(selectedGoal.smart_criteria).filter(v => v).length }}/5 Criteria Met</td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
                             </div>
 
                             <div class="mt-auto pt-10 text-center">
@@ -1878,32 +2067,47 @@ const removeAttachment = (qIndex, fileIndex) => {
                         </div>
 
                         <!-- Page 2: Quarterly Progress -->
-                        <div class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 min-h-[297mm] flex flex-col break-before-page">
+                        <div class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 w-[210mm] min-h-[297mm] flex flex-col break-before-page relative">
+                            <img :src="melcomLogo" class="watermark-logo" alt="" />
                             <div class="flex items-center gap-4 mb-10">
                                 <div class="w-10 h-1 bg-indigo-600"></div>
-                                <h2 class="text-xl font-black text-slate-900 uppercase tracking-tight">Quarterly Execution Audit</h2>
+                                <h2 class="text-xl font-black text-slate-900 uppercase tracking-tight">Goal Start Date — Key Steps</h2>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Measure (Growth Over Last Year & Quarters) — Keep a log of your progress</p>
                             </div>
 
-                            <div class="space-y-8">
-                                <div v-for="(q, qIdx) in selectedGoal.quarterly_tracking" :key="qIdx" class="relative group">
-                                    <div class="absolute -left-6 top-0 bottom-0 w-1 bg-slate-100 group-hover:bg-indigo-600 transition-colors"></div>
-                                    <div class="mb-4 flex items-center justify-between">
-                                        <h3 class="text-sm font-black text-slate-900 uppercase tracking-widest">{{ q.quarter ? q.quarter.toUpperCase() : 'QUARTER ' + (qIdx + 1) }}</h3>
-                                        <span class="text-[9px] font-black text-slate-400 uppercase">{{ formatDate(q.start_date) }} - {{ formatDate(q.end_date) }}</span>
-                                    </div>
-                                    <div class="p-6 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-                                        <div>
-                                            <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-2">Target Measures & Deliverables</label>
-                                            <div class="space-y-2">
-                                                <div v-for="(m, mIdx) in parseList(q.target_measures)" :key="mIdx" class="flex items-start gap-3">
-                                                    <i class="pi pi-check-circle text-indigo-400 text-[10px] mt-0.5"></i>
-                                                    <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ m }}</p>
-                                                </div>
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead class="bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest">
+                                    <tr>
+                                        <th class="px-5 py-3 rounded-tl-xl w-[100px]">Date</th>
+                                        <th class="px-5 py-3">Target Measure</th>
+                                        <th class="px-5 py-3 rounded-tr-xl">Attachments</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 bg-white border-x border-b border-slate-100">
+                                    <tr v-for="(q, qIdx) in selectedGoal.quarterly_tracking" :key="qIdx">
+                                        <td class="px-5 py-4 align-top">
+                                            <span class="inline-block px-2 py-0.5 rounded text-[9px] font-black text-white mb-1" :class="['bg-red-400','bg-amber-500','bg-emerald-500','bg-indigo-500'][qIdx] || 'bg-slate-500'">{{ q.quarter ? q.quarter.toUpperCase() : 'Q'+(qIdx+1) }}</span>
+                                            <p class="text-[9px] text-slate-400 font-bold leading-tight">{{ formatDate(q.start_date) }}</p>
+                                            <p class="text-[9px] text-slate-400 font-bold leading-tight">{{ formatDate(q.end_date) }}</p>
+                                        </td>
+                                        <td class="px-5 py-4 align-top">
+                                            <div v-for="(m, mIdx) in parseList(q.target_measures)" :key="mIdx" class="flex items-start gap-2 mb-1">
+                                                <i class="pi pi-check-circle text-indigo-400 text-[9px] mt-0.5 shrink-0"></i>
+                                                <p class="text-[11px] font-bold text-slate-600 leading-snug">{{ m }}</p>
                                             </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                                            <p v-if="!parseList(q.target_measures).length" class="text-[10px] text-slate-300 italic">—</p>
+                                        </td>
+                                        <td class="px-5 py-4 align-top">
+                                            <div v-if="q.attachments && q.attachments.length" class="space-y-1">
+                                                <span v-for="(att, aIdx) in q.attachments" :key="aIdx" class="block px-2 py-1 bg-slate-50 border border-slate-100 rounded text-[9px] font-bold text-slate-500 truncate">
+                                                    <i class="pi pi-paperclip mr-1 text-[8px]"></i>{{ typeof att === 'string' ? att.split('/').pop() : att.name || ('File ' + (aIdx+1)) }}
+                                                </span>
+                                            </div>
+                                            <p v-else class="text-[10px] text-slate-300 italic">—</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
 
                             <div class="mt-auto pt-10 text-center">
                                 <p class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Page 02 // Official Performance Record // RecordId: {{ getDossierId(selectedGoal) }}</p>
@@ -1911,71 +2115,177 @@ const removeAttachment = (qIndex, fileIndex) => {
                         </div>
 
                         <!-- Page 3: Appraisal & Review -->
-                        <div v-if="selectedGoal.appraisal_data || selectedGoal.status === 'completed' || selectedGoal.status === 'in_progress'" 
-                            class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 min-h-[297mm] flex flex-col break-before-page">
-                            
+                        <div v-if="selectedGoal.appraisal_data || selectedGoal.status === 'completed' || selectedGoal.status === 'in_progress'"
+                            class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 w-[210mm] min-h-[297mm] flex flex-col break-before-page relative">
+                            <img :src="melcomLogo" class="watermark-logo" alt="" />
+
                             <div class="flex items-center gap-4 mb-10">
                                 <div class="w-10 h-1 bg-indigo-600"></div>
-                                <h2 class="text-xl font-black text-slate-900 uppercase tracking-tight">Appraisal Matrix & Final Review</h2>
+                                <h2 class="text-xl font-black text-slate-900 uppercase tracking-tight">Yearly Performance Assessment</h2>
                             </div>
 
-                            <div class="space-y-12">
-                                <!-- Competency Matrix -->
+                            <div class="space-y-10">
+                                <!-- Competency Matrix with Descriptions -->
                                 <div v-if="selectedGoal.appraisal_data && selectedGoal.appraisal_data.competencies">
                                     <table class="w-full text-left font-black text-xs border-collapse">
                                         <thead class="bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest">
                                             <tr>
-                                                <th class="px-6 py-4 rounded-tl-xl truncate">Assessment Unit</th>
+                                                <th class="px-6 py-4 rounded-tl-xl">Assessment Unit</th>
                                                 <th class="px-6 py-4 text-center">Weight</th>
                                                 <th class="px-6 py-4 text-center">Self</th>
                                                 <th class="px-6 py-4 text-center rounded-tr-xl">Mgr</th>
                                             </tr>
                                         </thead>
-                                        <tbody class="divide-y divide-slate-100 bg-white border-x border-b border-slate-100 rounded-b-xl overflow-hidden">
-                                            <tr v-for="(comp, cIdx) in selectedGoal.appraisal_data.competencies" :key="cIdx">
-                                                <td class="px-6 py-5 font-black text-slate-800 text-[11px]">{{ comp.title }}</td>
-                                                <td class="px-6 py-5 text-center font-bold text-slate-400">{{ comp.weight }}%</td>
-                                                <td class="px-6 py-5 text-center font-bold text-slate-400">{{ comp.selfRating || '0' }}</td>
-                                                <td class="px-6 py-5 text-center font-black text-indigo-600">{{ comp.managerRating || '0' }}</td>
-                                            </tr>
+                                        <tbody class="divide-y divide-slate-100 bg-white border-x border-b border-slate-100 overflow-hidden">
+                                            <template v-for="(comp, cIdx) in selectedGoal.appraisal_data.competencies" :key="cIdx">
+                                                <tr>
+                                                    <td class="px-6 pt-5 pb-1 font-black text-slate-800 text-[11px]">{{ comp.title }}</td>
+                                                    <td class="px-6 pt-5 pb-1 text-center font-bold text-slate-400">{{ comp.weight }}%</td>
+                                                    <td class="px-6 pt-5 pb-1 text-center font-bold text-slate-400">{{ comp.selfRating || '0' }}</td>
+                                                    <td class="px-6 pt-5 pb-1 text-center font-black text-indigo-600">{{ comp.managerRating || '0' }}</td>
+                                                </tr>
+                                                <tr v-if="comp.descriptions && comp.descriptions.length">
+                                                    <td colspan="4" class="px-6 pb-4 pt-0">
+                                                        <div v-for="(desc, dIdx) in comp.descriptions" :key="dIdx" class="text-[9px] text-slate-400 leading-relaxed pl-2 border-l-2 border-slate-100 mt-1">
+                                                            {{ desc }}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </template>
                                         </tbody>
-                                        <tfoot class="bg-indigo-50/50">
-                                            <tr>
-                                                <td class="px-6 py-4 font-black text-indigo-900 uppercase text-[10px]">Overall Achievement Score</td>
+                                        <tfoot>
+                                            <tr class="bg-slate-50 border-b border-slate-100">
+                                                <td class="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase">Self Assessment Average</td>
+                                                <td></td>
+                                                <td class="px-6 py-3 text-center text-sm font-bold text-slate-500">{{ getSelfRating(selectedGoal) || '0.0' }}/5</td>
+                                                <td></td>
+                                            </tr>
+                                            <tr class="bg-indigo-600">
+                                                <td class="px-6 py-5 text-base font-black text-white uppercase tracking-wide rounded-bl-xl">Overall Achievement Score</td>
                                                 <td colspan="2"></td>
-                                                <td class="px-6 py-4 text-center text-lg font-black text-indigo-600">{{ selectedGoal.appraisal_data.performanceRating || '0.00' }}/5</td>
+                                                <td class="px-6 py-5 text-center text-2xl font-black text-white rounded-br-xl">{{ getManagerRating(selectedGoal) || '0.0' }}/5</td>
                                             </tr>
                                         </tfoot>
                                     </table>
                                 </div>
 
-                                <!-- Approvals Row -->
-                                <div class="grid grid-cols-2 gap-12 pt-12 border-t border-slate-100">
-                                    <div class="space-y-6">
-                                        <div>
-                                            <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">HOD / Functional Head Approval</h4>
-                                            <div class="h-20 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
-                                                {{ selectedGoal.appraisal_data?.hod_signature_name || 'Signature pending' }}
-                                            </div>
-                                            <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.hod_signature_name || 'Designee' }}</p>
-                                            <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.hod_signature_date) || 'Date' }}</p>
+                                <!-- Performance Rating & Comments -->
+                                <div v-if="selectedGoal.appraisal_data?.performanceRating" class="space-y-6">
+                                    <div class="flex items-center gap-4 mb-4">
+                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
+                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">PERFORMANCE ASSESSMENT</span>
+                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-8">
+                                        <div class="p-5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+                                            <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Performance Rating</h4>
+                                            <p class="text-lg font-black text-indigo-600">{{ selectedGoal.appraisal_data.performanceRating }}/5</p>
+                                        </div>
+                                        <div class="p-5 bg-teal-50/50 border border-teal-100 rounded-xl">
+                                            <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Potential Rating</h4>
+                                            <p class="text-sm font-black text-teal-700">{{ selectedGoal.appraisal_data.potentialRating || 'Not assessed' }}</p>
                                         </div>
                                     </div>
-                                    <div class="space-y-6">
-                                        <div>
-                                            <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">Director / Management Approval</h4>
-                                            <div class="h-20 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
-                                                {{ selectedGoal.appraisal_data?.director_signature_name || 'Signature pending' }}
-                                            </div>
-                                            <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.director_signature_name || 'Director' }}</p>
-                                            <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.director_signature_date) || 'Date' }}</p>
+                                    <!-- Rating-specific comment -->
+                                    <div v-if="selectedGoal.appraisal_data.rating_comments && selectedGoal.appraisal_data.rating_comments[selectedGoal.appraisal_data.performanceRating]" class="p-5 bg-slate-50 border border-slate-100 rounded-xl">
+                                        <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Rating Comment</h4>
+                                        <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.rating_comments[selectedGoal.appraisal_data.performanceRating] }}</p>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <div class="mt-auto pt-10 text-center">
+                                <p class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Page 03 // Official Performance Record // RecordId: {{ getDossierId(selectedGoal) }}</p>
+                            </div>
+                        </div>
+
+                        <!-- Page 4: Manager Commentary & Signatures -->
+                        <div v-if="selectedGoal.appraisal_data"
+                            class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 w-[210mm] min-h-[297mm] flex flex-col break-before-page relative">
+                            <img :src="melcomLogo" class="watermark-logo" alt="" />
+
+                            <div class="flex items-center gap-4 mb-10">
+                                <div class="w-10 h-1 bg-indigo-600"></div>
+                                <h2 class="text-xl font-black text-slate-900 uppercase tracking-tight">Manager Commentary</h2>
+                            </div>
+
+                            <div class="space-y-10">
+                                <!-- Feedback: What impressed most/least, general comments -->
+                                <div v-if="selectedGoal.appraisal_data?.impressedMost || selectedGoal.appraisal_data?.impressedLeast || selectedGoal.appraisal_data?.comments" class="space-y-4">
+                                    <div class="grid grid-cols-1 gap-4">
+                                        <div v-if="selectedGoal.appraisal_data.impressedMost" class="p-5 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                                            <h4 class="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-2">What Impressed Most</h4>
+                                            <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.impressedMost }}</p>
                                         </div>
+                                        <div v-if="selectedGoal.appraisal_data.impressedLeast" class="p-5 bg-amber-50/50 border border-amber-100 rounded-xl">
+                                            <h4 class="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-2">What Impressed Least</h4>
+                                            <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.impressedLeast }}</p>
+                                        </div>
+                                        <div v-if="selectedGoal.appraisal_data.comments" class="p-5 bg-slate-50 border border-slate-100 rounded-xl">
+                                            <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">General Comments</h4>
+                                            <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.comments }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- HOD Comments & Director Remarks -->
+                                <div v-if="selectedGoal.appraisal_data?.hod_comments || selectedGoal.appraisal_data?.director_remarks" class="space-y-4">
+                                    <div v-if="selectedGoal.appraisal_data.hod_comments" class="p-5 bg-slate-50 border border-slate-100 rounded-xl">
+                                        <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">HOD Comments</h4>
+                                        <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.hod_comments }}</p>
+                                    </div>
+                                    <div v-if="selectedGoal.appraisal_data.director_remarks" class="p-5 bg-slate-50 border border-slate-100 rounded-xl">
+                                        <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Director Remarks</h4>
+                                        <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.director_remarks }}</p>
+                                    </div>
+                                </div>
+
+                                <!-- All Signatures -->
+                                <div class="grid grid-cols-2 gap-12 pt-8 border-t border-slate-100">
+                                    <!-- Employee Signature -->
+                                    <div>
+                                        <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">Employee Signature</h4>
+                                        <div class="h-16 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
+                                            {{ selectedGoal.appraisal_data?.candidate_signature_name || 'Signature pending' }}
+                                        </div>
+                                        <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.candidate_signature_name || selectedGoal.candidate_name }}</p>
+                                        <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.signature_date) || 'Date' }}</p>
+                                    </div>
+                                    <!-- Manager Signature -->
+                                    <div>
+                                        <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">Line Manager Signature</h4>
+                                        <div class="h-16 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
+                                            {{ selectedGoal.appraisal_data?.manager_signature_name || 'Signature pending' }}
+                                        </div>
+                                        <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.manager_signature_name || selectedGoal.manager_name || 'Manager' }}</p>
+                                        <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.signature_date) || 'Date' }}</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-12 pt-6">
+                                    <!-- HOD Signature -->
+                                    <div>
+                                        <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">HOD / Functional Head</h4>
+                                        <div class="h-16 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
+                                            {{ selectedGoal.appraisal_data?.hod_signature_name || 'Signature pending' }}
+                                        </div>
+                                        <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.hod_signature_name || 'Designee' }}</p>
+                                        <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.hod_signature_date) || 'Date' }}</p>
+                                    </div>
+                                    <!-- Director Signature -->
+                                    <div>
+                                        <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">Director / Management</h4>
+                                        <div class="h-16 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
+                                            {{ selectedGoal.appraisal_data?.director_signature_name || 'Signature pending' }}
+                                        </div>
+                                        <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.director_signature_name || 'Director' }}</p>
+                                        <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.director_signature_date) || 'Date' }}</p>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="mt-auto pt-10 text-center">
-                                <p class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Page 03 // Official Performance Record // RecordId: {{ getDossierId(selectedGoal) }}</p>
+                                <p class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Page 04 // Official Performance Record // RecordId: {{ getDossierId(selectedGoal) }}</p>
                             </div>
                         </div>
 
@@ -2063,6 +2373,22 @@ const removeAttachment = (qIndex, fileIndex) => {
 </template>
 
 <style scoped>
+.watermark-logo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 280px;
+    height: auto;
+    opacity: 0.04;
+    pointer-events: none;
+    z-index: 0;
+    user-select: none;
+}
+.doc-page > *:not(.watermark-logo) {
+    position: relative;
+    z-index: 1;
+}
 @keyframes pulse-subtle {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.7; }
@@ -2075,47 +2401,88 @@ const removeAttachment = (qIndex, fileIndex) => {
 }
 
 @media print {
-    /* Hide everything except the report */
-    :not(#protocol-report):not(#protocol-report *) {
-        visibility: hidden;
+    /* Hide sidebar, navigation, and non-report elements */
+    .no-print,
+    nav, header, footer, aside,
+    .p-dialog-mask::before {
+        display: none !important;
     }
-    
+
     body, html {
         background: white !important;
         margin: 0 !important;
         padding: 0 !important;
         height: auto !important;
+        overflow: visible !important;
+    }
+
+    /* Make all ancestors of the report visible and unstyled */
+    .p-dialog-mask,
+    .p-dialog,
+    .p-dialog-content {
+        position: static !important;
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+        display: block !important;
     }
 
     #protocol-report {
-        visibility: visible !important;
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
+        position: static !important;
         width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
         display: block !important;
+        overflow: visible !important;
+    }
+
+    /* Hide the scrollable wrapper's chrome, make it flow */
+    #protocol-report > * {
+        visibility: visible !important;
     }
 
     .doc-page {
         margin: 0 !important;
-        padding: 20mm !important;
-        width: 210mm !important;
-        height: 297mm !important;
-        min-height: 297mm !important;
+        padding: 10mm !important;
+        width: 100% !important;
+        min-height: auto !important;
+        max-height: none !important;
+        height: auto !important;
         page-break-after: always !important;
         break-after: page !important;
         box-shadow: none !important;
         border: none !important;
-        visibility: visible !important;
-        display: flex !important;
-        flex-direction: column !important;
+        display: block !important;
+        overflow: visible !important;
+        border-radius: 0 !important;
     }
 
-    /* Avoid breaking logic within rows */
-    tr, p, div {
+    .doc-page:last-child {
+        page-break-after: avoid !important;
+    }
+
+    /* Avoid breaking inside rows/blocks */
+    table { page-break-inside: auto !important; }
+    tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+    thead { display: table-header-group !important; }
+    .space-y-4 > *, .space-y-6 > *, .space-y-8 > *, .space-y-10 > * {
         page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .grid {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .mt-auto { margin-top: 10mm !important; }
+
+    @page {
+        size: A4 portrait;
+        margin: 8mm 5mm;
     }
 }
 </style>

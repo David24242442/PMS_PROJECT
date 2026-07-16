@@ -38,31 +38,8 @@ class PMSDashboardController extends Controller
             $counts[] = Goal::whereDate('created_at', $date->toDateString())->count();
         }
 
-        // Top Employees (Based on completed goals or submitted appraisals)
-        // For now, we'll just pull users who have the most goals or recently completed them.
-        // In a real scenario, this would be based on Appraisal Scores.
-        $topEmployees = User::select('users.id', 'users.name', 'users.department', DB::raw('COUNT(goals.id) as goals_count'))
-            ->join('goals', 'users.id', '=', 'goals.user_id')
-            ->groupBy('users.id', 'users.name', 'users.department')
-            ->orderBy('goals_count', 'desc')
-            ->take(5)
-            ->get()
-            ->map(function($user) {
-                $names = explode(' ', $user->name);
-                $initials = '';
-                foreach ($names as $name) {
-                    $initials .= substr($name, 0, 1);
-                }
-                
-                return [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'role' => $user->department ?? 'Employee',
-                    'score' => $user->goals_count * 10, // Mock score logic for now
-                    'avatar' => substr($initials, 0, 2),
-                    'color' => 'bg-indigo-100 text-indigo-600'
-                ];
-            });
+        // Top Employees — real ratings from appraisal_data
+        $topEmployees = $this->buildLeaderboard(5);
 
         return response()->json([
             'status' => 'success',
@@ -83,5 +60,114 @@ class PMSDashboardController extends Controller
                 'top_employees' => $topEmployees
             ]
         ]);
+    }
+
+    /**
+     * Leaderboard endpoint — returns all employees ranked by rating and goal completion.
+     */
+    public function leaderboard(Request $request)
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->buildLeaderboard()
+        ]);
+    }
+
+    /**
+     * Shared helper to build leaderboard from all goals.
+     * Groups by candidate_name (trimmed, lowercased) to avoid duplicates.
+     */
+    private function buildLeaderboard($limit = null)
+    {
+        $goals = Goal::with('user')->get();
+
+        $employeeMap = [];
+
+        foreach ($goals as $goal) {
+            // Use candidate_name if available, otherwise user name
+            $name = trim($goal->candidate_name ?: ($goal->user->name ?? 'Unknown'));
+            $key = strtolower($name); // deduplicate by normalized name
+
+            if (!isset($employeeMap[$key])) {
+                $employeeMap[$key] = [
+                    'user_id' => $goal->user_id,
+                    'name' => $name,
+                    'department' => $goal->department ?: ($goal->user->department ?? ''),
+                    'job_title' => $goal->job_title ?: ($goal->user->position_id ?? 'Staff'),
+                    'total_goals' => 0,
+                    'completed_goals' => 0,
+                    'total_rating' => 0,
+                    'rated_count' => 0,
+                    'goals' => [],
+                ];
+            }
+
+            $emp = &$employeeMap[$key];
+            $emp['total_goals']++;
+
+            if (in_array($goal->status, ['completed', 'approved', 'review_completed'])) {
+                $emp['completed_goals']++;
+            }
+
+            // Extract rating from appraisal_data competencies
+            $rating = 0;
+            $appraisalData = is_array($goal->appraisal_data) ? $goal->appraisal_data : json_decode($goal->appraisal_data ?? '{}', true);
+            $competencies = $appraisalData['competencies'] ?? [];
+            if (count($competencies) > 0) {
+                $ratedComps = array_filter($competencies, fn($c) => floatval($c['managerRating'] ?? 0) > 0);
+                if (count($ratedComps) > 0) {
+                    $sum = array_sum(array_map(fn($c) => floatval($c['managerRating']), $ratedComps));
+                    $rating = $sum / count($ratedComps);
+                }
+            }
+
+            if ($rating > 0) {
+                $emp['total_rating'] += $rating;
+                $emp['rated_count']++;
+            }
+
+            $emp['goals'][] = [
+                'id' => $goal->id,
+                'title' => $goal->title,
+                'status' => $goal->status,
+                'target' => $goal->target,
+                'actual' => $goal->actual,
+                'due_date' => $goal->due_date ? $goal->due_date->format('Y-m-d') : null,
+                'completion_date' => $goal->completion_date ? $goal->completion_date->format('Y-m-d') : null,
+                'rating' => $rating > 0 ? round($rating, 1) : null,
+                'category' => $goal->category,
+            ];
+        }
+
+        // Compute averages and sort by rating desc
+        $leaderboard = [];
+        foreach ($employeeMap as $emp) {
+            $avgRating = $emp['rated_count'] > 0 ? round($emp['total_rating'] / $emp['rated_count'], 1) : 0;
+            $completionPct = $emp['total_goals'] > 0 ? round(($emp['completed_goals'] / $emp['total_goals']) * 100, 1) : 0;
+
+            $leaderboard[] = [
+                'user_id' => $emp['user_id'],
+                'name' => $emp['name'],
+                'department' => $emp['department'],
+                'job_title' => $emp['job_title'],
+                'avg_rating' => $avgRating,
+                'completion_pct' => $completionPct,
+                'total_goals' => $emp['total_goals'],
+                'completed_goals' => $emp['completed_goals'],
+                'goals' => $emp['goals'],
+            ];
+        }
+
+        // Sort: highest rating first, then by completion %
+        usort($leaderboard, function ($a, $b) {
+            if ($b['avg_rating'] != $a['avg_rating']) return $b['avg_rating'] <=> $a['avg_rating'];
+            return $b['completion_pct'] <=> $a['completion_pct'];
+        });
+
+        if ($limit) {
+            $leaderboard = array_slice($leaderboard, 0, $limit);
+        }
+
+        return $leaderboard;
     }
 }

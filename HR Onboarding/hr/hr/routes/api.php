@@ -145,6 +145,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // PMS Routes
     Route::prefix('pms')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\PMSDashboardController::class, 'index']);
+        Route::get('/leaderboard', [\App\Http\Controllers\PMSDashboardController::class, 'leaderboard']);
         
         Route::get('/employee-master', [\App\Http\Controllers\EmployeeMasterController::class, 'index']);
         Route::patch('/employee-master/{id}', [\App\Http\Controllers\EmployeeMasterController::class, 'update']);

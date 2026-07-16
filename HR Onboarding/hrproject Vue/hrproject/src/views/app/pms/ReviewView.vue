@@ -187,7 +187,8 @@ const updateReview = async () => {
     try {
         const payload = {
             ...selectedGoal.value,
-            status: 'review_completed'
+            status: 'review_completed',
+            overall_rating: managerAverageScore.value
         };
         const response = await axios.patch('pms/goals/' + selectedGoal.value.id, payload);
         if (response.data.status === 'success') {
@@ -239,28 +240,31 @@ const nextStep = () => { if (currentStep.value < totalSteps) currentStep.value++
 const downloadFile = async (url, filename) => {
     if (!url) return;
     try {
-        const response = await axios({
-            url: url,
-            baseURL: '',
-            method: 'GET',
-            responseType: 'blob'
-        });
-        
-        const blob = new Blob([response.data], { type: response.headers['content-type'] || 'application/octet-stream' });
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.20:5050/pms_backend/api';
+
+        // Convert storage paths to the backend file-serving endpoint
+        let downloadUrl = url;
+        if (!url.startsWith('http')) {
+            // e.g. /storage/attachments/file.xlsx → /api/file/attachments/file.xlsx
+            const cleaned = url.replace(/^\/?storage\//, '');
+            const parts = cleaned.split('/');
+            const folder = parts.slice(0, -1).join('/') || 'attachments';
+            const file = parts[parts.length - 1];
+            downloadUrl = `${baseUrl}/file/${folder}/${encodeURIComponent(file)}`;
+        }
+
+        const response = await axios.get(downloadUrl, { responseType: 'blob' });
+        const blob = new Blob([response.data]);
+        const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = window.URL.createObjectURL(blob);
-        link.download = filename || 'download';
+        link.href = blobUrl;
+        link.download = filename || url.split('/').pop() || 'download';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        window.URL.revokeObjectURL(link.href);
+        window.URL.revokeObjectURL(blobUrl);
     } catch (error) {
         console.error('Download failed:', error);
-        if (typeof showAlert === 'function') {
-            showAlert('Error', 'Failed to download file.', 'error');
-        } else {
-            alert('Failed to download file.');
-        }
     }
 };
 

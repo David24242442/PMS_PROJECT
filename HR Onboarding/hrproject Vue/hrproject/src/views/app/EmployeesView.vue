@@ -1,5 +1,5 @@
 <script setup>
-    import { ref, reactive, computed, onMounted } from 'vue'
+    import { ref, reactive, computed, onMounted, watch } from 'vue'
     import { log, calculateAge, toastt} from '@/helpers/essential'
     import { mstatus,  bankaccounttype, relations, depts, regions, branchs, qualtypes, banks, familyrelation, countries, conttypes, idtypes, findidtypes, findcompany, genders, companies, findregion, findconttypes, findgender, findmarital, findbranch, finddept, findcountry, statuses, findstatus} from '@/data/masterdata'
     
@@ -15,6 +15,142 @@
     let loaded = ref(false)
     let loading = ref(true)
 
+    // ── Dynamic Column Picker ──
+    const showColumnPicker = ref(false)
+
+    // All columns: default (always-on) + optional (onboarding fields)
+    const allColumns = [
+        // Default columns (checked & locked)
+        { key: 'employeeid', label: 'Employee ID', group: 'Default', default: true },
+        { key: 'firstname', label: 'First Name', group: 'Default', default: true },
+        { key: 'surname', label: 'Surname', group: 'Default', default: true },
+        { key: 'email', label: 'Email', group: 'Default', default: true },
+        { key: 'mobileno', label: 'Mobile No', group: 'Default', default: true },
+        { key: 'status', label: 'Status', group: 'Default', default: true, formatter: (v) => findstatus(v) },
+        { key: '_creator', label: 'Created By', group: 'Default', default: true },
+        // Position Details
+        { key: 'company', label: 'Joining Company', group: 'Position Details', formatter: (v) => findcompany(v) },
+        { key: 'contracttype', label: 'Contract Category', group: 'Position Details', formatter: (v) => findconttypes(v) },
+        { key: 'joining_branch_id', label: 'Joining Location', group: 'Position Details', formatter: (v) => findbranch(v) },
+        { key: 'joining_dept_id', label: 'Joining Department', group: 'Position Details', formatter: (v) => finddept(v) },
+        { key: 'joiningposition', label: 'Joining Position', group: 'Position Details' },
+        { key: 'joiningdate', label: 'Date of Joining', group: 'Position Details' },
+        // Personal Info
+        { key: 'middlename', label: 'Middle Name', group: 'Personal Info' },
+        { key: 'citizenship', label: 'Citizenship', group: 'Personal Info', formatter: (v) => findcountry(v) },
+        { key: 'ghcardno', label: 'GH Card / ID No', group: 'Personal Info' },
+        { key: 'daddress', label: 'Residential Address', group: 'Personal Info' },
+        { key: 'hdaddress', label: 'Permanent Address', group: 'Personal Info' },
+        { key: 'hometown', label: 'Hometown', group: 'Personal Info' },
+        { key: 'altnumber', label: 'Alternate Phone', group: 'Personal Info' },
+        { key: 'gender', label: 'Gender', group: 'Personal Info', formatter: (v) => findgender(v) },
+        { key: 'dob', label: 'Date of Birth', group: 'Personal Info' },
+        { key: 'socialsecurityno', label: 'Social Security No', group: 'Personal Info' },
+        { key: 'maritalstatus', label: 'Marital Status', group: 'Personal Info', formatter: (v) => findmarital(v) },
+        { key: 'fathersname', label: "Father's Name", group: 'Personal Info' },
+        { key: 'mothersname', label: "Mother's Name", group: 'Personal Info' },
+        { key: 'anyotherinfo', label: 'Other Information', group: 'Personal Info' },
+    ]
+
+    // Which optional column keys are currently visible
+    const extraColumns = ref([])
+
+    // Temp selection state while picker is open
+    const pendingSelection = ref([])
+
+    const openColumnPicker = () => {
+        pendingSelection.value = [...extraColumns.value]
+        showColumnPicker.value = true
+    }
+
+    const togglePendingCol = (key) => {
+        if (pendingSelection.value.includes(key)) {
+            pendingSelection.value = pendingSelection.value.filter(k => k !== key)
+        } else {
+            pendingSelection.value.push(key)
+        }
+    }
+
+    const applyColumns = () => {
+        extraColumns.value = [...pendingSelection.value]
+        showColumnPicker.value = false
+    }
+
+    const optionalColumns = allColumns.filter(c => !c.default)
+
+    const groupedOptionalColumns = computed(() => {
+        const groups = {}
+        optionalColumns.forEach(col => {
+            if (!groups[col.group]) groups[col.group] = []
+            groups[col.group].push(col)
+        })
+        return groups
+    })
+
+    const getColumnDef = (key) => allColumns.find(c => c.key === key)
+
+    const getExtraValue = (emp, key) => {
+        const col = getColumnDef(key)
+        const val = emp[key]
+        if (val == null || val === '') return '—'
+        return col?.formatter ? col.formatter(val) : val
+    }
+
+    // Column filters (server-side with debounce)
+    const columnFilters = reactive({
+        employeeid: '',
+        firstname: '',
+        surname: '',
+        email: '',
+        mobileno: '',
+        status: '',
+        creator: ''
+    })
+
+    const hasColumnFilters = computed(() => {
+        return Object.values(columnFilters).some(v => v !== '')
+    })
+
+    const clearColumnFilters = () => {
+        Object.keys(columnFilters).forEach(k => columnFilters[k] = '')
+    }
+
+    // Debounce timer for column filters
+    let columnFilterTimer = null
+    watch(() => ({ ...columnFilters }), () => {
+        clearTimeout(columnFilterTimer)
+        columnFilterTimer = setTimeout(() => {
+            // Build server-side filters from column filters
+            const serverFilters = []
+            const filterMap = {
+                employeeid: 'employeeid',
+                firstname: 'firstname',
+                surname: 'surname',
+                email: 'email',
+                mobileno: 'mobileno',
+                status: 'status',
+                creator: 'creator'
+            }
+            for (const [key, attr] of Object.entries(filterMap)) {
+                if (columnFilters[key] !== '' && columnFilters[key] !== null) {
+                    serverFilters.push({
+                        cond: 'a',
+                        attr: attr,
+                        op: key === 'status' ? 'is' : 'cont',
+                        val: columnFilters[key]
+                    })
+                }
+            }
+            // Merge column filters into searchdata.filters (preserve any existing advanced filters)
+            searchdata.columnFilters = serverFilters
+            current_page.value = 1
+            fetchData()
+        }, 400)
+    }, { deep: true })
+
+    // filteredEmps now just returns emps directly (filtering is server-side)
+    const filteredEmps = computed(() => emps.value)
+
     let current_page = ref(1)
     let last_page = ref(null)
     let isnext = ref(false)
@@ -23,9 +159,7 @@
     let totalcount = ref(0)
 
     onMounted(() => {
-        
         fetchData()
-
     })
     const viewemp = (id) => {
         // toastt(`${id}`)
@@ -72,8 +206,16 @@
 
     const fetchData = () => {
         loading.value = true
-        
-        axios.post(`fetchemployees?page=${current_page.value}&per_page=${per_page.value}`,searchdata)
+
+        // Merge advanced filters and column filters
+        const payload = { ...searchdata }
+        const allFilters = [
+            ...(searchdata.filters || []),
+            ...(searchdata.columnFilters || [])
+        ]
+        payload.filters = allFilters
+
+        axios.post(`fetchemployees?page=${current_page.value}&per_page=${per_page.value}`, payload)
             .then(res => {
                 const data = res.data
                 emps.value = data.data
@@ -525,6 +667,9 @@
 
                 <div class="my-4">
                     <strong >Total count:</strong> {{ totalcount }}
+                    <span v-if="hasColumnFilters" style="margin-left: 10px; color: var(--primary); font-size: 0.875rem;">
+                        (Showing {{ filteredEmps.length }} of {{ emps.length }} on page)
+                    </span>
 
                     <Button
                         severity="info"
@@ -551,7 +696,7 @@
                     
                 </div>
 
-                <div id='tableheader'>
+                <div id='tableheader' >
                     <span>Employee ID</span>
                     <span>First Name</span>
                     <span>Surname</span>
@@ -559,27 +704,100 @@
                     <span>Mobile No</span>
                     <span>Status</span>
                     <span>Created By</span>
-                    <span>Actions</span>
+                    <span v-for="key in extraColumns" :key="'h-'+key" class="extra-col-header">
+                        {{ getColumnDef(key)?.label }}
+                        <button class="remove-col-btn" @click="removeColumn(key)" title="Remove column">&times;</button>
+                    </span>
+                    <span class="actions-col-header">
+                        Actions
+                        <div class="add-col-wrapper">
+                            <button class="add-col-btn" @click.stop="openColumnPicker()" title="Add/Remove columns">
+                                <i class="pi pi-plus"></i>
+                            </button>
+                            <div v-if="showColumnPicker" class="col-picker-backdrop" @click="showColumnPicker = false"></div>
+                            <div v-if="showColumnPicker" class="col-picker-dropdown" @click.stop>
+                                <div class="col-picker-header">
+                                    <span>Select Columns</span>
+                                    <button @click="showColumnPicker = false" class="col-picker-close">&times;</button>
+                                </div>
+                                <div class="col-picker-body">
+                                    <!-- Default columns (always checked, disabled) -->
+                                    <div class="col-picker-group">Default Columns</div>
+                                    <label v-for="col in allColumns.filter(c => c.default)" :key="col.key" class="col-picker-checkbox">
+                                        <input type="checkbox" checked disabled />
+                                        <span>{{ col.label }}</span>
+                                    </label>
+                                    <!-- Optional columns grouped -->
+                                    <template v-for="(cols, group) in groupedOptionalColumns" :key="group">
+                                        <div class="col-picker-group">{{ group }}</div>
+                                        <label v-for="col in cols" :key="col.key" class="col-picker-checkbox" @click.prevent="togglePendingCol(col.key)">
+                                            <input type="checkbox" :checked="pendingSelection.includes(col.key)" />
+                                            <span>{{ col.label }}</span>
+                                        </label>
+                                    </template>
+                                </div>
+                                <div class="col-picker-footer">
+                                    <button class="col-picker-apply" @click="applyColumns()">Apply</button>
+                                </div>
+                            </div>
+                        </div>
+                    </span>
                     <span v-if="loguser.position_id == 2"></span>
                 </div>
-                <div id='tablebody' > 
-                    
+
+                <!-- Column Filter Row -->
+                <div id='tablefilterrow' >
+                    <span>
+                        <input type="text" v-model="columnFilters.employeeid" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.firstname" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.surname" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.email" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.mobileno" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <select v-model="columnFilters.status" class="col-filter-input">
+                            <option value="">All</option>
+                            <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
+                        </select>
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.creator" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span v-for="key in extraColumns" :key="'f-'+key"></span>
+                    <span>
+                        <button v-if="hasColumnFilters" @click="clearColumnFilters" class="col-filter-clear" title="Clear all filters">
+                            <i class="pi pi-filter-slash"></i>
+                        </button>
+                    </span>
+                    <span v-if="loguser.position_id == 2"></span>
+                </div>
+
+                <div id='tablebody' >
+
                     <div
-                        v-for="(emp, ind) in emps"
+                        v-for="(emp, ind) in filteredEmps"
                         :key="ind"
                     >
-                        <span>{{ emp.employeeid }}</span>
+                        <span>{{ emp.employeeid || emp.emp_code }}</span>
                         <span>{{ emp.firstname }}</span>
                         <span>{{ emp.surname }}</span>
                         <span>{{ emp.email }}</span>
                         <span>{{ emp.mobileno }}</span>
                         <span>{{ findstatus(emp.status)  }}</span>
-                        <span>{{ emp.creator?.name || '—' }}</span> 
-                        <span> 
-                            <router-link target="_blank" :to="`/employee/${emp.id}`">
+                        <span>{{ emp.creator?.name || '—' }}</span>
+                        <span v-for="key in extraColumns" :key="'b-'+key+'-'+ind">{{ getExtraValue(emp, key) }}</span>
+                        <span class="view-col">
+                            <router-link target="_blank" :to="`/employee/${emp.id}`" class="view-btn">
                                 View
                             </router-link>
-                            <!-- <button @click="viewemp(emp.id)">View</button>  -->
                         </span>
                         <span v-if="loguser.position_id == 2">
                             <select
@@ -599,8 +817,8 @@
                         
                     </div>
 
-                    <div v-if="!emps.length && loaded" style="justify-content: center;">
-                        No result for your search
+                    <div v-if="!filteredEmps.length && loaded" style="justify-content: center;">
+                        {{ hasColumnFilters ? 'No matches for column filters' : 'No result for your search' }}
                     </div>
                 </div>
             </div>
@@ -719,16 +937,17 @@
 
     #tableheader{
         display: flex;
-        justify-content: space-between; 
-        font-weight: 600; 
+        font-weight: 600;
         padding: 12px 16px;
         background-color: var(--surface-card);
         color: var(--text-secondary);
         border-bottom: 2px solid var(--border-color);
         border-radius: 8px 8px 0 0;
+        align-items: center;
     }
     #tableheader > span{
-        width: 17%;
+        flex: 1 1 0;
+        min-width: 0;
         display: inline-block;
         text-align: left;
         overflow: hidden;
@@ -736,7 +955,59 @@
         font-size: 0.875rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
+    }
+    #tableheader > span.actions-col-header {
+        overflow: visible;
+    }
 
+    /* Column Filter Row */
+    #tablefilterrow {
+        display: flex;
+        padding: 8px 16px;
+        background-color: var(--surface-ground, #f8fafc);
+        border-bottom: 1px solid var(--border-color);
+        align-items: center;
+    }
+    #tablefilterrow > span {
+        flex: 1 1 0;
+        min-width: 0;
+        display: inline-flex;
+        align-items: center;
+        padding-right: 8px;
+    }
+    .col-filter-input {
+        width: 100% !important;
+        padding: 5px 8px !important;
+        font-size: 0.8rem !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 4px !important;
+        background-color: var(--surface-card) !important;
+        color: var(--text-color) !important;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+    .col-filter-input:focus {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+    }
+    .col-filter-input::placeholder {
+        color: var(--text-secondary, #9ca3af);
+        font-size: 0.75rem;
+    }
+    .col-filter-clear {
+        background: none;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        cursor: pointer;
+        color: var(--text-secondary);
+        padding: 4px 8px;
+        font-size: 0.8rem;
+        transition: all 0.2s;
+    }
+    .col-filter-clear:hover {
+        color: #ef4444;
+        border-color: #ef4444;
+        background-color: rgba(239, 68, 68, 0.05);
     }
 
     #tablebody{
@@ -748,8 +1019,7 @@
     }
     #tablebody > div{
         display: flex;
-        justify-content: space-between; 
-        border-bottom:1px solid var(--border-color); 
+        border-bottom:1px solid var(--border-color);
         padding: 12px 16px;
         transition: background-color .1s;
         align-items: center;
@@ -758,20 +1028,244 @@
         border-bottom: none;
     }
     #tablebody > div:hover{
-        background-color: var(--surface-ground); 
+        background-color: var(--surface-ground);
     }
     #tablebody > div > span{
-        width: 17%;
+        flex: 1 1 0;
+        min-width: 0;
         display: inline-block;
         text-align: left;
         overflow: hidden;
         text-overflow: ellipsis;
         font-size: 0.95rem;
         color: var(--text-color);
-
     }
     #tablebody button{
         /* padding:5px 10px; handled by component */
         cursor: pointer;
+    }
+
+    /* View button */
+    .view-col {
+        display: flex !important;
+        justify-content: flex-end;
+        padding-right: 8px;
+    }
+    .view-btn {
+        display: inline-block;
+        padding: 5px 18px;
+        background: #ecfdf5;
+        color: #059669;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.15s ease;
+        border: 1px solid #a7f3d0;
+    }
+    .view-btn:hover {
+        background: #d1fae5;
+        color: #047857;
+        box-shadow: 0 1px 4px rgba(5, 150, 105, 0.15);
+    }
+
+    /* ── Dynamic Column Picker ── */
+    .actions-col-header {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 8px;
+        position: relative;
+        flex: 0 0 auto !important;
+        width: auto !important;
+        white-space: nowrap;
+    }
+    .add-col-wrapper {
+        position: relative;
+    }
+    .add-col-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        border: 2px dashed var(--primary, #4f46e5);
+        background: rgba(79, 70, 229, 0.06);
+        color: var(--primary, #4f46e5);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        font-size: 0.8rem;
+    }
+    .add-col-btn:hover {
+        background: var(--primary, #4f46e5);
+        color: white;
+        border-style: solid;
+        transform: scale(1.05);
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+    }
+    .col-picker-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 99;
+    }
+    .col-picker-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 8px;
+        width: 260px;
+        background: var(--surface-card, #fff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 12px;
+        box-shadow: 0 12px 36px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+        z-index: 100;
+        overflow: hidden;
+        animation: dropdownFade 0.15s ease-out;
+    }
+    @keyframes dropdownFade {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .col-picker-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-color, #e2e8f0);
+        font-weight: 700;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-color, #1e293b);
+    }
+    .col-picker-close {
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        color: var(--text-secondary, #94a3b8);
+        padding: 0 4px;
+        line-height: 1;
+    }
+    .col-picker-close:hover {
+        color: var(--text-color, #1e293b);
+    }
+    .col-picker-body {
+        max-height: 380px;
+        overflow-y: auto;
+        padding: 8px;
+    }
+    .col-picker-group {
+        padding: 8px 10px 4px;
+        font-size: 0.65rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--primary, #4f46e5);
+        margin-top: 4px;
+    }
+    .col-picker-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: var(--text-color, #334155);
+        transition: background 0.15s ease;
+        user-select: none;
+    }
+    .col-picker-checkbox:hover {
+        background: rgba(79, 70, 229, 0.08);
+    }
+    .col-picker-checkbox input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 17px;
+        min-width: 17px;
+        height: 17px;
+        border: 2px solid #cbd5e1;
+        border-radius: 4px;
+        cursor: pointer;
+        flex-shrink: 0;
+        position: relative;
+        background: #fff;
+        transition: all 0.15s ease;
+        margin-right: 4px;
+    }
+    .col-picker-checkbox input[type="checkbox"]:checked {
+        background: var(--primary, #4f46e5);
+        border-color: var(--primary, #4f46e5);
+    }
+    .col-picker-checkbox input[type="checkbox"]:checked::after {
+        content: '';
+        position: absolute;
+        left: 4px;
+        top: 1px;
+        width: 5px;
+        height: 9px;
+        border: solid #fff;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+    }
+    .col-picker-checkbox input[type="checkbox"]:disabled {
+        cursor: default;
+        opacity: 0.7;
+    }
+    .col-picker-footer {
+        padding: 10px 14px;
+        border-top: 1px solid var(--border-color, #e2e8f0);
+        display: flex;
+        justify-content: flex-end;
+    }
+    .col-picker-apply {
+        padding: 8px 28px;
+        background: var(--primary, #4f46e5);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .col-picker-apply:hover {
+        background: #4338ca;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35);
+    }
+
+    /* Extra column header with remove button */
+    .extra-col-header {
+        position: relative;
+        padding-right: 20px !important;
+        font-size: 0.75rem !important;
+    }
+    .remove-col-btn {
+        position: absolute;
+        top: 0;
+        right: 2px;
+        background: none;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1;
+        opacity: 0.5;
+        transition: opacity 0.15s;
+        padding: 0 2px;
+    }
+    .remove-col-btn:hover {
+        opacity: 1;
+    }
+
+    /* Horizontal scroll when too many columns */
+    #divtoscroll > div {
+        overflow-x: auto;
     }
 </style>

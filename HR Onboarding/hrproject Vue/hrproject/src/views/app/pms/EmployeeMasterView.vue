@@ -87,9 +87,9 @@ const filteredUsers = computed(() => {
     // Stage 2: Apply Search query
     if (searchQuery.value) {
         const lowerQ = searchQuery.value.toLowerCase();
-        result = result.filter(u => 
-            u.name.toLowerCase().includes(lowerQ) || 
-            u.email.toLowerCase().includes(lowerQ) ||
+        result = result.filter(u =>
+            (u.name && u.name.toLowerCase().includes(lowerQ)) ||
+            (u.email && u.email.toLowerCase().includes(lowerQ)) ||
             (u.department && u.department.toLowerCase().includes(lowerQ)) ||
             (u.employee_code && u.employee_code.toLowerCase().includes(lowerQ)) ||
             (u.position && u.position.toLowerCase().includes(lowerQ)) ||

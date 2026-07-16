@@ -38,4 +38,14 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'admin' => 'boolean'
     ];
+
+    public function goals()
+    {
+        return $this->hasMany(\App\Models\Goal::class, 'user_id');
+    }
+
+    public function appraisals()
+    {
+        return $this->hasMany(\App\Models\Appraisal::class, 'user_id');
+    }
 }

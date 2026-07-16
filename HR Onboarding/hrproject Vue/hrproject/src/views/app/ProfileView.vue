@@ -1,12 +1,13 @@
 <script setup>
-    import { ref, onMounted, reactive  } from 'vue'
+    import { ref, onMounted, reactive, computed  } from 'vue'
     import { log, toastt} from '@/helpers/essential'
+    import { findposition } from '@/data/masterdata'
     import axios from '@/helpers/pms_axios';
     import { useUsersStore } from '@/stores/user';
     const userstore = useUsersStore()
     const { loguser } = userstore
 
-    
+
     let loaded = ref(false)
     let saving = ref(false)
     let user = reactive({})
@@ -19,15 +20,16 @@
     let npassword = ref('')
     let cpassword = ref('')
 
+    const userInitial = computed(() => user.name?.charAt(0)?.toUpperCase() || 'U')
+    const userRole = computed(() => findposition(user.position_id) || 'STANDARD')
+
     onMounted(() => {
         Object.assign(user, loguser)
-
     })
 
     const colorinvalid = (elem) =>{
         if(['select-one', 'text','email','date','tel', 'number', 'file', 'password'].includes(elem.type)){
             elem.style = 'border:2px solid red'
-            // if(elem.nextElementSibling) elem.nextElementSibling.innerText = elem.validationMessage
             elem.addEventListener('input', function(e){
                 elem.style = 'revert'
                 if(elem.nextElementSibling) elem.nextElementSibling.innerText = ''
@@ -37,7 +39,7 @@
 
     const validate = (elem) => {
         const reqinput = document.querySelectorAll("#passwordform :invalid");
-            
+
         reqinput.forEach((elem)=>{
             colorinvalid(elem)
         })
@@ -49,9 +51,7 @@
         }
     }
 
-
     const save = () => {
-
         if(validate() === false) return
 
         saving.value = true
@@ -69,11 +69,11 @@
         }
 
         axios.post('updatepassword', userinfo, {
-            
+
             }).then(res => {
-                
+
                 const data = res.data
-                
+
                 if(data.error){
                     toastt(data.error, 'error')
                     saving.value = false
@@ -81,179 +81,553 @@
                 }
 
                 saving.value = false
+                opassword.value = ''
+                npassword.value = ''
+                cpassword.value = ''
                 toastt('Your password has been updated', 'success')
-                
+
             }).catch((error) => {
                 toastt('Error. Please Try again', 'error')
                 saving.value = false
                 log(error)
             })
-
-    
     }
-
-
 </script>
 <template>
-    <div class="h-full pb-20 overflow-y-auto">
-        <!-- Profile Hero Banner -->
-        <div class="mx-8 mt-10 mb-10 animate-slide-up">
-            <div class="prof-card !rounded-[40px] !bg-[#312E81] text-white p-8 px-12 relative overflow-hidden shadow-2xl shadow-indigo-200/50 group">
-                <!-- Background Accents -->
-                <div class="absolute -top-24 -right-24 w-[500px] h-[500px] bg-white/5 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-1000"></div>
-                <div class="absolute -bottom-24 -left-24 w-[400px] h-[400px] bg-indigo-500/10 rounded-full blur-3xl"></div>
-                
-                <div class="relative z-10 flex flex-col md:flex-row items-center gap-10 text-center md:text-left">
-                    <!-- Avatar Area -->
-                    <div class="relative group/avatar">
-                        <div class="w-32 h-32 rounded-[28px] bg-white/10 backdrop-blur-xl border-4 border-white/20 p-1.5 shadow-2xl transition-all duration-700 group-hover/avatar:rotate-6 group-hover/avatar:scale-105">
-                            <div class="w-full h-full rounded-[20px] bg-[#EEF2FF] flex items-center justify-center text-[#5830E0] shadow-inner overflow-hidden">
-                                <span class="text-4xl font-black">{{ user.name?.charAt(0) || 'U' }}</span>
-                            </div>
-                        </div>
-                        <div class="absolute -bottom-1 -right-1 w-10 h-10 rounded-xl bg-emerald-400 text-indigo-900 flex items-center justify-center shadow-lg border-4 border-[#312E81] animate-bounce">
-                             <i class="pi pi-check-circle text-lg"></i>
-                        </div>
-                    </div>
+    <div class="profile-page">
 
-                    <!-- User Identity -->
-                    <div class="flex-1">
-                        <div class="flex flex-wrap items-center gap-3 mb-3 justify-center md:justify-start">
-                            <span class="px-3 py-1 rounded-full bg-indigo-500 text-white text-[9px] font-black uppercase tracking-normal shadow-lg shadow-indigo-900/40 border border-white/10">Authorized Representative</span>
-                            <div class="h-px w-16 bg-white/10"></div>
-                        </div>
-                        <h1 class="text-3xl font-black text-white tracking-normal uppercase leading-none break-words mb-3">{{ user.name || 'AUTHENTICATED USER' }}</h1>
-                        <p class="text-indigo-200 text-xs font-bold tracking-normal uppercase opacity-80 flex items-center gap-2 justify-center md:justify-start">
-                            <i class="pi pi-map-marker text-[#F97316]"></i>
-                            MELCOM • {{ user.department || 'GENERAL' }}
-                        </p>
-                    </div>
-
-                    <!-- Stats / Details -->
-                    <div class="flex gap-4">
-                        <div class="px-6 py-3 rounded-[24px] bg-white/5 border border-white/10 backdrop-blur-md text-center">
-                            <p class="text-[9px] text-indigo-300 font-black uppercase tracking-normal mb-1">Status</p>
-                            <p class="text-white font-black text-base">ACTIVE</p>
-                        </div>
-                    </div>
+        <!-- Profile Header -->
+        <div class="profile-header">
+            <div class="profile-header-bg"></div>
+            <div class="profile-header-content">
+                <div class="profile-avatar">
+                    <span>{{ userInitial }}</span>
+                </div>
+                <div class="profile-identity">
+                    <h1 class="profile-name">{{ user.name || 'User' }}</h1>
+                    <p class="profile-meta">
+                        <span class="profile-badge">{{ userRole }}</span>
+                        <span class="profile-separator">|</span>
+                        <span>{{ user.department || 'General' }}</span>
+                        <span v-if="user.location" class="profile-separator">|</span>
+                        <span v-if="user.location">{{ user.location }}</span>
+                    </p>
+                </div>
+                <div class="profile-status">
+                    <div class="status-dot"></div>
+                    Active
                 </div>
             </div>
         </div>
 
-        <div class="mx-8 grid grid-cols-1 lg:grid-cols-3 gap-10">
-            <!-- Information Panel (Left Column) -->
-            <div class="lg:col-span-2 space-y-10">
-                <!-- Account Overview Card -->
-                <div class="prof-card !rounded-[32px] !bg-white border-none shadow-xl shadow-indigo-100/20 overflow-hidden animate-slide-up" style="animation-delay: 0.1s">
-                    <div class="px-12 py-8 border-b border-gray-50 flex items-center justify-between bg-[#F8FAFC]/50">
-                        <div class="flex items-center gap-5">
-                            <div class="w-12 h-12 rounded-2xl bg-[#5830E0] text-white flex items-center justify-center shadow-lg shadow-indigo-100">
-                                <i class="pi pi-user text-xl"></i>
-                            </div>
-                            <h3 class="font-black text-gray-800 text-2xl tracking-normal uppercase">Personnel Profile</h3>
+        <!-- Content Grid -->
+        <div class="profile-grid">
+
+            <!-- Left: Info Cards -->
+            <div class="profile-main">
+
+                <!-- Account Information -->
+                <div class="info-card">
+                    <div class="info-card-header">
+                        <div class="info-card-icon">
+                            <i class="pi pi-user"></i>
                         </div>
-                        <span class="text-[10px] font-black text-gray-400 uppercase tracking-normal">MELCOM AUTHENTICATED USER</span>
+                        <h3>Account Information</h3>
                     </div>
-                    
-                    <div class="p-12">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
-                            <div class="space-y-4">
-                                <label class="text-[11px] font-black text-indigo-600 uppercase tracking-[0.2em] ml-1">Official Name</label>
-                                <div class="prof-input w-full !bg-[#F8FAFC] !border-none !rounded-2xl !py-5 !font-black !px-8 text-slate-900 shadow-inner border border-slate-100/50">
-                                    {{ user.name || 'N/A' }}
-                                </div>
+                    <div class="info-card-body">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <label>Full Name</label>
+                                <p>{{ user.name || 'N/A' }}</p>
                             </div>
-                            <div class="space-y-4">
-                                <label class="text-[11px] font-black text-indigo-600 uppercase tracking-[0.2em] ml-1">User Identification</label>
-                                <div class="prof-input w-full !bg-[#F8FAFC] !border-none !rounded-2xl !py-5 !font-black !px-8 text-slate-900 shadow-inner border border-slate-100/50 uppercase">
-                                    {{ user.username || 'EMP001' }}
-                                </div>
+                            <div class="info-item">
+                                <label>Username</label>
+                                <p>{{ user.username || 'N/A' }}</p>
                             </div>
-                            <div class="space-y-4">
-                                <label class="text-[11px] font-black text-indigo-600 uppercase tracking-[0.2em] ml-1">Connected Email</label>
-                                <div class="prof-input w-full !bg-[#F8FAFC] !border-none !rounded-2xl !py-5 !font-black !px-8 text-slate-900 shadow-inner border border-slate-100/50 break-all">
-                                    {{ user.email || 'N/A' }}
-                                </div>
+                            <div class="info-item">
+                                <label>Email Address</label>
+                                <p class="break-all">{{ user.email || 'N/A' }}</p>
                             </div>
-                            <div class="space-y-4">
-                                <label class="text-[11px] font-black text-indigo-600 uppercase tracking-[0.2em] ml-1">Security Access Level</label>
-                                <div class="prof-input w-full !bg-indigo-50 !border-none !rounded-2xl !py-5 !font-black !px-8 text-[#1E1B4B] shadow-inner flex items-center gap-3">
-                                    <i class="pi pi-shield text-indigo-600"></i>
-                                    {{ user.role?.toUpperCase() || 'STANDARD AUTH' }}
-                                </div>
+                            <div class="info-item">
+                                <label>Access Level</label>
+                                <p class="access-level">
+                                    <i class="pi pi-shield"></i>
+                                    {{ userRole }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Work Details -->
+                <div class="info-card">
+                    <div class="info-card-header">
+                        <div class="info-card-icon work-icon">
+                            <i class="pi pi-briefcase"></i>
+                        </div>
+                        <h3>Work Details</h3>
+                    </div>
+                    <div class="info-card-body">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <label>Employee Code</label>
+                                <p>{{ user.employee_code || 'N/A' }}</p>
+                            </div>
+                            <div class="info-item">
+                                <label>Department</label>
+                                <p>{{ user.department || 'N/A' }}</p>
+                            </div>
+                            <div class="info-item">
+                                <label>Position</label>
+                                <p>{{ userRole }}</p>
+                            </div>
+                            <div class="info-item">
+                                <label>Location</label>
+                                <p>{{ user.location || 'N/A' }}</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Security Panel (Right Column) -->
-            <div class="lg:col-span-1 space-y-10 animate-slide-up" style="animation-delay: 0.3s">
-                <div class="prof-card !rounded-[32px] !bg-[#1E1B4B] text-white border-none shadow-2xl shadow-indigo-900/20 overflow-hidden group" id="passwordform">
-                    <div class="px-10 py-8 border-b border-white/5 bg-white/5 flex items-center gap-5">
-                        <div class="w-10 h-10 rounded-xl bg-[#F97316] text-white flex items-center justify-center shadow-lg shadow-orange-900/40 group-hover:rotate-12 transition-transform">
-                            <i class="pi pi-lock text-sm"></i>
+            <!-- Right: Security Panel -->
+            <div class="profile-sidebar">
+                <div class="security-card" id="passwordform">
+                    <div class="security-card-header">
+                        <div class="security-icon">
+                            <i class="pi pi-lock"></i>
                         </div>
-                        <h3 class="font-black text-white text-xl tracking-normal uppercase">Security Protocol</h3>
+                        <h3>Change Password</h3>
                     </div>
 
-                    <div class="p-10 space-y-8">
-                        <div>
-                            <label class="block text-[10px]  text-indigo-200 uppercase tracking-widest mb-4 ml-1">Current Password</label>
-                            <div class="relative">
-                                <input :type="showingopass ? 'text' : 'password'"  v-model="opassword" required
-                                    placeholder="Enter current password"
-                                    class="prof-input w-full !bg-white/5 !border !border-white/10 !rounded-2xl !py-4 !font-black !px-6 text-white transition-all focus:!bg-white/10 placeholder:text-white/20">
-                                <i class="absolute right-5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white cursor-pointer transition-colors"
-                                    :class="showingopass ? 'pi pi-eye-slash' : 'pi pi-eye' "
+                    <div class="security-card-body">
+                        <div class="form-group">
+                            <label>Current Password</label>
+                            <div class="password-field">
+                                <input :type="showingopass ? 'text' : 'password'" v-model="opassword" required
+                                    placeholder="Enter current password" class="security-input" />
+                                <i class="toggle-pass" :class="showingopass ? 'pi pi-eye-slash' : 'pi pi-eye'"
                                     @click="showingopass = !showingopass"></i>
                             </div>
                         </div>
 
-                        <div class="h-px bg-white/5 mx-2"></div>
-
-                        <div>
-                            <label class="block text-[10px] text-indigo-200 uppercase tracking-widest mb-4 ml-1">New Password</label>
-                            <div class="relative">
-                                <input :type="showingnpass ? 'text' : 'password'"  v-model="npassword" required
-                                    placeholder="Minimum 6 characters"
-                                    class="prof-input w-full !bg-white/5 !border !border-white/10 !rounded-2xl !py-4 !font-black !px-6 text-white transition-all focus:!bg-white/10 placeholder:text-white/20">
-                                <i class="absolute right-5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white cursor-pointer transition-colors"
-                                    :class="showingnpass ? 'pi pi-eye-slash' : 'pi pi-eye' "
+                        <div class="form-group">
+                            <label>New Password</label>
+                            <div class="password-field">
+                                <input :type="showingnpass ? 'text' : 'password'" v-model="npassword" required
+                                    placeholder="Minimum 6 characters" class="security-input" />
+                                <i class="toggle-pass" :class="showingnpass ? 'pi pi-eye-slash' : 'pi pi-eye'"
                                     @click="showingnpass = !showingnpass"></i>
                             </div>
                         </div>
 
-                        <div>
-                            <label class="block text-[10px] text-indigo-200 uppercase tracking-widest mb-4 ml-1">Confirm New Password</label>
-                            <div class="relative">
-                                <input :type="showingcpass ? 'text' : 'password'"  v-model="cpassword" required
-                                    placeholder="Repeat new password"
-                                    class="prof-input w-full !bg-white/5 !border !border-white/10 !rounded-2xl !py-4 !font-black !px-6 text-white transition-all focus:!bg-white/10 placeholder:text-white/20">
-                                <i class="absolute right-5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white cursor-pointer transition-colors"
-                                    :class="showingcpass ? 'pi pi-eye-slash' : 'pi pi-eye' "
+                        <div class="form-group">
+                            <label>Confirm New Password</label>
+                            <div class="password-field">
+                                <input :type="showingcpass ? 'text' : 'password'" v-model="cpassword" required
+                                    placeholder="Repeat new password" class="security-input" />
+                                <i class="toggle-pass" :class="showingcpass ? 'pi pi-eye-slash' : 'pi pi-eye'"
                                     @click="showingcpass = !showingcpass"></i>
                             </div>
                         </div>
 
-                        <button
-                            :disabled="saving"
-                            @click="save"
-                            class="w-full mt-4 !px-10 !py-5 rounded-[24px] bg-[#F97316] hover:bg-[#EA580C] text-white font-black text-xs uppercase tracking-normal transition-all flex items-center justify-center gap-3 shadow-xl shadow-orange-950/40 active:scale-95 border-none cursor-pointer"
-                        >
-                            <i class="pi" :class="saving ? 'pi-spin pi-spinner' : 'pi-check-circle'"></i>
-                            {{ saving ? 'UPDATING...' : 'Update Password' }}
+                        <button :disabled="saving" @click="save" class="save-btn">
+                            <i class="pi" :class="saving ? 'pi-spin pi-spinner' : 'pi-check'"></i>
+                            {{ saving ? 'Updating...' : 'Update Password' }}
                         </button>
                     </div>
-                </div>
-
-                <!-- Session Info -->
-                <div class="p-8 text-center text-gray-300 font-bold text-[10px] uppercase tracking-normal">
-                    SECURE TERMINAL ACCESS • {{ new Date().toLocaleTimeString() }}
                 </div>
             </div>
         </div>
     </div>
 </template>
 <style scoped>
+.profile-page {
+    padding: 24px 32px 60px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* ===== HEADER ===== */
+.profile-header {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 28px;
+}
+
+.profile-header-bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #312e81 0%, #1e1b4b 50%, #0f172a 100%);
+}
+
+.profile-header-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 32px 40px;
+}
+
+.profile-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.profile-avatar span {
+    font-size: 32px;
+    font-weight: 800;
+    color: white;
+}
+
+.profile-identity {
+    flex: 1;
+    min-width: 0;
+}
+
+.profile-name {
+    font-size: 24px;
+    font-weight: 800;
+    color: white;
+    margin: 0 0 6px;
+    line-height: 1.2;
+}
+
+.profile-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(199, 210, 254, 0.8);
+    margin: 0;
+    flex-wrap: wrap;
+}
+
+.profile-badge {
+    background: rgba(129, 140, 248, 0.2);
+    border: 1px solid rgba(129, 140, 248, 0.3);
+    padding: 2px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #c7d2fe;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.profile-separator {
+    opacity: 0.3;
+}
+
+.profile-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    border-radius: 10px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #6ee7b7;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+}
+
+/* ===== GRID ===== */
+.profile-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+    align-items: start;
+}
+
+.profile-main {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* ===== INFO CARDS ===== */
+.info-card {
+    background: var(--surface-card, #fff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.info-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.info-card-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.info-card-icon.work-icon {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.info-card-header h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color, #1f2937);
+    margin: 0;
+}
+
+.info-card-body {
+    padding: 28px;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+.info-item label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary, #6b7280);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+}
+
+.info-item p {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-color, #1f2937);
+    padding: 10px 14px;
+    background: var(--surface-ground, #f8fafc);
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #e2e8f0);
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+}
+
+.access-level {
+    color: #4f46e5 !important;
+    gap: 8px;
+}
+
+/* ===== SECURITY CARD ===== */
+.security-card {
+    background: var(--surface-card, #fff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.security-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.security-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: #fef2f2;
+    color: #ef4444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.security-card-header h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color, #1f2937);
+    margin: 0;
+}
+
+.security-card-body {
+    padding: 28px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary, #6b7280);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+}
+
+.password-field {
+    position: relative;
+}
+
+.security-input {
+    width: 100%;
+    padding: 10px 40px 10px 14px;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--surface-ground, #f8fafc);
+    color: var(--text-color, #1f2937);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.security-input:focus {
+    border-color: var(--primary, #4f46e5);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.security-input::placeholder {
+    color: var(--text-secondary, #9ca3af);
+    font-weight: 400;
+}
+
+.toggle-pass {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary, #9ca3af);
+    cursor: pointer;
+    font-size: 14px;
+    transition: color 0.2s;
+}
+
+.toggle-pass:hover {
+    color: var(--text-color, #374151);
+}
+
+.save-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--primary, #4f46e5);
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.2s, transform 0.1s;
+    margin-top: 8px;
+}
+
+.save-btn:hover:not(:disabled) {
+    background: var(--primary-dark, #4338ca);
+}
+
+.save-btn:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ===== DARK MODE ===== */
+:global(body.dark-mode) .info-card-icon {
+    background: rgba(79, 70, 229, 0.15);
+    color: #818cf8;
+}
+
+:global(body.dark-mode) .info-card-icon.work-icon {
+    background: rgba(217, 119, 6, 0.15);
+    color: #fbbf24;
+}
+
+:global(body.dark-mode) .security-icon {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+}
+
+:global(body.dark-mode) .access-level {
+    color: #818cf8 !important;
+}
+
+:global(body.dark-mode) .profile-badge {
+    background: rgba(129, 140, 248, 0.15);
+    border-color: rgba(129, 140, 248, 0.25);
+}
+
+:global(body.dark-mode) .profile-status {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.2);
+}
+
+:global(body.dark-mode) .save-btn {
+    background: #6366f1;
+}
+
+:global(body.dark-mode) .save-btn:hover:not(:disabled) {
+    background: #818cf8;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1024px) {
+    .profile-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .profile-page {
+        padding: 16px;
+    }
+    .profile-header-content {
+        flex-direction: column;
+        text-align: center;
+        padding: 24px;
+    }
+    .profile-meta {
+        justify-content: center;
+    }
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+}
 </style>

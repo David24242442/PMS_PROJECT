@@ -18,6 +18,12 @@ const totalSteps = 2;
 const route = useRoute();
 const router = useRouter();
 const goalId = ref(route.query.goal_id || null);
+const goalStatus = ref('');
+
+// Read-only when appraisal is submitted (completed) and review is done
+const isReadOnly = computed(() => {
+    return ['review_completed', 'completed'].includes(goalStatus.value);
+});
 
 // Master Employee Data for Dropdown (for managers starting new appraisals)
 const masterEmployees = ref([]);
@@ -80,7 +86,15 @@ const appraisal = ref({
 
 // Computed
 const overallPerformanceRating = computed(() => {
-    return (0.00).toFixed(2);
+    const comps = performanceCompetencies.value;
+    if (!comps || comps.length === 0) return (0.00).toFixed(2);
+    // Use managerRating if available, otherwise selfRating
+    const hasManager = comps.some(c => parseFloat(c.managerRating) > 0);
+    const total = comps.reduce((sum, c) => {
+        const rating = hasManager ? (parseFloat(c.managerRating) || 0) : (parseFloat(c.selfRating) || 0);
+        return sum + rating;
+    }, 0);
+    return comps.length > 0 ? (total / comps.length).toFixed(2) : (0.00).toFixed(2);
 });
 
 const canProceedToStep2 = computed(() => {
@@ -89,11 +103,16 @@ const canProceedToStep2 = computed(() => {
 
 // Methods
 const nextStep = async () => {
+    if (isReadOnly.value) {
+        if (currentStep.value < totalSteps) currentStep.value++;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
     const isCompleted = canProceedToStep2.value;
-    const message = isCompleted 
-        ? 'I have completed the rating, do I still want to continue?' 
+    const message = isCompleted
+        ? 'I have completed the rating, do I still want to continue?'
         : 'Self Rating Not Completed. Do you still want to Continue?';
-    
+
     const confirm = await showConfirm('Step Confirmation', message, 'question');
     if (confirm.isConfirmed) {
         if (currentStep.value < totalSteps) currentStep.value++;
@@ -106,7 +125,9 @@ const prevStep = () => {
 };
 
 const getWeightedScore = (comp) => {
-    return (0.00).toFixed(2);
+    const hasManager = parseFloat(comp.managerRating) > 0;
+    const rating = hasManager ? (parseFloat(comp.managerRating) || 0) : (parseFloat(comp.selfRating) || 0);
+    return ((rating * (comp.weight || 0)) / 100).toFixed(2);
 };
 
 const fetchAppraisal = async () => {
@@ -122,6 +143,7 @@ const fetchAppraisal = async () => {
             
             if (goal) {
                 goalId.value = goal.id;
+                goalStatus.value = goal.status || '';
                 // 1. Populate Profile Info from the Goal record (Always present)
                 appraisal.value.candidate_name = goal.candidate_name || '';
                 appraisal.value.employee_code = goal.employee_code || '';
@@ -300,6 +322,17 @@ onMounted(() => {
             </div>
         </div>
 
+            <!-- Read-Only Banner -->
+            <div v-if="isReadOnly" class="mx-8 mb-6 bg-amber-50 border border-amber-200 rounded-2xl px-6 py-4 flex items-center gap-3">
+                <i class="pi pi-lock text-amber-600 text-lg"></i>
+                <div>
+                    <p class="font-black text-amber-800 text-sm">This appraisal is locked</p>
+                    <p class="text-[10px] text-amber-600 font-bold uppercase tracking-wider">The review has been completed and submitted. No further edits are allowed.</p>
+                </div>
+            </div>
+
+            <fieldset :disabled="isReadOnly" :class="{ 'opacity-80': isReadOnly }" class="border-none p-0 m-0">
+
             <!-- STEP 1: Performance Key Competencies -->
             <div v-if="currentStep === 1" class="space-y-6 animate-fadeIn pb-16">
                 <!-- 0. Employee Profile Summary (Moved from Step 2) -->
@@ -466,11 +499,14 @@ onMounted(() => {
 
                     <div class="p-6 space-y-3">
                         <div v-for="rating in performanceRatings" :key="rating.value"
-                            @click="appraisal.performanceRating = rating.value"
-                            class="group cursor-pointer rounded-2xl border p-5 transition-all duration-300"
-                            :class="appraisal.performanceRating === rating.value 
-                                ? 'bg-indigo-50/70 border-indigo-300 shadow-md shadow-indigo-100/50 ring-2 ring-indigo-200/50' 
-                                : 'bg-slate-50/40 border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/20'">
+                            @click="!isReadOnly && (appraisal.performanceRating = rating.value)"
+                            class="group rounded-2xl border p-5 transition-all duration-300"
+                            :class="[
+                                isReadOnly ? 'cursor-default' : 'cursor-pointer',
+                                appraisal.performanceRating === rating.value
+                                    ? 'bg-indigo-50/70 border-indigo-300 shadow-md shadow-indigo-100/50 ring-2 ring-indigo-200/50'
+                                    : 'bg-slate-50/40 border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/20'
+                            ]">
                             <div class="flex flex-col md:flex-row md:items-center gap-4">
                                 <!-- Radio + Label -->
                                 <div class="flex items-center gap-3 md:w-[280px] shrink-0">
@@ -630,19 +666,22 @@ onMounted(() => {
                 </div>
             </div>
 
+            </fieldset>
+
             <!-- Footer Navigation -->
             <div class="prof-card p-10 mx-8 mt-12 mb-20 bg-gray-50/50">
                 <div class="flex items-center justify-between">
-                    <button v-if="currentStep > 1" @click="prevStep" 
+                    <button v-if="currentStep > 1" @click="prevStep"
                         class="prof-button !bg-white !text-gray-600 !border !border-gray-200 !rounded-3xl !py-4 px-10 hover:shadow-md transition-all">
-                        <i class="pi pi-arrow-left mr-2 font-bold text-xs"></i> 
+                        <i class="pi pi-arrow-left mr-2 font-bold text-xs"></i>
                         Previous Step
                     </button>
-                    <button v-else @click="saveAppraisal(false)" :disabled="saving"
+                    <button v-else-if="!isReadOnly" @click="saveAppraisal(false)" :disabled="saving"
                         class="prof-button !bg-white !text-indigo-600 !border !border-indigo-100 !rounded-3xl !py-4 px-10 shadow-sm hover:shadow-md transition-all">
                         <i class="pi pi-save mr-2 font-bold text-xs"></i>
                         Save Progress
                     </button>
+                    <div v-else></div>
 
                     <div class="flex items-center gap-4">
                         <button v-if="currentStep < totalSteps" @click="nextStep"
@@ -650,8 +689,8 @@ onMounted(() => {
                             Next Stage
                             <i class="pi pi-arrow-right ml-3 text-xs font-bold"></i>
                         </button>
-                        
-                        <button v-else @click="saveAppraisal(true)" :disabled="saving"
+
+                        <button v-else-if="!isReadOnly" @click="saveAppraisal(true)" :disabled="saving"
                             class="prof-button !bg-teal-600 !text-white !rounded-3xl !py-4 px-10 shadow-xl shadow-teal-600/30 hover:scale-[1.02] active:scale-95">
                             <i v-if="saving" class="pi pi-spin pi-spinner mr-3"></i>
                             <i v-else class="pi pi-check-circle mr-3 font-bold"></i>

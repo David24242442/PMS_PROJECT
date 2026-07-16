@@ -63,34 +63,67 @@ class APIUserController extends Controller
     }
 
     public function fetchEmployees(Request $request){
-        $query = \App\Models\Employee::orderBy('firstname');
+        $query = \App\Models\Employee::with(['creator'])->orderBy('id', 'DESC');
 
-        if($request->has('search') && !empty($request->search)){
-            $search = $request->search;
-            $query->where(function($q) use ($search){
-                 $q->where('firstname', 'LIKE', "%{$search}%")
-                   ->orWhere('surname', 'LIKE', "%{$search}%")
-                   ->orWhere('email', 'LIKE', "%{$search}%");
+        // Global search (Employee Info field)
+        if($request->employeeinfo){
+            $search = $request->employeeinfo;
+            $query->where(function($q) use ($search) {
+                $q->where('firstname', 'like', "%$search%")
+                  ->orWhere('surname', 'like', "%$search%")
+                  ->orWhere('employeeid', 'like', "%$search%")
+                  ->orWhere('emp_code', 'like', "%$search%")
+                  ->orWhere('mobileno', 'like', "%$search%")
+                  ->orWhere('joiningposition', 'like', "%$search%");
             });
         }
 
-        $employees = $query->paginate(10);
-        
-        // Transform the collection within the paginator
-        $employees->getCollection()->transform(function($emp){
-            return [
-                'id' => $emp->id,
-                'name' => $emp->firstname . ' ' . $emp->surname,
-                'position_id' => $emp->joiningposition, 
-                'email' => $emp->email,
-                'department' => $emp->joining_dept_id,
-                'status' => $emp->status,
-                'joining_date' => $emp->joiningdate,
-                'admin' => false, 
-                'employee_details' => $emp 
-            ];
-        });
+        // Advanced filters
+        if($request->filters && count((array)$request->filters)){
+            $filters = $request->filters;
+            foreach ($filters as $data) {
+                $op = '=';
+                switch($data['op']){
+                    case 'is': $op = '='; break;
+                    case 'isnot': $op = "!="; break;
+                    case 'gt': $op = ">"; break;
+                    case 'gtq': $op = ">="; break;
+                    case 'lt': $op = "<"; break;
+                    case 'ltq': $op = "<="; break;
+                    case 'cont': $op = "like"; break;
+                }
+                $val = $data['val'];
+                if($data['op'] == 'cont') $val = "%$val%";
 
+                if($data['cond'] == "a"){
+                    if($data['attr'] == 'creator'){
+                        $query->whereHas('creator', function ($q) use ($val, $op) {
+                            $q->where('name', $op, $val);
+                        });
+                    } else {
+                        $query->where($data['attr'], $op, $val);
+                    }
+                } else {
+                    if($data['attr'] == 'creator'){
+                        $query->orWhereHas('creator', function ($q) use ($val, $op) {
+                            $q->where('name', $op, $val);
+                        });
+                    } else {
+                        $query->orWhere($data['attr'], $op, $val);
+                    }
+                }
+            }
+        }
+
+        // Date range filters
+        if($request->createdfrom){
+            $query->where('created_at', '>=', $request->createdfrom);
+        }
+        if($request->createdto){
+            $query->where('created_at', '<=', $request->createdto.' 23:59:59');
+        }
+
+        $employees = $query->paginate($request->per_page ?? 50);
         return $employees;
     }
 

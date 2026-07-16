@@ -88,6 +88,12 @@ const router = createRouter({
           component: () => import('@/views/app/pms/AppraisalView.vue')
         },
         {
+          path: '/pms/leaderboard',
+          name: 'pms-leaderboard',
+          meta: { fullname: 'Employee Leaderboard', roles: [3, 4] },
+          component: () => import('@/views/app/pms/LeaderboardView.vue')
+        },
+        {
           path: '/pms/employee-master',
           name: 'pms-employee-master',
           meta: { fullname: 'Employee Master', roles: [4] },
@@ -147,12 +153,14 @@ router.beforeEach((to, from, next) => {
     const restrictedPaths = [
       '/dashboard', '/onboarding', '/employees', 
       '/users', '/pms/dashboard', '/pms/goals', '/pms/review', '/pms/appraisal',
-      '/pms/employee-master', '/hr/submissions'
+      '/pms/leaderboard', '/pms/employee-master', '/hr/submissions'
     ];
 
     if (restrictedPaths.includes(to.path) || to.path.startsWith('/employee/')) {
-       const checkPath = to.path.startsWith('/employee/') ? '/employees' : to.path;
-       
+       let checkPath = to.path;
+       if (to.path.startsWith('/employee/')) checkPath = '/employees';
+       else if (to.path === '/pms/leaderboard') checkPath = '/pms/goals'; // leaderboard shares access with goals
+
        if (!permissions.includes(checkPath)) {
           next('/profile')
           document.title = 'Profile';

@@ -94,31 +94,41 @@ class EmployeeController extends Controller
                 if($data['op'] == 'cont'){
                     $val = "%$val%";
                 }
-                
+
                 if($data['cond'] == "a"){
                     if($data['attr'] == 'creator'){
                         $employees->whereHas('creator', function ($query) use ($val, $op) {
                             $query->where('name', $op, $val);
                         });
+                    }elseif($data['attr'] == 'employeeid'){
+                        $employees->where(function($q) use ($val, $op) {
+                            $q->where('employeeid', $op, $val)
+                              ->orWhere('emp_code', $op, $val);
+                        });
                     }else{
                         $employees->where($data['attr'], $op, $val);
                     }
-                    
+
                 }else{
                     if($data['attr'] == 'creator'){
                         $employees->orWhereHas('creator', function ($query) use ($val, $op) {
                             $query->where('name', $op, $val);
                         });
+                    }elseif($data['attr'] == 'employeeid'){
+                        $employees->where(function($q) use ($val, $op) {
+                            $q->where('employeeid', $op, $val)
+                              ->orWhere('emp_code', $op, $val);
+                        });
                     }else{
                         $employees->orWhere($data['attr'], $op, $val);
                     }
-                    
+
                 }
             }
 
-            
+
         }
-        
+
         if($request->createdfrom){
             $employees = $employees->where('created_at', '>=', $request->createdfrom);
         }
@@ -126,7 +136,7 @@ class EmployeeController extends Controller
             $employees = $employees->where('created_at', '<=', $request->createdto.' 23:59:59');
         }
 
-        
+
         $employees = $employees->paginate($request->per_page);
         return $employees;
     }

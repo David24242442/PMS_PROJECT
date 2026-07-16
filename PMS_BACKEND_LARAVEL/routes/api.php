@@ -30,6 +30,7 @@ Route::middleware('auth:sanctum')->group(function(){
     // --- PMS Routes ---
     Route::prefix('pms')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\PMSDashboardController::class, 'index']);
+        Route::get('/leaderboard', [\App\Http\Controllers\PMSDashboardController::class, 'leaderboard']);
         
         Route::apiResource('goals', \App\Http\Controllers\GoalController::class);
         Route::post('goals/upload-attachment', [\App\Http\Controllers\GoalController::class, 'uploadAttachment']);

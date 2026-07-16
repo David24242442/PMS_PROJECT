@@ -4,7 +4,8 @@ export default {
   content: [],
   theme: {
     fontFamily: {
-      sans: ['"Segoe UI"', 'Tahoma', 'Verdana', 'Geneva', 'sans-serif'],
+      sans: ['Inter', 'system-ui', 'sans-serif'],
+      heading: ['"Plus Jakarta Sans"', 'sans-serif'],
       serif: ['Georgia', 'serif'],
       mono: ['Menlo', 'monospace'],
     },

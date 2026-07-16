@@ -56,6 +56,7 @@ body.dark-mode {
 
   --border-color: #475569;
   --surface-card: #1e293b;
+  --surface-ground: #0f172a;
   --text-color: #f1f5f9;
   --text-secondary: #94a3b8;
 
@@ -264,6 +265,14 @@ body.dark-mode .group:not([class*="focus"]):not([class*="hover:"]) {
 }
 body.dark-mode .group:not([class*="focus"]):not([class*="hover:"]):hover {
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+}
+
+/* Select dropdown arrow in dark mode */
+body.dark-mode select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") !important;
+}
+body.dark-mode select:focus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23818cf8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") !important;
 }
 
 /* Labels */
@@ -540,7 +549,7 @@ body.dark-mode .placeholder\:text-gray-300::placeholder {
 
 * {
   box-sizing: border-box;
-  font-family: "Inter", "Roboto", "Open Sans", "Geneva", sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 body {
@@ -723,7 +732,7 @@ body {
 
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: "Inter", "Geneva", "Work Sans", "Poppins", sans-serif;
+  font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: normal;
@@ -756,9 +765,9 @@ h4 {
 }
 .group:not([class*="focus"]):not([class*="hover:"]) {
   border: 1px solid #e2e8f0;
-  margin-bottom: 20px;
-  padding-bottom: 14px;
-  border-radius: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-radius: 14px;
   background-color: #ffffff;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
   transition: box-shadow 0.25s ease;
@@ -769,16 +778,16 @@ h4 {
   }
 
   & > *:not(h3) {
-    margin: 0px 12px;
-    margin-top: 12px;
+    margin: 0px 18px;
+    margin-top: 16px;
   }
 
   & > h3 {
     background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
-    padding: 12px 18px;
+    padding: 14px 22px;
     text-align: center;
     color: white;
-    border-radius: 11px 11px 0px 0px;
+    border-radius: 13px 13px 0px 0px;
     font-size: 0.85rem;
     letter-spacing: 0.5px;
     text-transform: uppercase;
@@ -786,7 +795,7 @@ h4 {
   }
 
   & > div {
-    padding: 12px;
+    padding: 14px;
   }
 
   & > button,
@@ -813,7 +822,7 @@ h4 {
 label:not(.radio):not(.login-label) {
   font-weight: 600;
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   font-size: 0.8rem;
   color: #4b5563;
   letter-spacing: 0.01em;
@@ -821,15 +830,16 @@ label:not(.radio):not(.login-label) {
 input:not([type="radio"]):not(.prof-input):not(.login-input),
 select,
 textarea {
-  padding: 10px 14px;
+  padding: 11px 16px;
   width: 100%;
   outline: 0;
   border: 1.5px solid #d1d5db;
-  border-radius: 8px;
+  border-radius: 10px;
   background-color: #ffffff;
   color: #1f2937;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   transition: all 0.2s ease-in-out;
+  line-height: 1.5;
 
   &:hover {
     border-color: #9ca3af;
@@ -844,6 +854,22 @@ textarea {
   &::placeholder {
     color: #9ca3af;
   }
+}
+
+/* Enhanced select dropdowns */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 14px;
+  padding-right: 40px;
+  cursor: pointer;
+}
+select:focus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 .one {
   margin-bottom: 18px;
@@ -891,11 +917,11 @@ textarea {
 .inlinewrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 16px;
   align-items: normal;
 
   & > div {
-    width: calc(50% - 5px);
+    width: calc(50% - 8px);
   }
 
   & ~ span {

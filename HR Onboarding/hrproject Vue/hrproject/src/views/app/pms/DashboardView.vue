@@ -1,9 +1,12 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import axios from '@/helpers/pms_axios';
 import { useUsersStore } from '@/stores/user';
 import VueApexCharts from "vue3-apexcharts";
 import { showAlert } from '@/helpers/essential';
+
+const router = useRouter();
 
 const userstore = useUsersStore();
 const { authtoken } = userstore;
@@ -24,6 +27,36 @@ const weeklyProgress = ref({
 });
 
 const loading = ref(true);
+const showEmployeeModal = ref(false);
+const selectedDashEmployee = ref(null);
+const selectedChartPoint = ref(null); // for showing clicked chart data inline
+
+const openDashEmployeeModal = (emp) => {
+    selectedDashEmployee.value = {
+        name: emp.name,
+        role: emp.role,
+        rating: emp.rating,
+        goals: emp.goals || [],
+    };
+    showEmployeeModal.value = true;
+};
+
+const closeDashModal = () => {
+    showEmployeeModal.value = false;
+    selectedDashEmployee.value = null;
+};
+
+const getStatusPill = (status) => {
+    const map = {
+        'completed': 'bg-green-50 text-green-700 border-green-200',
+        'approved': 'bg-blue-50 text-blue-700 border-blue-200',
+        'review_completed': 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        'submitted': 'bg-amber-50 text-amber-700 border-amber-200',
+        'in_progress': 'bg-orange-50 text-orange-700 border-orange-200',
+        'draft': 'bg-gray-50 text-gray-500 border-gray-200',
+    };
+    return map[status] || 'bg-gray-50 text-gray-500 border-gray-200';
+};
 
 const fetchDashboardData = async () => {
     userstore.setIsLoading(true);
@@ -39,7 +72,7 @@ const fetchDashboardData = async () => {
         }
         
         if (data.top_employees) {
-            topEmployees.value = data.top_employees;
+            topEmployeesRaw.value = data.top_employees;
         }
 
         loading.value = false;
@@ -62,49 +95,74 @@ const chartOptions = computed(() => ({
         height: 350,
         toolbar: { show: false },
         fontFamily: 'Inter, sans-serif',
-        zoom: { enabled: false }
+        zoom: { enabled: false },
+        events: {
+            dataPointSelection: function(event, chartContext, config) {
+                const idx = config.dataPointIndex;
+                const val = config.w.config.series[0].data[idx];
+                const day = config.w.globals.categoryLabels[idx] || config.w.globals.labels[idx] || '';
+                selectedChartPoint.value = {
+                    chart: 'performance',
+                    day: day,
+                    value: val,
+                    label: val + '% performance',
+                    detail: `${val} goals created on ${day}`
+                };
+            }
+        }
     },
-    colors: ['#3b82f6'], // Blue line like reference
-    stroke: { 
-        curve: 'smooth', 
-        width: 3 
-    },
+    colors: ['#3b82f6'],
+    stroke: { curve: 'smooth', width: 3 },
     fill: {
         type: 'gradient',
-        gradient: {
-            shadeIntensity: 1,
-            opacityFrom: 0.4,
-            opacityTo: 0.05,
-            stops: [0, 90, 100]
-        }
+        gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 90, 100] }
     },
     dataLabels: { enabled: false },
     xaxis: {
         categories: weeklyProgress.value.labels,
         axisBorder: { show: false },
         axisTicks: { show: false },
-        labels: { 
-            style: { colors: '#94a3b8', fontSize: '12px' } 
-        }
+        labels: { style: { colors: '#94a3b8', fontSize: '12px' } }
     },
-    yaxis: { 
+    yaxis: {
         show: true,
         labels: {
             style: { colors: '#94a3b8', fontSize: '12px' },
-             formatter: (value) => { return value + "%" }
+            formatter: (value) => { return value + "%" }
         }
     },
-    grid: { 
-        borderColor: '#f1f5f9',
-        strokeDashArray: 4,
-        xaxis: { lines: { show: false } },   
-        yaxis: { lines: { show: true } },  
+    grid: {
+        borderColor: '#f1f5f9', strokeDashArray: 4,
+        xaxis: { lines: { show: false } },
+        yaxis: { lines: { show: true } },
     },
-    tooltip: { 
+    tooltip: {
         theme: 'light',
-        y: { formatter: function (val) { return val + "%" } }
+        custom: function({ series, seriesIndex, dataPointIndex, w }) {
+            const val = series[seriesIndex][dataPointIndex];
+            const day = w.globals.categoryLabels[dataPointIndex] || w.globals.labels[dataPointIndex] || '';
+            return `<div style="padding: 10px 14px; font-family: Inter, sans-serif; border-radius: 8px;">
+                <p style="font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">${day}</p>
+                <p style="font-size: 18px; font-weight: 900; color: #1e293b; margin-bottom: 2px;">${val}%</p>
+                <p style="font-size: 10px; color: #64748b;">Performance score</p>
+                <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #f1f5f9; font-size: 10px; color: #3b82f6; font-weight: 600;">
+                    Click to pin details
+                </div>
+            </div>`;
+        }
     },
-    markers: { size: 0, hover: { size: 6 } }
+    markers: {
+        size: 4,
+        colors: ['#3b82f6'],
+        strokeColors: '#fff',
+        strokeWidth: 2,
+        hover: { size: 8, sizeOffset: 3 },
+        discrete: []
+    },
+    states: {
+        active: { filter: { type: 'none' } },
+        hover: { filter: { type: 'lighten', value: 0.1 } }
+    }
 }));
 
 const series = computed(() => [{
@@ -114,7 +172,25 @@ const series = computed(() => [{
 
 // --- Side Bar Chart (Activity) ---
 const barChartOptions = computed(() => ({
-    chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
+    chart: {
+        type: 'bar',
+        toolbar: { show: false },
+        fontFamily: 'Inter, sans-serif',
+        events: {
+            dataPointSelection: function(event, chartContext, config) {
+                const idx = config.dataPointIndex;
+                const val = config.w.config.series[0].data[idx];
+                const day = config.w.globals.categoryLabels[idx] || config.w.globals.labels[idx] || '';
+                selectedChartPoint.value = {
+                    chart: 'activity',
+                    day: day,
+                    value: val,
+                    label: val + ' goals created',
+                    detail: `Activity on ${day}: ${val} goal(s) were created`
+                };
+            }
+        }
+    },
     plotOptions: {
         bar: { borderRadius: 6, columnWidth: '40%', distributed: false }
     },
@@ -128,7 +204,25 @@ const barChartOptions = computed(() => ({
     },
     yaxis: { show: false },
     grid: { show: false },
-    tooltip: { theme: 'light' }
+    tooltip: {
+        theme: 'light',
+        custom: function({ series, seriesIndex, dataPointIndex, w }) {
+            const val = series[seriesIndex][dataPointIndex];
+            const day = w.globals.categoryLabels[dataPointIndex] || w.globals.labels[dataPointIndex] || '';
+            return `<div style="padding: 10px 14px; font-family: Inter, sans-serif; border-radius: 8px;">
+                <p style="font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">${day}</p>
+                <p style="font-size: 16px; font-weight: 900; color: #1e293b;">${val} goals</p>
+                <p style="font-size: 10px; color: #64748b;">Goals created on this day</p>
+                <div style="margin-top: 4px; font-size: 10px; color: #3b82f6; font-weight: 600;">Click to pin details</div>
+            </div>`;
+        }
+    },
+    states: {
+        active: {
+            allowMultipleDataPointsSelection: false,
+            filter: { type: 'darken', value: 0.3 }
+        }
+    }
 }));
 
 const barSeries = computed(() => [{
@@ -137,8 +231,22 @@ const barSeries = computed(() => [{
 }]);
 
 // --- Radial Bar Chart (Completion) ---
+const showRadialDetail = ref(false);
+
+const toggleRadialDetail = () => {
+    showRadialDetail.value = !showRadialDetail.value;
+};
+
 const radialOptions = computed(() => ({
-    chart: { type: 'radialBar', fontFamily: 'Inter, sans-serif' },
+    chart: {
+        type: 'radialBar',
+        fontFamily: 'Inter, sans-serif',
+        events: {
+            click: function() {
+                toggleRadialDetail();
+            }
+        }
+    },
     plotOptions: {
         radialBar: {
             hollow: { size: '65%' },
@@ -156,41 +264,32 @@ const radialOptions = computed(() => ({
             }
         }
     },
-    colors: ['#10b981'], // Green like reference
+    colors: ['#10b981'],
     stroke: { lineCap: 'round' }
 }));
 
 const radialSeries = computed(() => [stats.value.completion_rate || 0]);
 
-// Top Employees for Leaderboard computed from Goals accurate ratings DESC
+// Top Employees for Leaderboard — from API response
+const topEmployeesRaw = ref([]);
 const topEmployees = computed(() => {
-    const map = {};
-    (recentGoals.value || []).forEach(goal => {
-        const name = goal.candidate_name || goal.employee_name || goal.employee?.name || goal.user?.name || 'Unassigned';
-        
-        // Use our average rating helper flawlessly setups 
-        const rating = parseFloat(calculateAverageRating(goal));
-        
-        if (!map[name] || rating > map[name].rating) {
-            const role = goal.employee?.job_title || goal.user?.job_title || 'Staff Member';
-            const avatars = {
-                'IT Head': 'bg-indigo-100 text-indigo-700',
-                'Employee': 'bg-[#E0F2FE] text-[#0369A1]',
-                'Administrator': 'bg-purple-100 text-purple-700'
-            };
-            map[name] = {
-                id: goal.id,
-                name: name,
-                role: role,
-                rating: rating.toFixed(1),
-                score: rating.toFixed(1), // Fallback for list score labels compatibility
-                avatar: name.substring(0, 1).toUpperCase(),
-                color: avatars[role] || 'bg-amber-100 text-amber-700'
-            };
-        }
-    });
-
-    return Object.values(map).sort((a, b) => parseFloat(b.rating) - parseFloat(a.rating));
+    const avatarColors = [
+        'bg-indigo-100 text-indigo-700',
+        'bg-pink-100 text-pink-700',
+        'bg-emerald-100 text-emerald-700',
+        'bg-amber-100 text-amber-700',
+        'bg-purple-100 text-purple-700',
+    ];
+    return topEmployeesRaw.value.map((emp, i) => ({
+        id: emp.user_id,
+        name: emp.name,
+        role: emp.job_title || emp.department || 'Staff Member',
+        rating: emp.avg_rating,
+        score: emp.avg_rating,
+        avatar: emp.name?.substring(0, 1).toUpperCase() || '?',
+        color: avatarColors[i % avatarColors.length],
+        goals: emp.goals || [],
+    }));
 });
 
 const parseSmart = (data) => {
@@ -250,14 +349,13 @@ const getTimeProgress = (goal) => {
                 </div>
                 
                 <div class="flex items-center gap-2">
-                    <div class="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs text-white shadow-sm cursor-pointer hover:bg-white/20 transition-colors">
+                    <div class="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs text-white shadow-sm">
                         <i class="pi pi-calendar text-purple-200 text-xs"></i>
-                         <span class="font-bold">Jan 1, {{ new Date().getFullYear() }} - Dec 31, {{ new Date().getFullYear() }}</span>
-                        <i class="pi pi-chevron-down text-[8px] ml-1 text-purple-200"></i>
+                         <span class="font-bold">{{ new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</span>
                     </div>
-                     <div class="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs text-white shadow-sm cursor-pointer hover:bg-white/20 transition-colors">
-                        <span class="font-bold">Last 30 days</span>
-                        <i class="pi pi-chevron-down text-[8px] ml-1 text-purple-200"></i>
+                     <div class="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs text-white shadow-sm">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span class="font-bold">Live</span>
                     </div>
                     <button class="bg-white text-purple-800 hover:bg-purple-50 px-4 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-black/10 transition-colors flex items-center gap-1.5">
                         <i class="pi pi-download text-[10px] text-purple-600"></i> Export
@@ -281,11 +379,8 @@ const getTimeProgress = (goal) => {
                 <div class="z-10 relative mt-1.5">
                     <div class="flex items-end gap-2 mb-0.5">
                         <span class="text-2xl font-black text-white">{{ stats.completion_rate }}%</span>
-                        <span class="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-1.5 py-0.5 rounded flex items-center gap-0.5 mb-1">
-                            <i class="pi pi-arrow-up text-[8px]"></i> 12.5%
-                        </span>
                     </div>
-                    <p class="text-[10px] text-purple-200 font-bold">vs. last period</p>
+                    <p class="text-[10px] text-purple-200 font-bold">{{ stats.completed_goals }} of {{ stats.total_goals }} goals</p>
                 </div>
             </div>
 
@@ -301,12 +396,9 @@ const getTimeProgress = (goal) => {
                 </div>
                 <div class="relative z-10 mt-1.5">
                     <div class="flex items-end gap-2 mb-0.5">
-                         <span class="text-2xl font-black text-white">4.2</span>
-                         <span class="text-[10px] font-bold text-emerald-300 bg-emerald-400/20 border border-emerald-400/30 px-1.5 py-0.5 rounded flex items-center gap-0.5 mb-1">
-                            <i class="pi pi-arrow-up text-[8px]"></i> 8.4%
-                        </span>
+                         <span class="text-2xl font-black text-white">{{ topEmployeesRaw.length > 0 ? (topEmployeesRaw.reduce((s, e) => s + e.avg_rating, 0) / topEmployeesRaw.length).toFixed(1) : '0.0' }}</span>
                     </div>
-                    <p class="text-[10px] text-pink-100 font-bold">vs. last period</p>
+                    <p class="text-[10px] text-pink-100 font-bold">avg. employee rating</p>
                 </div>
             </div>
 
@@ -323,11 +415,8 @@ const getTimeProgress = (goal) => {
                 <div class="relative z-10 mt-1.5">
                     <div class="flex items-end gap-2 mb-0.5">
                          <span class="text-2xl font-black text-white">{{ stats.total_goals }}</span>
-                         <span class="text-[10px] font-bold text-red-200 bg-red-400/20 border border-red-400/30 px-1.5 py-0.5 rounded flex items-center gap-0.5 mb-1">
-                            <i class="pi pi-arrow-down text-[8px]"></i> 2.1%
-                        </span>
                     </div>
-                    <p class="text-[10px] text-orange-100 font-bold">vs. last period</p>
+                    <p class="text-[10px] text-orange-100 font-bold">{{ stats.pending_appraisals }} pending appraisals</p>
                 </div>
             </div>
 
@@ -344,11 +433,8 @@ const getTimeProgress = (goal) => {
                 <div class="relative z-10 mt-1.5">
                     <div class="flex items-end gap-2 mb-0.5">
                          <span class="text-2xl font-black text-white">{{ stats.completed_goals }}</span>
-                         <span class="text-[10px] font-bold text-emerald-200 bg-emerald-400/20 border border-emerald-400/30 px-1.5 py-0.5 rounded flex items-center gap-0.5 mb-1">
-                            <i class="pi pi-arrow-up text-[8px]"></i> 4.4%
-                        </span>
                     </div>
-                    <p class="text-[10px] text-teal-100 font-bold">vs. last period</p>
+                    <p class="text-[10px] text-teal-100 font-bold">{{ stats.approved_appraisals }} approved</p>
                 </div>
             </div>
         </div>
@@ -372,6 +458,22 @@ const getTimeProgress = (goal) => {
                 <div class="w-full h-72">
                      <VueApexCharts width="100%" height="100%" :options="chartOptions" :series="series" />
                 </div>
+                <!-- Pinned chart detail card -->
+                <div v-if="selectedChartPoint && selectedChartPoint.chart === 'performance'"
+                     class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between animate-fade-in">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <i class="pi pi-chart-line text-blue-600 text-sm"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-blue-900">{{ selectedChartPoint.day }}: {{ selectedChartPoint.label }}</p>
+                            <p class="text-xs text-blue-600">{{ selectedChartPoint.detail }}</p>
+                        </div>
+                    </div>
+                    <button @click="selectedChartPoint = null" class="text-blue-400 hover:text-blue-600 p-1">
+                        <i class="pi pi-times text-xs"></i>
+                    </button>
+                </div>
             </div>
 
             <!-- Side Widgets Column -->
@@ -385,19 +487,59 @@ const getTimeProgress = (goal) => {
                     <div class="h-40 flex items-center justify-center -ml-2">
                         <VueApexCharts width="100%" height="100%" :options="barChartOptions" :series="barSeries" />
                     </div>
+                    <!-- Pinned activity detail -->
+                    <div v-if="selectedChartPoint && selectedChartPoint.chart === 'activity'"
+                         class="mt-2 p-2.5 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between animate-fade-in">
+                        <div class="flex items-center gap-2">
+                            <i class="pi pi-chart-bar text-blue-600 text-xs"></i>
+                            <div>
+                                <p class="text-xs font-bold text-blue-900">{{ selectedChartPoint.day }}: {{ selectedChartPoint.label }}</p>
+                            </div>
+                        </div>
+                        <button @click="selectedChartPoint = null" class="text-blue-400 hover:text-blue-600 p-1">
+                            <i class="pi pi-times text-[10px]"></i>
+                        </button>
+                    </div>
                 </div>
 
-                <!-- Repeat Customer (Completion Rate) Widget -->
+                <!-- Completion Rate Widget -->
                 <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
                      <div class="flex justify-between items-center mb-1">
                         <h3 class="text-gray-900 font-black text-xs">Completion Rate</h3>
-                        <i class="pi pi-ellipsis-h text-gray-400 cursor-pointer hover:text-gray-600 text-xs"></i>
+                        <span class="text-[10px] text-gray-400 cursor-pointer">Click chart for details</span>
                     </div>
-                     <div class="h-40 flex items-center justify-center relative">
+                     <div class="h-40 flex items-center justify-center relative cursor-pointer" @click="toggleRadialDetail">
                          <VueApexCharts width="100%" height="100%" :options="radialOptions" :series="radialSeries" />
-                         <div class="absolute bottom-2 text-center">
+                         <div v-if="!showRadialDetail" class="absolute bottom-2 text-center">
                              <p class="text-[9px] text-gray-500 font-bold">On track for 80% target</p>
                          </div>
+                    </div>
+                    <!-- Expanded detail on click -->
+                    <div v-if="showRadialDetail" class="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl animate-fade-in">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-emerald-800">Completion Breakdown</span>
+                            <button @click.stop="showRadialDetail = false" class="text-emerald-400 hover:text-emerald-600">
+                                <i class="pi pi-times text-[10px]"></i>
+                            </button>
+                        </div>
+                        <div class="space-y-1.5 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Completion Rate</span>
+                                <span class="font-bold text-emerald-700">{{ stats.completion_rate }}%</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Completed Goals</span>
+                                <span class="font-bold text-gray-900">{{ stats.completed_goals }} / {{ stats.total_goals }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Pending</span>
+                                <span class="font-bold text-orange-600">{{ stats.total_goals - stats.completed_goals }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Approved Appraisals</span>
+                                <span class="font-bold text-blue-600">{{ stats.approved_appraisals }}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -470,11 +612,11 @@ const getTimeProgress = (goal) => {
             <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                 <div class="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
                     <h3 class="text-gray-900 font-black text-xs">Employee Leaderboard</h3>
-                    <router-link to="/pms/review" class="text-xs font-bold text-blue-600 hover:text-blue-700">View All</router-link>
+                    <router-link to="/pms/leaderboard" class="text-xs font-bold text-blue-600 hover:text-blue-700">View All</router-link>
                 </div>
                 
                 <div class="p-4 space-y-4">
-                    <div v-for="(emp, index) in topEmployees" :key="emp.id" class="flex items-center gap-4 p-2 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group">
+                    <div v-for="(emp, index) in topEmployees" :key="emp.id" @click="openDashEmployeeModal(emp)" class="flex items-center gap-4 p-2 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group">
                         <div class="relative">
                             <div :class="['w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs', emp.color]">
                                 {{ emp.avatar }}
@@ -496,22 +638,82 @@ const getTimeProgress = (goal) => {
                 </div>
                 
                 <div class="p-4 border-t border-gray-100 bg-gray-50/50">
-                    <button class="w-full py-2 text-center text-xs font-bold transition-colors flex items-center justify-center gap-2">
-                        <span class = "text-white">See complete ranking</span>
-                        <i class="pi pi-arrow-right text-[10px] text-white"></i>
-                    </button>
+                    <router-link to="/pms/leaderboard" class="w-full py-2 text-center text-xs font-bold transition-colors flex items-center justify-center gap-2 hover:opacity-80">
+                        <span class="text-indigo-600">See complete ranking</span>
+                        <i class="pi pi-arrow-right text-[10px] text-indigo-600"></i>
+                    </router-link>
                 </div>
             </div>
 
+        </div>
+
+        <!-- Employee Goals Modal (Dashboard) -->
+        <div v-if="showEmployeeModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeDashModal">
+            <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="closeDashModal"></div>
+            <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden z-10" style="animation: scale-in 0.2s ease-out;">
+                <div class="p-5 border-b border-gray-100 flex items-center gap-4"
+                     style="background: linear-gradient(135deg, #6b21a8 0%, #312e81 100%) !important;">
+                    <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-white">
+                        {{ selectedDashEmployee?.name?.substring(0, 1).toUpperCase() }}
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="text-white font-black text-sm">{{ selectedDashEmployee?.name }}</h3>
+                        <p class="text-purple-200 text-xs">{{ selectedDashEmployee?.role }}</p>
+                    </div>
+                    <div class="text-center text-white mr-2">
+                        <p class="text-lg font-black">{{ selectedDashEmployee?.rating }}</p>
+                        <p class="text-[10px] text-purple-200">Rating</p>
+                    </div>
+                    <button @click="closeDashModal" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white">
+                        <i class="pi pi-times text-sm"></i>
+                    </button>
+                </div>
+                <div class="p-5 overflow-y-auto" style="max-height: calc(80vh - 90px);">
+                    <h4 class="text-xs font-black text-gray-900 mb-3">Goals Details</h4>
+                    <div v-if="!selectedDashEmployee?.goals?.length" class="py-6 text-center text-gray-400 text-sm">
+                        No goal details available.
+                    </div>
+                    <div v-else class="space-y-3">
+                        <div v-for="goal in selectedDashEmployee.goals" :key="goal.id"
+                            class="border border-gray-100 rounded-xl p-3 hover:border-indigo-200 transition-all">
+                            <div class="flex items-start justify-between gap-2 mb-1.5">
+                                <p class="text-sm font-bold text-gray-900 flex-1">{{ goal.title }}</p>
+                                <span :class="['text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap', getStatusPill(goal.status)]">
+                                    {{ goal.status?.replace(/_/g, ' ') }}
+                                </span>
+                            </div>
+                            <div class="flex items-center gap-3 text-xs text-gray-500">
+                                <span v-if="goal.rating" class="flex items-center gap-1">
+                                    <i class="pi pi-star-fill text-yellow-400 text-[10px]"></i> {{ goal.rating }}/5
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <i class="pi pi-chart-bar text-[10px]"></i> {{ goal.actual || 0 }}/{{ goal.target }}
+                                </span>
+                                <span v-if="goal.category" class="flex items-center gap-1">
+                                    <i class="pi pi-tag text-[10px]"></i> {{ goal.category }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-gray-100 text-center">
+                        <router-link to="/pms/leaderboard" @click="closeDashModal" class="text-xs font-bold text-indigo-600 hover:text-indigo-700">
+                            View full leaderboard <i class="pi pi-arrow-right text-[10px] ml-1"></i>
+                        </router-link>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </template>
 
 <style scoped>
-/* Custom font inter import if not global */
-/* @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap'); */
-
-/* .font-inter {
-    font-family: 'Inter', sans-serif;
-} */
+@keyframes scale-in {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.2s ease-out; }
 </style>
