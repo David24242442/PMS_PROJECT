@@ -17,7 +17,7 @@ const goals = ref([]);
 const selectedGoal = ref(null);
 const viewMode = ref('list'); // 'list' or 'review'
 const currentStep = ref(1);
-const totalSteps = 4;
+const totalSteps = 5;
 
 // Helpers from GoalsView
 const parseList = (data) => {
@@ -76,12 +76,100 @@ const completedCount = computed(() => goals.value.filter(g => g.status === 'comp
 const inProgressCount = computed(() => goals.value.filter(g => g.status === 'in_progress').length);
 const pendingCount = computed(() => goals.value.filter(g => g.status !== 'submitted' && g.status !== 'completed').length);
 
-const managerAverageScore = computed(() => {
-    if (!selectedGoal.value || !selectedGoal.value.appraisal_data || !selectedGoal.value.appraisal_data.competencies) return 0;
-    const comps = selectedGoal.value.appraisal_data.competencies;
-    const total = comps.reduce((sum, c) => sum + (parseFloat(c.managerRating) || 0), 0);
-    return comps.length > 0 ? (total / comps.length).toFixed(1) : 0;
+// Standard 5 Performance Key Competencies (20% Weight Each)
+const defaultCompetencyList = [
+    {
+        id: 1,
+        title: 'Performance & Teamwork',
+        weight: 20,
+        selfRating: 0,
+        managerRating: 0,
+        descriptions: [
+            'a) Overall performance - based on feedback from Line or Operations Managers',
+            'b) Teamwork, People issues - how it has been managed, number of queries tracked as compared to last year and compared to your peers.'
+        ],
+        descriptionText: 'a) Overall performance - based on feedback from Line or Operations Managers\nb) Teamwork, People issues - how it has been managed, number of queries tracked as compared to last year and compared to your peers.'
+    },
+    {
+        id: 2,
+        title: 'Customer Service / Relationship Building',
+        weight: 20,
+        selfRating: 0,
+        managerRating: 0,
+        descriptions: [
+            'a) Number of super saver cards sold vs number of invoices made without the use of super saver card on the invoices',
+            "b) Google scores – Improvement over last year's Shop Google or overall Melcom Google score."
+        ],
+        descriptionText: "a) Number of super saver cards sold vs number of invoices made without the use of super saver card on the invoices\nb) Google scores – Improvement over last year's Shop Google or overall Melcom Google score."
+    },
+    {
+        id: 3,
+        title: 'Execution / Sales Results Driven',
+        weight: 20,
+        selfRating: 0,
+        managerRating: 0,
+        descriptions: [
+            'a) Business Driven Metric (Set by Department with Management input)',
+            'b) Loss to company % (Factors and calculations must be provided), where application and relevant'
+        ],
+        descriptionText: 'a) Business Driven Metric (Set by Department with Management input)\nb) Loss to company % (Factors and calculations must be provided), where application and relevant'
+    },
+    {
+        id: 4,
+        title: 'Compliance & Quality Standards',
+        weight: 20,
+        selfRating: 0,
+        managerRating: 0,
+        descriptions: [
+            'a) Adherence to company policies, SOPs, safety, and regulatory compliance',
+            'b) % implementation of Wooqer checklist and shop/department standards'
+        ],
+        descriptionText: 'a) Adherence to company policies, SOPs, safety, and regulatory compliance\nb) % implementation of Wooqer checklist and shop/department standards'
+    },
+    {
+        id: 5,
+        title: 'Continuous Improvement in workflows/processes',
+        weight: 20,
+        selfRating: 0,
+        managerRating: 0,
+        descriptions: [
+            'a) Culture of adaptability and innovation among staff, such as inventory management, employee training',
+            'b) Adaptability / Flexibility and operational problem solving'
+        ],
+        descriptionText: 'a) Culture of adaptability and innovation among staff, such as inventory management, employee training\nb) Adaptability / Flexibility and operational problem solving'
+    }
+];
+
+const reviewTotalWeight = computed(() => {
+    if (!selectedGoal.value?.appraisal_data?.competencies) return 100;
+    return selectedGoal.value.appraisal_data.competencies.reduce((sum, c) => sum + (parseFloat(c.weight) || 0), 0);
 });
+
+const managerOverallScore = computed(() => {
+    if (!selectedGoal.value?.appraisal_data?.competencies) return '0.00';
+    const comps = selectedGoal.value.appraisal_data.competencies;
+    const total = comps.reduce((sum, c) => {
+        const rating = parseFloat(c.managerRating) || 0;
+        const weight = parseFloat(c.weight) || 20;
+        return sum + ((rating * weight) / 100);
+    }, 0);
+    return total.toFixed(2);
+});
+
+const managerOverallPercentage = computed(() => {
+    const score = parseFloat(managerOverallScore.value) || 0;
+    const pct = (score / 5) * 100;
+    return pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1);
+});
+
+const managerAverageScore = computed(() => managerOverallScore.value);
+
+const getReviewWeightedScore = (comp) => {
+    const rating = parseFloat(comp.managerRating) || 0;
+    const weight = parseFloat(comp.weight) || 20;
+    return ((rating * weight) / 100).toFixed(2);
+};
+
 const calculateAverageRating = (goal) => {
     if (!goal) return 0;
     const data = parseSmart(goal.appraisal_data);
@@ -109,18 +197,89 @@ const fetchGoals = async () => {
 };
 
 const startReview = (goal) => {
-    // Standardize structure for template safety
+    const parsedData = goal.appraisal_data ? (typeof goal.appraisal_data === 'string' ? JSON.parse(goal.appraisal_data) : goal.appraisal_data) : {};
+    
+    // Standardize & normalize competencies to 5 items with full descriptions & weights
+    let normalizedCompetencies = [];
+    if (parsedData.competencies && parsedData.competencies.length > 0) {
+        const rawComps = parsedData.competencies;
+        if (rawComps.length === 4) {
+            normalizedCompetencies = [
+                {
+                    ...defaultCompetencyList[0],
+                    title: rawComps[0]?.title || defaultCompetencyList[0].title,
+                    descriptions: rawComps[0]?.descriptions || defaultCompetencyList[0].descriptions,
+                    descriptionText: rawComps[0]?.descriptions ? (Array.isArray(rawComps[0].descriptions) ? rawComps[0].descriptions.join('\n') : rawComps[0].descriptions) : defaultCompetencyList[0].descriptionText,
+                    selfRating: rawComps[0]?.selfRating || 0,
+                    managerRating: rawComps[0]?.managerRating || 0,
+                    weight: Number(rawComps[0]?.weight) || 20
+                },
+                {
+                    ...defaultCompetencyList[1],
+                    title: rawComps[1]?.title || defaultCompetencyList[1].title,
+                    descriptions: rawComps[1]?.descriptions || defaultCompetencyList[1].descriptions,
+                    descriptionText: rawComps[1]?.descriptions ? (Array.isArray(rawComps[1].descriptions) ? rawComps[1].descriptions.join('\n') : rawComps[1].descriptions) : defaultCompetencyList[1].descriptionText,
+                    selfRating: rawComps[1]?.selfRating || 0,
+                    managerRating: rawComps[1]?.managerRating || 0,
+                    weight: Number(rawComps[1]?.weight) || 20
+                },
+                {
+                    ...defaultCompetencyList[2],
+                    title: rawComps[2]?.title || defaultCompetencyList[2].title,
+                    descriptions: rawComps[2]?.descriptions || defaultCompetencyList[2].descriptions,
+                    descriptionText: rawComps[2]?.descriptions ? (Array.isArray(rawComps[2].descriptions) ? rawComps[2].descriptions.join('\n') : rawComps[2].descriptions) : defaultCompetencyList[2].descriptionText,
+                    selfRating: rawComps[2]?.selfRating || 0,
+                    managerRating: rawComps[2]?.managerRating || 0,
+                    weight: Number(rawComps[2]?.weight) || 20
+                },
+                {
+                    ...defaultCompetencyList[3], // Compliance & Quality Standards
+                    weight: 20
+                },
+                {
+                    ...defaultCompetencyList[4], // Continuous Improvement
+                    title: rawComps[3]?.title || defaultCompetencyList[4].title,
+                    descriptions: rawComps[3]?.descriptions || defaultCompetencyList[4].descriptions,
+                    descriptionText: rawComps[3]?.descriptions ? (Array.isArray(rawComps[3].descriptions) ? rawComps[3].descriptions.join('\n') : rawComps[3].descriptions) : defaultCompetencyList[4].descriptionText,
+                    selfRating: rawComps[3]?.selfRating || 0,
+                    managerRating: rawComps[3]?.managerRating || 0,
+                    weight: Number(rawComps[3]?.weight) || 20
+                }
+            ];
+        } else {
+            normalizedCompetencies = defaultCompetencyList.map((def, idx) => {
+                let match = rawComps[idx];
+                if (idx === 3 && match?.title && match.title.toLowerCase().includes('continuous') && rawComps[4]?.title?.toLowerCase().includes('continuous')) {
+                    match = null; // Revert index 3 to Compliance
+                }
+                return {
+                    ...def,
+                    title: match?.title || def.title,
+                    descriptions: match?.descriptions || (match?.descriptionText ? (Array.isArray(match.descriptionText) ? match.descriptionText : match.descriptionText.split('\n')) : def.descriptions),
+                    descriptionText: match?.descriptionText || (match?.descriptions ? (Array.isArray(match.descriptions) ? match.descriptions.join('\n') : match.descriptions) : def.descriptionText),
+                    selfRating: match?.selfRating || 0,
+                    managerRating: match?.managerRating || 0,
+                    weight: match?.weight !== undefined ? Number(match.weight) : def.weight
+                };
+            });
+        }
+    } else {
+        normalizedCompetencies = JSON.parse(JSON.stringify(defaultCompetencyList));
+    }
+
     selectedGoal.value = {
         ...goal,
-        appraisal_data: goal.appraisal_data ? (typeof goal.appraisal_data === 'string' ? JSON.parse(goal.appraisal_data) : goal.appraisal_data) : {
-            competencies: [
-                { id: 1, title: 'Performance', weight: 20, selfRating: 0, managerRating: 0 },
-                { id: 2, title: 'Customer Service / Relationship Building', weight: 30, selfRating: 0, managerRating: 0 },
-                { id: 3, title: 'Execution / Sales Results Driven', weight: 30, selfRating: 0, managerRating: 0 },
-                { id: 4, title: 'Continuous Improvement in workflows/processes', weight: 20, selfRating: 0, managerRating: 0 }
-            ],
-            comments: '', impressedMost: '', impressedLeast: '', performanceRating: 0, rating_comments: {1: '', 2: '', 3: '', 4: '', 5: ''},
-            candidate_signature_name: '', manager_signature_name: '', signature_date: new Date().toISOString().split('T')[0]
+        appraisal_data: {
+            ...parsedData,
+            competencies: normalizedCompetencies,
+            comments: parsedData.comments || '',
+            impressedMost: parsedData.impressedMost || '',
+            impressedLeast: parsedData.impressedLeast || '',
+            performanceRating: parsedData.performanceRating || 0,
+            rating_comments: parsedData.rating_comments || {1: '', 2: '', 3: '', 4: '', 5: ''},
+            candidate_signature_name: parsedData.candidate_signature_name || '',
+            manager_signature_name: parsedData.manager_signature_name || loguser.name || '',
+            signature_date: parsedData.signature_date || new Date().toISOString().split('T')[0]
         }
     };
 
@@ -185,10 +344,21 @@ const removeSummaryRow = (section, index) => {
 const updateReview = async () => {
     saving.value = true;
     try {
+        const appData = selectedGoal.value.appraisal_data || {};
+        const authData = appData.authorization || {};
+        const managerSig = appData.manager_signature_name || authData.line_manager_signature || authData.line_manager_name || (loguser.name || '');
+
         const payload = {
             ...selectedGoal.value,
             status: 'review_completed',
-            overall_rating: managerAverageScore.value
+            overall_rating: managerOverallScore.value,
+            appraisal_data: {
+                ...appData,
+                manager_signature_name: managerSig,
+                overallPerformanceRating: managerOverallScore.value,
+                overallPercentage: managerOverallPercentage.value,
+                manager_rating: managerOverallScore.value
+            }
         };
         const response = await axios.patch('pms/goals/' + selectedGoal.value.id, payload);
         if (response.data.status === 'success') {
@@ -411,31 +581,38 @@ const downloadFile = async (url, filename) => {
                             <p class="text-indigo-200 text-[10px] font-black mt-1 uppercase opacity-80">
                                 <template v-if="currentStep === 1">Step 1: Goal Definition</template>
                                 <template v-else-if="currentStep === 2">Step 2: Quarterly Progress Matrix</template>
-                                <template v-else>Step 3: Signature Authorization</template>
+                                <template v-else-if="currentStep === 3">Step 3: Performance Key Competencies</template>
+                                <template v-else-if="currentStep === 4">Step 4: Executive Summary / End-Of-Year Review</template>
+                                <template v-else-if="currentStep === 5">Step 5: Authorization &amp; Sign-Off (Final Approval)</template>
                             </p>
                         </div>
                     </div>
 
-                    <!-- Stepper Widget -->
-                    <div class="flex items-center gap-1 bg-white/10 p-1 rounded-xl border border-white/10">
-                        <div class="flex items-center gap-2 px-4 py-2 rounded-lg transition-all" :class="currentStep === 1 ? 'bg-white text-[#1A237E]' : 'text-white/60'">
-                            <span class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs bg-[#1A237E] text-white">1</span>
+                    <!-- Stepper Widget (5 Clickable Steps) -->
+                    <div class="flex items-center gap-1 bg-white/10 p-1 rounded-xl border border-white/10 overflow-x-auto">
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer" :class="currentStep === 1 ? 'bg-white text-[#1A237E]' : 'text-white/60 hover:text-white'" @click="currentStep = 1">
+                            <span class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] bg-[#1A237E] text-white">1</span>
                             <span class="text-xs font-bold uppercase hidden sm:inline">Definition</span>
                         </div>
-                        <div class="w-6 h-[2px] bg-white/10"></div>
-                        <div class="flex items-center gap-2 px-4 py-2 rounded-lg transition-all" :class="currentStep === 2 ? 'bg-white text-[#1A237E]' : 'text-white/60'">
-                            <span class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs bg-[#1A237E] text-white">2</span>
+                        <div class="w-3 h-[2px] bg-white/10"></div>
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer" :class="currentStep === 2 ? 'bg-white text-[#1A237E]' : 'text-white/60 hover:text-white'" @click="currentStep = 2">
+                            <span class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] bg-[#1A237E] text-white">2</span>
                             <span class="text-xs font-bold uppercase hidden sm:inline">Tracking</span>
                         </div>
-                        <div class="w-6 h-[2px] bg-white/10"></div>
-                        <div class="flex items-center gap-2 px-4 py-2 rounded-lg transition-all" :class="currentStep === 3 ? 'bg-white text-[#1A237E]' : 'text-white/60'">
-                            <span class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs bg-[#1A237E] text-white">3</span>
+                        <div class="w-3 h-[2px] bg-white/10"></div>
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer" :class="currentStep === 3 ? 'bg-white text-[#1A237E]' : 'text-white/60 hover:text-white'" @click="currentStep = 3">
+                            <span class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] bg-[#1A237E] text-white">3</span>
                             <span class="text-xs font-bold uppercase hidden sm:inline">Appraisal</span>
                         </div>
-                        <div class="w-6 h-[2px] bg-white/10"></div>
-                        <div class="flex items-center gap-2 px-4 py-2 rounded-lg transition-all" :class="currentStep === 4 ? 'bg-white text-[#1A237E]' : 'text-white/60'">
-                            <span class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs bg-[#1A237E] text-white">4</span>
-                            <span class="text-xs font-bold uppercase hidden sm:inline">Executive Summary</span>
+                        <div class="w-3 h-[2px] bg-white/10"></div>
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer" :class="currentStep === 4 ? 'bg-white text-[#1A237E]' : 'text-white/60 hover:text-white'" @click="currentStep = 4">
+                            <span class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] bg-[#1A237E] text-white">4</span>
+                            <span class="text-xs font-bold uppercase hidden sm:inline">Summary</span>
+                        </div>
+                        <div class="w-3 h-[2px] bg-white/10"></div>
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer" :class="currentStep === 5 ? 'bg-white text-[#1A237E]' : 'text-white/60 hover:text-white'" @click="currentStep = 5">
+                            <span class="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] bg-[#1A237E] text-white">5</span>
+                            <span class="text-xs font-bold uppercase hidden sm:inline">Authorization</span>
                         </div>
                     </div>
                 </div>
@@ -613,47 +790,97 @@ const downloadFile = async (url, filename) => {
                     </div>
                 </div>
 
-                <!-- STEP 3: EDTIABLE APPRAISAL -->
+                <!-- STEP 3: EDTIABLE APPRAISAL (PERFORMANCE KEY COMPETENCIES) -->
                 <div v-else-if="currentStep === 3" class="space-y-6">
-                    <div class="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                        <div class="flex items-center justify-between mb-4 border-b pb-3 border-slate-200/60">
-                            <h4 class="font-black text-slate-800 text-sm tracking-tight flex items-center gap-2">
-                                <i class="pi pi-star text-indigo-600 text-xs"></i> Competency Audit Assessment
-                            </h4>
-                            <div class="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100">
-                                <span class="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Average Manager Rating</span>
-                                <span class="text-base font-black text-indigo-900">{{ managerAverageScore }} / 5</span>
+                    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                        <div class="px-5 py-4 border-b border-gray-100 bg-gray-50/60 flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h4 class="font-black text-slate-800 text-sm md:text-base flex items-center gap-2">
+                                    <i class="pi pi-chart-bar text-indigo-600"></i> Performance Key Competencies
+                                </h4>
+                                <p class="text-gray-400 text-[9px] uppercase tracking-normal font-bold">Annual performance evaluation scale (5 Key Areas &bull; Manager Review)</p>
                             </div>
-                        </div>
-                        
-                        <div class="space-y-4">
-                            <div v-for="(comp, cIdx) in selectedGoal.appraisal_data.competencies" :key="cIdx" class="bg-white p-5 rounded-xl border border-slate-200/60 shadow-sm">
-                                <div class="flex flex-col md:flex-row justify-between gap-4">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-3">
-                                            <span class="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 font-extrabold text-xs flex items-center justify-center">{{ cIdx + 1 }}</span>
-                                            <span class="text-sm font-black text-slate-800">{{ comp.title }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="flex gap-4 items-center">
-                                        <div>
-                                            <span class="text-[9px] font-bold text-slate-400 uppercase">Self Score</span>
-                                            <div class="text-sm font-black text-slate-800 text-center">{{ comp.selfRating || '-' }}</div>
-                                        </div>
-                                        <div class="flex flex-col">
-                                            <span class="text-[9px] font-black text-indigo-600 uppercase">Manager Score</span>
-                                            <select v-model.number="comp.managerRating" 
-                                                class="w-20 px-3 py-1.5 rounded-lg border border-indigo-200 text-sm font-black text-indigo-900 focus:ring-indigo-500 bg-indigo-50/50 text-center cursor-pointer">
-                                                <option :value="1">1</option>
-                                                <option :value="2">2</option>
-                                                <option :value="3">3</option>
-                                                <option :value="4">4</option>
-                                                <option :value="5">5</option>
-                                            </select>
-                                        </div>
-                                    </div>
+                            <div class="flex items-center gap-3">
+                                <div class="flex items-center gap-1.5 text-xs font-bold">
+                                    <span class="text-gray-400 text-[10px] uppercase">Total Weight:</span>
+                                    <span class="px-2.5 py-0.5 rounded-lg border text-xs font-black text-emerald-700 bg-emerald-50 border-emerald-300 flex items-center gap-1 shadow-2xs">
+                                        <i class="pi pi-check text-[10px]"></i>
+                                        {{ reviewTotalWeight }}%
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2 bg-teal-50/80 px-3.5 py-1.5 rounded-xl border border-teal-200 shadow-2xs">
+                                    <span class="text-[9px] font-black text-teal-800 uppercase tracking-wider">Overall Manager Score:</span>
+                                    <span class="text-base font-black text-teal-700">{{ managerOverallScore }}</span>
+                                    <span class="text-[10px] font-bold text-teal-400">/ 5.00</span>
+                                    <span class="text-xs font-black text-teal-800 bg-white border border-teal-200 px-2 py-0.5 rounded-lg shadow-2xs">
+                                        ({{ managerOverallPercentage }}%)
+                                    </span>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full border-collapse">
+                                <thead>
+                                    <tr class="bg-gray-50/80 border-b border-gray-100">
+                                        <th class="px-3 py-2.5 text-left text-[9px] font-black text-gray-400 uppercase tracking-normal w-10">#</th>
+                                        <th class="px-3 py-2.5 text-left text-[9px] font-black text-gray-400 uppercase tracking-normal">Competency &amp; Specific Criteria</th>
+                                        <th class="px-3 py-2.5 text-center text-[9px] font-black text-gray-400 uppercase tracking-normal w-24">Weight (%)</th>
+                                        <th class="px-3 py-2.5 text-center text-[9px] font-black text-indigo-600 uppercase tracking-normal w-28 bg-indigo-50/40">Self Rating</th>
+                                        <th class="px-3 py-2.5 text-center text-[9px] font-black text-teal-600 uppercase tracking-normal w-28 bg-teal-50/40">Manager Rating</th>
+                                        <th class="px-3 py-2.5 text-center text-[9px] font-black text-gray-400 uppercase tracking-normal w-24">W. Score</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <tr v-for="(comp, index) in selectedGoal.appraisal_data.competencies" :key="comp.id || index" class="hover:bg-indigo-50/10 transition-colors">
+                                        <td class="px-3 py-3 font-black text-gray-300 text-xs align-top pt-4">0{{ index + 1 }}</td>
+                                        <td class="px-3 py-2.5">
+                                            <div class="font-bold text-gray-800 text-xs md:text-sm mb-1 tracking-tight">{{ comp.title }}</div>
+                                            <div v-if="comp.descriptions && comp.descriptions.length" class="space-y-0.5">
+                                                <p v-for="(desc, dIdx) in comp.descriptions" :key="dIdx" class="text-[11px] text-gray-500 leading-snug font-medium">{{ desc }}</p>
+                                            </div>
+                                            <p v-else-if="comp.descriptionText" class="text-[11px] text-gray-500 leading-snug font-medium whitespace-pre-line">{{ comp.descriptionText }}</p>
+                                        </td>
+                                        <td class="px-3 py-2.5 text-center align-middle">
+                                            <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-black text-gray-700 bg-slate-100 border border-slate-200 shadow-2xs">
+                                                {{ comp.weight || 20 }}%
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-2.5 bg-indigo-50/30 text-center align-middle">
+                                            <div class="inline-flex items-center justify-center w-12 py-1 rounded-lg font-black text-xs text-indigo-700 bg-white border border-indigo-100 shadow-2xs">
+                                                {{ comp.selfRating && comp.selfRating > 0 ? comp.selfRating : '—' }}
+                                            </div>
+                                        </td>
+                                        <td class="px-3 py-2.5 bg-teal-50/30 align-middle">
+                                            <div class="flex items-center justify-center">
+                                                <select v-model.number="comp.managerRating" 
+                                                    :disabled="selectedGoal.display_status === 'review_completed'"
+                                                    class="review-manager-select shadow-2xs">
+                                                    <option :value="0">—</option>
+                                                    <option v-for="n in 5" :key="n" :value="n">{{ n }}</option>
+                                                </select>
+                                            </div>
+                                        </td>
+                                        <td class="px-3 py-2.5 text-center font-black text-teal-700 text-sm align-middle">{{ getReviewWeightedScore(comp) }}</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot class="bg-gray-50/90 border-t border-gray-100">
+                                    <tr>
+                                        <td colspan="2" class="px-4 py-3 font-black text-gray-500 tracking-normal text-[11px]">ANNUAL PERFORMANCE SUMMARY</td>
+                                        <td class="px-3 py-3 text-center font-black text-xs text-gray-700">{{ reviewTotalWeight }}%</td>
+                                        <td colspan="2" class="px-3 py-3 text-center font-black text-gray-400 uppercase tracking-wider text-[9px]">OVERALL MANAGER SCORE</td>
+                                        <td class="px-3 py-3 text-center">
+                                            <div class="flex items-center justify-center gap-1.5">
+                                                <span class="font-black text-teal-700 text-xl">{{ managerOverallScore }}</span>
+                                                <span class="text-xs font-bold text-teal-300 ml-0.5">/ 5.00</span>
+                                                <span class="text-[11px] font-black text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded-md">
+                                                    ({{ managerOverallPercentage }}%)
+                                                </span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
                         </div>
                     </div>
 
@@ -710,11 +937,18 @@ const downloadFile = async (url, filename) => {
                                     <textarea v-model="item.target" :disabled="selectedGoal.display_status === 'review_completed'" rows="2" class="w-full bg-white border border-gray-200 rounded-xl py-2 px-3 text-sm font-medium text-slate-700 focus:border-red-400 focus:ring-red-100 outline-none resize-none transition-all" placeholder="What the target was..."></textarea>
                                 </div>
                             </div>
-                            <button v-if="selectedGoal.status !== 'completed'" @click="removeSummaryRow('A', index)" class="w-8 h-8 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-all mt-6">
-                                <i class="pi pi-trash text-xs"></i>
+                            <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                                @click="removeSummaryRow('A', index)" 
+                                type="button"
+                                class="w-9 h-9 rounded-xl flex items-center justify-center text-red-400 hover:text-white hover:bg-red-500 bg-red-50 border border-red-100 transition-all shadow-2xs mt-6 shrink-0 cursor-pointer" 
+                                title="Remove item">
+                                <i class="pi pi-trash text-sm"></i>
                             </button>
                         </div>
-                        <button v-if="selectedGoal.status !== 'completed'" @click="addSummaryRow('A')" class="flex items-center gap-2 py-2.5 px-4 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 hover:shadow-sm transition-all text-xs font-black uppercase mt-1">
+                        <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                            @click="addSummaryRow('A')" 
+                            type="button"
+                            class="flex items-center gap-2 py-2.5 px-4 bg-red-50 text-red-700 border border-red-200 rounded-xl hover:bg-red-100 hover:shadow-xs transition-all text-xs font-black uppercase mt-1 cursor-pointer">
                             <i class="pi pi-plus text-[10px]"></i> Add Item
                         </button>
                     </div>
@@ -730,11 +964,18 @@ const downloadFile = async (url, filename) => {
                         <div v-for="(item, index) in selectedGoal.appraisal_data.review_summary.B" :key="'B'+index" class="flex gap-3 items-center">
                             <div class="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center font-extrabold text-xs shrink-0">{{ index + 1 }}</div>
                             <textarea v-model="selectedGoal.appraisal_data.review_summary.B[index]" :disabled="selectedGoal.display_status === 'review_completed'" rows="2" class="flex-1 bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-teal-400 focus:ring-teal-100 outline-none resize-none transition-all" placeholder="Enter details..."></textarea>
-                            <button v-if="selectedGoal.status !== 'completed'" @click="removeSummaryRow('B', index)" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all">
-                                <i class="pi pi-trash text-xs"></i>
+                            <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                                @click="removeSummaryRow('B', index)" 
+                                type="button"
+                                class="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-red-500 bg-slate-50 border border-slate-200 transition-all shadow-2xs shrink-0 cursor-pointer" 
+                                title="Remove item">
+                                <i class="pi pi-trash text-sm"></i>
                             </button>
                         </div>
-                        <button v-if="selectedGoal.status !== 'completed'" @click="addSummaryRow('B')" class="flex items-center gap-2 py-2 px-4 bg-teal-50 text-teal-600 rounded-xl hover:bg-teal-100 transition-all text-xs font-black uppercase mt-1">
+                        <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                            @click="addSummaryRow('B')" 
+                            type="button"
+                            class="flex items-center gap-2 py-2 px-4 bg-teal-50 text-teal-700 border border-teal-200 rounded-xl hover:bg-teal-100 hover:shadow-xs transition-all text-xs font-black uppercase mt-1 cursor-pointer">
                             <i class="pi pi-plus text-[10px]"></i> Add Item
                         </button>
                     </div>
@@ -750,11 +991,18 @@ const downloadFile = async (url, filename) => {
                         <div v-for="(item, index) in selectedGoal.appraisal_data.review_summary.C" :key="'C'+index" class="flex gap-3 items-center">
                             <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-extrabold text-xs shrink-0">{{ index + 1 }}</div>
                             <textarea v-model="selectedGoal.appraisal_data.review_summary.C[index]" :disabled="selectedGoal.display_status === 'review_completed'" rows="2" class="flex-1 bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-purple-400 focus:ring-purple-100 outline-none resize-none transition-all" placeholder="Enter business alignment notes..."></textarea>
-                            <button v-if="selectedGoal.status !== 'completed'" @click="removeSummaryRow('C', index)" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all">
-                                <i class="pi pi-trash text-xs"></i>
+                            <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                                @click="removeSummaryRow('C', index)" 
+                                type="button"
+                                class="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-red-500 bg-slate-50 border border-slate-200 transition-all shadow-2xs shrink-0 cursor-pointer" 
+                                title="Remove item">
+                                <i class="pi pi-trash text-sm"></i>
                             </button>
                         </div>
-                        <button v-if="selectedGoal.status !== 'completed'" @click="addSummaryRow('C')" class="flex items-center gap-2 py-2 px-4 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all text-xs font-black uppercase mt-1">
+                        <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                            @click="addSummaryRow('C')" 
+                            type="button"
+                            class="flex items-center gap-2 py-2 px-4 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl hover:bg-purple-100 hover:shadow-xs transition-all text-xs font-black uppercase mt-1 cursor-pointer">
                             <i class="pi pi-plus text-[10px]"></i> Add Item
                         </button>
                     </div>
@@ -770,11 +1018,18 @@ const downloadFile = async (url, filename) => {
                         <div v-for="(item, index) in selectedGoal.appraisal_data.review_summary.D" :key="'D'+index" class="flex gap-3 items-center">
                             <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-extrabold text-xs shrink-0">{{ index + 1 }}</div>
                             <textarea v-model="selectedGoal.appraisal_data.review_summary.D[index]" :disabled="selectedGoal.display_status === 'review_completed'" rows="2" class="flex-1 bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-amber-400 focus:ring-amber-100 outline-none resize-none transition-all" placeholder="Enter improvement notes..."></textarea>
-                            <button v-if="selectedGoal.status !== 'completed'" @click="removeSummaryRow('D', index)" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all">
-                                <i class="pi pi-trash text-xs"></i>
+                            <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                                @click="removeSummaryRow('D', index)" 
+                                type="button"
+                                class="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-red-500 bg-slate-50 border border-slate-200 transition-all shadow-2xs shrink-0 cursor-pointer" 
+                                title="Remove item">
+                                <i class="pi pi-trash text-sm"></i>
                             </button>
                         </div>
-                        <button @click="addSummaryRow('D')" class="flex items-center gap-2 py-2 px-4 bg-amber-50 text-amber-600 rounded-xl hover:bg-amber-100 transition-all text-xs font-black uppercase mt-1">
+                        <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                            @click="addSummaryRow('D')" 
+                            type="button"
+                            class="flex items-center gap-2 py-2 px-4 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl hover:bg-amber-100 hover:shadow-xs transition-all text-xs font-black uppercase mt-1 cursor-pointer">
                             <i class="pi pi-plus text-[10px]"></i> Add Item
                         </button>
                     </div>
@@ -790,20 +1045,27 @@ const downloadFile = async (url, filename) => {
                         <div v-for="(item, index) in selectedGoal.appraisal_data.review_summary.E" :key="'E'+index" class="flex gap-3 items-center">
                             <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-extrabold text-xs shrink-0">{{ index + 1 }}</div>
                             <textarea v-model="selectedGoal.appraisal_data.review_summary.E[index]" :disabled="selectedGoal.display_status === 'review_completed'" rows="2" class="flex-1 bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-emerald-400 focus:ring-emerald-100 outline-none resize-none transition-all" placeholder="Enter final evaluator notes..."></textarea>
-                            <button v-if="selectedGoal.status !== 'completed'" @click="removeSummaryRow('E', index)" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all">
-                                <i class="pi pi-trash text-xs"></i>
+                            <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                                @click="removeSummaryRow('E', index)" 
+                                type="button"
+                                class="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-red-500 bg-slate-50 border border-slate-200 transition-all shadow-2xs shrink-0 cursor-pointer" 
+                                title="Remove item">
+                                <i class="pi pi-trash text-sm"></i>
                             </button>
                         </div>
-                        <button v-if="selectedGoal.status !== 'completed'" @click="addSummaryRow('E')" class="flex items-center gap-2 py-2 px-4 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all text-xs font-black uppercase mt-1">
+                        <button v-if="selectedGoal.display_status !== 'review_completed'" 
+                            @click="addSummaryRow('E')" 
+                            type="button"
+                            class="flex items-center gap-2 py-2 px-4 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl hover:bg-emerald-100 hover:shadow-xs transition-all text-xs font-black uppercase mt-1 cursor-pointer">
                             <i class="pi pi-plus text-[10px]"></i> Add Item
                         </button>
                     </div>
                 </div>
+            </div>
 
-                <!-- ═══════════════════════════════════════════════════════ -->
-                <!-- AUTHORIZATION SIGN-OFF SECTION                        -->
-                <!-- ═══════════════════════════════════════════════════════ -->
-                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-2">
+            <!-- STEP 5: AUTHORIZATION & SIGN-OFF (MANAGEMENT ENDORSEMENT & FINAL APPROVAL) -->
+            <div v-else-if="currentStep === 5" class="space-y-6">
+                <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div class="bg-[#1A237E] px-6 py-4 border-b border-[#0D1559] flex items-center gap-3">
                         <div class="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center border border-white/10">
                             <i class="pi pi-verified text-white text-sm"></i>
@@ -933,7 +1195,6 @@ const downloadFile = async (url, filename) => {
 
                     </div>
                 </div>
-
             </div>
             </div>
 
@@ -949,7 +1210,9 @@ const downloadFile = async (url, filename) => {
                     <button v-if="currentStep < totalSteps" @click="nextStep" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl text-xs uppercase shadow-lg shadow-indigo-300 transition-all">
                         NEXT STEP
                     </button>
-                    <button v-if="currentStep === totalSteps && selectedGoal.display_status !== 'review_completed'" @click="updateReview" :disabled="saving || !selectedGoal.appraisal_data.manager_signature_name" 
+                    <button v-if="currentStep === totalSteps && selectedGoal.display_status !== 'review_completed'" 
+                        @click="updateReview" 
+                        :disabled="saving || (!selectedGoal.appraisal_data.manager_signature_name && !selectedGoal.appraisal_data.authorization?.line_manager_signature && !selectedGoal.appraisal_data.authorization?.line_manager_name)" 
                         class="px-8 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black rounded-2xl text-xs uppercase shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 active:scale-95">
                         <i v-if="saving" class="pi pi-spin pi-spinner"></i>
                         <i v-else class="pi pi-check-circle"></i>
@@ -962,5 +1225,60 @@ const downloadFile = async (url, filename) => {
 </template>
 
 <style scoped>
-/* Minimal scoped styles - everything else uses Tailwind + prof-* classes */
+/* Clean Manager Rating Select Dropdown - No background patterns or chevrons */
+.review-manager-select {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    background: #f0fdfa !important;
+    background-image: none !important;
+    border: 1.5px solid #5eead4 !important;
+    border-radius: 8px !important;
+    color: #0f766e !important;
+    font-weight: 800 !important;
+    font-size: 13px !important;
+    width: 68px !important;
+    height: 30px !important;
+    text-align: center !important;
+    text-align-last: center !important;
+    padding: 0 !important;
+    outline: none !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+}
+
+.review-manager-select:hover:not(:disabled) {
+    background: #ffffff !important;
+    background-image: none !important;
+    border-color: #14b8a6 !important;
+}
+
+.review-manager-select:focus:not(:disabled) {
+    background: #ffffff !important;
+    background-image: none !important;
+    border-color: #0d9488 !important;
+    box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2) !important;
+}
+
+.review-manager-select:disabled {
+    background: #f1f5f9 !important;
+    background-image: none !important;
+    border-color: #cbd5e1 !important;
+    color: #64748b !important;
+    cursor: not-allowed !important;
+}
+
+/* Dark Mode */
+:global(body.dark-mode .review-manager-select) {
+    background: #134e4a !important;
+    background-image: none !important;
+    border-color: #0d9488 !important;
+    color: #ccfbf1 !important;
+}
+:global(body.dark-mode .review-manager-select:disabled) {
+    background: #0f172a !important;
+    background-image: none !important;
+    border-color: #334155 !important;
+    color: #64748b !important;
+}
 </style>

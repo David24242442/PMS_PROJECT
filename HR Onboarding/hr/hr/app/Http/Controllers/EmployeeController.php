@@ -34,8 +34,14 @@ class EmployeeController extends Controller
      */
     public function index(Request $request)
     {
-        // return $request;
-        $employees = Employee::with(['creator'])->orderBy('id', 'DESC');
+        // Try central DB first, fallback to local
+        try {
+            \Illuminate\Support\Facades\DB::connection('central')->getPdo();
+            $employees = Employee::on('central')->with(['creator'])->orderBy('id', 'DESC');
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Central DB Connection Error: ' . $e->getMessage());
+            $employees = Employee::with(['creator'])->orderBy('id', 'DESC');
+        }
 
         if($request->employeeinfo){
             $search = $request->employeeinfo;
@@ -1317,7 +1323,16 @@ class EmployeeController extends Controller
      */
     public function show(Request $request)
     {
-        $emp = Employee::with(
+        // Try central DB first, fallback to local
+        try {
+            \Illuminate\Support\Facades\DB::connection('central')->getPdo();
+            $empQuery = Employee::on('central');
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Central DB Connection Error: ' . $e->getMessage());
+            $empQuery = Employee::query();
+        }
+
+        $emp = $empQuery->with(
             ['educations.files', 'workexps', 'refs', 'childrens', 'wives', 'soccontact', 'econs.files', 'guarantos.files', 'presentjob', 'banksocial.lasthistory.creator:id,name', 'profilepicture', 'ghcard', 'signature', 'guarsignature', 'appletters','appointmentletters','probationconfs','cv','petratrust','nhis','birthcert','pclearanceform','ssnit','unioninfo','workpermit','driverlicense.files', 'nominee.files','lasthistory.creator:id,name',
             'irrguarantor' => function ($query) {
                 $query->with(['witnesses', 'signature', 'idcard','profilepicture', 'guarforms', 'lasthistory.creator:id,name']);   // Each child's picture

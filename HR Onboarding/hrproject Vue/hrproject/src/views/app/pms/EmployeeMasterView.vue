@@ -18,6 +18,8 @@ const loading = ref(true);
 watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
 
 const saving = ref(false);
+const csvUploading = ref(false);
+const csvResult = ref(null); // { matched_count, unmatched_codes, total_parsed }
 // Modal States
 const showEditModal = ref(false);
 const showCreateModal = ref(false);
@@ -108,6 +110,7 @@ const viewTeam = (manager) => {
 
 // Transition from View -> Edit
 const editTeamFromView = () => {
+    csvResult.value = null;
     form.value = {
         team_members: [...teamMembers.value]
     };
@@ -118,14 +121,15 @@ const editTeamFromView = () => {
 // Open "Manage Team" Modal
 const manageTeam = (manager) => {
     editingManager.value = manager;
-    
+    csvResult.value = null;
+
     // Find current team members from masterEmployees who have this manager as line_manager_id
     const team = masterEmployees.value.filter(emp => emp.line_manager_id === manager.id);
-    
+
     form.value = {
         team_members: team
     };
-    
+
     showEditModal.value = true;
 };
 
@@ -149,6 +153,10 @@ const updateTeam = async () => {
             showAlert('Success', response.data.message, 'success');
             await fetchUsers(); // Refresh the managers list
             await fetchMasterEmployees(); // Refresh the employees list to get new line_manager_ids
+            // Update teamMembers so the "Associated Team Members" view refreshes without page reload
+            if (editingManager.value) {
+                teamMembers.value = masterEmployees.value.filter(emp => emp.line_manager_id === editingManager.value.id);
+            }
             // showEditModal.value = false; // Manual-close enabled
         }
     } catch (error) {
@@ -230,6 +238,58 @@ const searchEmployees = (event) => {
         (emp.name && emp.name.toLowerCase().includes(query)) || 
         (emp.employee_code && emp.employee_code.toLowerCase().includes(query))
     );
+};
+
+// CSV Upload for Bulk Team Assignment
+const handleCsvUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    csvUploading.value = true;
+    csvResult.value = null;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await axios.post('pms/parse-team-csv', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        if (response.data.status === 'success') {
+            const parsed = response.data.data;
+            // Merge parsed employees with existing selection (avoid duplicates)
+            const existingCodes = new Set(form.value.team_members.map(m => m.employee_code));
+            const newMembers = parsed.filter(emp => !existingCodes.has(emp.employee_code));
+            form.value.team_members = [...form.value.team_members, ...newMembers];
+
+            csvResult.value = {
+                matched_count: response.data.matched_count,
+                unmatched_codes: response.data.unmatched_codes || [],
+                total_parsed: response.data.total_parsed,
+                new_added: newMembers.length
+            };
+
+            showAlert('Success', `${newMembers.length} employees added from CSV (${response.data.matched_count} matched, ${(response.data.unmatched_codes || []).length} unmatched).`, 'success');
+        }
+    } catch (error) {
+        console.error('CSV upload error:', error);
+        showAlert('Error', 'Failed to parse CSV file. Please check the format.', 'error');
+    } finally {
+        csvUploading.value = false;
+        // Reset file input so the same file can be re-uploaded
+        event.target.value = '';
+    }
+};
+
+const downloadCsvTemplate = () => {
+    const csvContent = 'employee_code\nEX001\nEX002\nEX003';
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'team_assignment_template.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
 };
 
 onMounted(() => {
@@ -460,6 +520,52 @@ onMounted(() => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- CSV Bulk Upload Section -->
+                    <div class="p-5 bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200/60 shadow-sm">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-amber-600 border border-amber-200">
+                                    <i class="pi pi-file-import text-sm font-bold"></i>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black text-gray-800 uppercase tracking-widest">Bulk Upload via CSV</p>
+                                    <p class="text-[9px] text-gray-500 font-bold">Upload a CSV with employee codes to assign in bulk</p>
+                                </div>
+                            </div>
+                            <button @click="downloadCsvTemplate" class="flex items-center gap-1.5 text-[9px] font-black text-amber-700 bg-white hover:bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-200 transition-all uppercase tracking-widest">
+                                <i class="pi pi-download text-[10px]"></i> Download Format
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-dashed border-amber-300 rounded-xl cursor-pointer hover:bg-amber-50 hover:border-amber-400 transition-all group">
+                                <i class="pi pi-upload text-amber-500 group-hover:text-amber-600 text-sm"></i>
+                                <span class="text-xs font-bold text-gray-600 group-hover:text-gray-800">
+                                    {{ csvUploading ? 'Processing...' : 'Choose CSV File' }}
+                                </span>
+                                <input type="file" accept=".csv,.txt" @change="handleCsvUpload" class="hidden" :disabled="csvUploading">
+                            </label>
+                        </div>
+                        <!-- CSV Result Feedback -->
+                        <div v-if="csvResult" class="mt-3 p-3 bg-white rounded-xl border border-gray-100 text-xs">
+                            <div class="flex items-center gap-4">
+                                <span class="font-black text-emerald-600"><i class="pi pi-check-circle mr-1"></i>{{ csvResult.new_added }} added</span>
+                                <span class="font-bold text-gray-500">{{ csvResult.matched_count }}/{{ csvResult.total_parsed }} matched</span>
+                                <span v-if="csvResult.unmatched_codes.length" class="font-bold text-red-500">
+                                    <i class="pi pi-exclamation-circle mr-1"></i>{{ csvResult.unmatched_codes.length }} not found
+                                </span>
+                            </div>
+                            <div v-if="csvResult.unmatched_codes.length" class="mt-2 text-[10px] text-red-400 font-mono">
+                                Unmatched: {{ csvResult.unmatched_codes.join(', ') }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 my-1">
+                        <div class="flex-1 border-t border-gray-200"></div>
+                        <span class="text-[9px] font-black text-gray-400 uppercase tracking-widest">or select individually</span>
+                        <div class="flex-1 border-t border-gray-200"></div>
                     </div>
 
                     <div class="grid grid-cols-1 gap-6">

@@ -63,6 +63,26 @@ return [
             ]) : [],
         ],
 
+        'central' => [
+            'driver' => 'mysql',
+            'url' => env('DATABASE_URL'),
+            'host' => env('DB_CENTRAL_HOST', '192.168.0.17'),
+            'port' => env('DB_CENTRAL_PORT', '3306'),
+            'database' => env('DB_CENTRAL_DATABASE', 'hrproject'),
+            'username' => env('DB_CENTRAL_USERNAME', 'misaccount'),
+            'password' => env('DB_CENTRAL_PASSWORD', 'Inv@Central@2024'),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => 'InnoDB ROW_FORMAT=DYNAMIC',
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DATABASE_URL'),

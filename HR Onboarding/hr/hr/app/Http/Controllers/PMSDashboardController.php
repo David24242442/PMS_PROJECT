@@ -11,20 +11,40 @@ use Carbon\Carbon;
 
 class PMSDashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $totalEmployees = User::count();
-        $totalGoals = Goal::count();
-        $completedGoals = Goal::where('status', 'completed')->count();
-        $pendingAppraisals = Goal::where('status', 'submitted')->count();
-        $approvedAppraisals = Goal::where('status', 'approved')->count();
+        $user = $request->user();
+        $isAdmin = $user && $user->admin;
 
-        // Completion Rate: % of users who have at least one goal
-        $usersWithGoals = Goal::distinct('user_id')->count('user_id');
-        $completionRate = $totalEmployees > 0 ? round(($usersWithGoals / $totalEmployees) * 100, 1) : 0;
+        if ($isAdmin) {
+            // Admin sees global stats
+            try {
+                $totalEmployees = \App\Models\CentralEmployee::count();
+            } catch (\Exception $e) {
+                \Log::error('Central DB Fallback Error: ' . $e->getMessage());
+                $totalEmployees = User::count();
+            }
+            $goalQuery = Goal::query();
+        } else {
+            // Regular user sees only their own data
+            $totalEmployees = 1;
+            $goalQuery = Goal::where('user_id', $user->id);
+        }
+
+        $totalGoals = (clone $goalQuery)->count();
+        $completedGoals = (clone $goalQuery)->where('status', 'completed')->count();
+        $pendingAppraisals = (clone $goalQuery)->where('status', 'submitted')->count();
+        $approvedAppraisals = (clone $goalQuery)->where('status', 'approved')->count();
+
+        if ($isAdmin) {
+            $usersWithGoals = Goal::distinct('user_id')->count('user_id');
+            $completionRate = $totalEmployees > 0 ? round(($usersWithGoals / $totalEmployees) * 100, 1) : 0;
+        } else {
+            $completionRate = $totalGoals > 0 ? round(($completedGoals / $totalGoals) * 100, 1) : 0;
+        }
 
         // Recent Goals
-        $recentGoals = Goal::with('user')
+        $recentGoals = (clone $goalQuery)->with('user')
             ->orderBy('updated_at', 'desc')
             ->take(5)
             ->get();
@@ -35,11 +55,11 @@ class PMSDashboardController extends Controller
         for ($i = 6; $i >= 0; $i--) {
             $date = Carbon::now()->subDays($i);
             $days[] = $date->format('D');
-            $counts[] = Goal::whereDate('created_at', $date->toDateString())->count();
+            $counts[] = (clone $goalQuery)->whereDate('created_at', $date->toDateString())->count();
         }
 
-        // Top Employees — real ratings from appraisal_data
-        $topEmployees = $this->buildLeaderboard(5);
+        // Top Employees — admin sees leaderboard, regular user sees own summary
+        $topEmployees = $isAdmin ? $this->buildLeaderboard(5) : $this->buildLeaderboard(5, $user->id);
 
         return response()->json([
             'status' => 'success',
@@ -77,9 +97,13 @@ class PMSDashboardController extends Controller
      * Shared helper to build leaderboard from all goals.
      * Groups by candidate_name (trimmed, lowercased) to avoid duplicates.
      */
-    private function buildLeaderboard($limit = null)
+    private function buildLeaderboard($limit = null, $userId = null)
     {
-        $goals = Goal::with('user')->get();
+        $query = Goal::with('user');
+        if ($userId) {
+            $query->where('user_id', $userId);
+        }
+        $goals = $query->get();
 
         $employeeMap = [];
 

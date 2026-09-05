@@ -280,5 +280,65 @@ class APIUserController extends Controller
         ]);
     }
 
-    
+    /**
+     * Delete / Remove a user from the system
+     */
+    public function destroy(Request $request, $id = null)
+    {
+        $userId = $id ?: $request->input('id') ?: $request->route('id');
+
+        if (!$userId) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User ID is required for deletion'
+            ], 400);
+        }
+
+        // Security check: Only administrators can delete users
+        $currentUser = Auth::user();
+        $isUserAdmin = $currentUser && ($currentUser->admin || (isset($currentUser->position_id) && $currentUser->position_id == 4) || (isset($currentUser->role) && strtolower($currentUser->role) === 'admin'));
+        if (!$isUserAdmin) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthorized: Only users with administrator privileges can delete user accounts.'
+            ], 403);
+        }
+
+        // Prevent self-deletion if logged in
+        if (Auth::check() && Auth::id() == $userId) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You cannot delete your own active account while logged in.'
+            ], 400);
+        }
+
+        try {
+            $user = User::find($userId);
+            if (!$user) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User not found'
+                ], 404);
+            }
+
+            // Revoke active sanctum tokens if any
+            if (method_exists($user, 'tokens')) {
+                $user->tokens()->delete();
+            }
+
+            $userName = $user->name ?: $user->username;
+            $user->delete();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "User {$userName} was successfully removed from the system."
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to delete user: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
+

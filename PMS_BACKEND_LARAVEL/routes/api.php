@@ -25,6 +25,8 @@ Route::middleware('auth:sanctum')->group(function(){
     Route::post('fetchemployee', [APIUserController::class,'fetchEmployee']);
     Route::post('adduser', [APIUserController::class,'store']);
     Route::post('updateuser', [APIUserController::class,'updateuser']);
+    Route::post('deleteuser', [APIUserController::class,'destroy']);
+    Route::delete('users/{id}', [APIUserController::class,'destroy']);
     Route::post('updatepassword', [APIUserController::class,'updatepassword']);
 
     // --- PMS Routes ---

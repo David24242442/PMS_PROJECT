@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PMS Project — Complete Technical Documentation</title>
+    <meta name="description" content="Performance Management System documentation for Melcom Group — architecture, workflows, API reference, and deployment guide.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* ═══════════════ RESET & BASE ═══════════════ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #111119;
+            --bg-card: #16161f;
+            --bg-card-hover: #1c1c28;
+            --border: #2a2a3a;
+            --border-accent: #3d3d5c;
+            --text-primary: #e8e8f0;
+            --text-secondary: #9898b0;
+            --text-muted: #6a6a82;
+            --accent-1: #6366f1;
+            --accent-2: #8b5cf6;
+            --accent-3: #a855f7;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --rose: #f43f5e;
+            --cyan: #06b6d4;
+            --sky: #38bdf8;
+            --gradient-1: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+            --gradient-2: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+            --gradient-3: linear-gradient(135deg, #f59e0b 0%, #f43f5e 100%);
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
+            --shadow-md: 0 4px 24px rgba(0,0,0,0.4);
+            --shadow-lg: 0 8px 48px rgba(0,0,0,0.5);
+            --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.15);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --radius-xs: 6px;
+        }
+
+        html { scroll-behavior: smooth; font-size: 16px; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        /* ═══════════════ SCROLLBAR ═══════════════ */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent-1); }
+
+        /* ═══════════════ ANIMATIONS ═══════════════ */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideInLeft {
+            from { opacity: 0; transform: translateX(-40px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.6; }
+            80%, 100% { transform: scale(2.2); opacity: 0; }
+        }
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes drawLine {
+            from { stroke-dashoffset: 1000; }
+            to { stroke-dashoffset: 0; }
+        }
+
+        .reveal { opacity: 0; transform: translateY(40px); transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-left { opacity: 0; transform: translateX(-40px); transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+        .reveal-left.visible { opacity: 1; transform: translateX(0); }
+
+        /* ═══════════════ SIDEBAR NAV ═══════════════ */
+        .sidebar {
+            position: fixed;
+            left: 0; top: 0;
+            width: 280px; height: 100vh;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            z-index: 100;
+            display: flex; flex-direction: column;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .sidebar-header {
+            padding: 28px 24px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        .sidebar-brand {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .sidebar-logo {
+            width: 42px; height: 42px;
+            background: var(--gradient-1);
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 900; font-size: 18px; color: #fff;
+            letter-spacing: -1px;
+            box-shadow: 0 4px 16px rgba(99,102,241,0.4);
+        }
+        .sidebar-title { font-size: 17px; font-weight: 700; color: var(--text-primary); }
+        .sidebar-subtitle { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px; }
+
+        .sidebar-nav { flex: 1; overflow-y: auto; padding: 16px 12px; }
+        .sidebar-nav::-webkit-scrollbar { width: 4px; }
+        .nav-section-label {
+            font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+            color: var(--text-muted); padding: 16px 12px 8px;
+            font-weight: 600;
+        }
+        .nav-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 12px; border-radius: 10px;
+            color: var(--text-secondary); font-size: 13px; font-weight: 500;
+            text-decoration: none; cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 2px;
+        }
+        .nav-item:hover { background: var(--bg-card); color: var(--text-primary); }
+        .nav-item.active { background: rgba(99,102,241,0.12); color: var(--accent-1); }
+        .nav-item .nav-icon {
+            width: 20px; height: 20px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+        }
+        .nav-item .nav-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--text-muted); flex-shrink: 0;
+            transition: background 0.2s;
+        }
+        .nav-item.active .nav-dot { background: var(--accent-1); box-shadow: 0 0 8px rgba(99,102,241,0.5); }
+
+        .sidebar-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border);
+            font-size: 11px; color: var(--text-muted);
+        }
+
+        /* Mobile toggle */
+        .sidebar-toggle {
+            display: none;
+            position: fixed; top: 16px; left: 16px; z-index: 200;
+            width: 44px; height: 44px; border-radius: 12px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-primary); font-size: 20px; cursor: pointer;
+            align-items: center; justify-content: center;
+        }
+        .sidebar-overlay { display: none; }
+
+        @media (max-width: 1024px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .sidebar-toggle { display: flex; }
+            .sidebar-overlay.active {
+                display: block; position: fixed; inset: 0;
+                background: rgba(0,0,0,0.6); z-index: 90;
+            }
+            .main-content { margin-left: 0 !important; }
+        }
+
+        /* ═══════════════ MAIN CONTENT ═══════════════ */
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+        }
+
+        /* ═══════════════ HERO ═══════════════ */
+        .hero {
+            position: relative;
+            padding: 100px 60px 80px;
+            overflow: hidden;
+            min-height: 500px;
+            display: flex; align-items: center;
+        }
+        .hero::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: 
+                radial-gradient(ellipse 80% 60% at 20% 40%, rgba(99,102,241,0.12) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 50% at 80% 60%, rgba(139,92,246,0.08) 0%, transparent 60%),
+                radial-gradient(ellipse 40% 40% at 50% 20%, rgba(16,185,129,0.06) 0%, transparent 60%);
+        }
+        .hero-grid {
+            position: absolute; inset: 0; opacity: 0.04;
+            background-image: 
+                linear-gradient(var(--text-muted) 1px, transparent 1px),
+                linear-gradient(90deg, var(--text-muted) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+        .hero-content { position: relative; z-index: 2; max-width: 800px; }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 16px; border-radius: 100px;
+            background: rgba(99,102,241,0.1);
+            border: 1px solid rgba(99,102,241,0.2);
+            font-size: 12px; font-weight: 600; color: var(--accent-1);
+            text-transform: uppercase; letter-spacing: 1.5px;
+            margin-bottom: 24px;
+            animation: fadeIn 1s ease;
+        }
+        .hero-badge .pulse {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent-1);
+            position: relative;
+        }
+        .hero-badge .pulse::before {
+            content: ''; position: absolute; inset: -4px;
+            border-radius: 50%; border: 2px solid var(--accent-1);
+            animation: pulse-ring 2s infinite;
+        }
+        .hero h1 {
+            font-size: 52px; font-weight: 900; line-height: 1.1;
+            letter-spacing: -2px;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-2) 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: fadeInUp 0.8s ease;
+            margin-bottom: 20px;
+        }
+        .hero p {
+            font-size: 18px; color: var(--text-secondary);
+            line-height: 1.8; max-width: 640px;
+            animation: fadeInUp 0.8s ease 0.2s both;
+        }
+        .hero-stats {
+            display: flex; gap: 40px; margin-top: 40px;
+            animation: fadeInUp 0.8s ease 0.4s both;
+        }
+        .hero-stat-value {
+            font-size: 36px; font-weight: 800; letter-spacing: -1px;
+        }
+        .hero-stat-value.purple { color: var(--accent-2); }
+        .hero-stat-value.emerald { color: var(--emerald); }
+        .hero-stat-value.amber { color: var(--amber); }
+        .hero-stat-value.cyan { color: var(--cyan); }
+        .hero-stat-label {
+            font-size: 12px; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 1px; margin-top: 4px;
+        }
+
+        /* ═══════════════ SECTIONS ═══════════════ */
+        .section {
+            padding: 80px 60px;
+            border-top: 1px solid var(--border);
+            position: relative;
+        }
+        .section-header {
+            margin-bottom: 48px;
+        }
+        .section-label {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 11px; text-transform: uppercase;
+            letter-spacing: 2px; color: var(--accent-1);
+            font-weight: 700; margin-bottom: 12px;
+        }
+        .section-label .label-line {
+            width: 24px; height: 2px; background: var(--accent-1);
+            border-radius: 1px;
+        }
+        .section h2 {
+            font-size: 36px; font-weight: 800; letter-spacing: -1px;
+            line-height: 1.2; margin-bottom: 12px;
+        }
+        .section-desc {
+            font-size: 16px; color: var(--text-secondary);
+            max-width: 600px; line-height: 1.7;
+        }
+
+        /* ═══════════════ CARDS ═══════════════ */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            border-color: var(--border-accent);
+            box-shadow: var(--shadow-glow);
+            transform: translateY(-2px);
+        }
+        .card-glass {
+            background: rgba(22,22,31,0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        /* ═══════════════ GRID LAYOUTS ═══════════════ */
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+
+        @media (max-width: 900px) {
+            .grid-3, .grid-2 { grid-template-columns: 1fr; }
+        }
+
+        /* ═══════════════ ARCHITECTURE DIAGRAM ═══════════════ */
+        .arch-diagram {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 40px;
+            overflow-x: auto;
+        }
+        .arch-diagram svg { width: 100%; max-width: 900px; margin: 0 auto; display: block; }
+
+        /* ═══════════════ TECH STACK CARDS ═══════════════ */
+        .tech-card {
+            display: flex; align-items: flex-start; gap: 16px;
+        }
+        .tech-icon {
+            width: 48px; height: 48px; border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; flex-shrink: 0;
+            box-shadow: var(--shadow-sm);
+        }
+        .tech-icon.laravel { background: linear-gradient(135deg, #ff2d20, #e5342e); }
+        .tech-icon.vue { background: linear-gradient(135deg, #42b883, #35495e); }
+        .tech-icon.hr { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+        .tech-name { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+        .tech-stack-tag {
+            font-size: 11px; color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .tech-desc { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
+
+        /* ═══════════════ TABLES ═══════════════ */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+        }
+        table {
+            width: 100%; border-collapse: collapse;
+            font-size: 13px;
+        }
+        thead { background: var(--bg-card); }
+        th {
+            padding: 14px 18px; text-align: left;
+            font-weight: 600; font-size: 11px;
+            text-transform: uppercase; letter-spacing: 1px;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        tbody tr { transition: background 0.15s; }
+        tbody tr:hover { background: var(--bg-card); }
+        tbody tr:last-child td { border-bottom: none; }
+        .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent-1); }
+
+        /* ═══════════════ CONTROLLER LIST ═══════════════ */
+        .controller-item {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+        .controller-item:hover { background: var(--bg-card); }
+        .controller-item:last-child { border-bottom: none; }
+        .controller-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600; font-size: 14px; color: var(--accent-2);
+        }
+        .controller-desc { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+        .controller-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 10px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.5px; margin-left: 8px;
+        }
+        .badge-large { background: rgba(244,63,94,0.12); color: var(--rose); }
+        .badge-stub { background: rgba(245,158,11,0.12); color: var(--amber); }
+
+        /* ═══════════════ WORKFLOW DIAGRAM ═══════════════ */
+        .workflow-steps {
+            display: flex; align-items: flex-start; gap: 0;
+            overflow-x: auto; padding: 20px 0;
+        }
+        .workflow-step {
+            display: flex; flex-direction: column; align-items: center;
+            min-width: 160px; text-align: center; position: relative;
+        }
+        .workflow-circle {
+            width: 64px; height: 64px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; margin-bottom: 14px;
+            position: relative; z-index: 2;
+            box-shadow: var(--shadow-md);
+        }
+        .workflow-step-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+        .workflow-step-desc { font-size: 12px; color: var(--text-muted); max-width: 140px; }
+        .workflow-arrow {
+            display: flex; align-items: center; padding-top: 20px;
+            color: var(--border-accent); font-size: 24px; min-width: 40px;
+            justify-content: center;
+        }
+
+        /* ═══════════════ STATUS PIPELINE ═══════════════ */
+        .pipeline {
+            display: flex; align-items: center; gap: 0;
+            flex-wrap: wrap;
+        }
+        .pipeline-node {
+            padding: 10px 20px; border-radius: 8px;
+            font-size: 13px; font-weight: 600;
+            white-space: nowrap;
+        }
+        .pipeline-connector {
+            width: 40px; height: 2px; background: var(--border-accent);
+            position: relative;
+        }
+        .pipeline-connector::after {
+            content: '→'; position: absolute; right: -4px; top: -10px;
+            color: var(--border-accent); font-size: 16px;
+        }
+
+        /* ═══════════════ ROLE TABLE ═══════════════ */
+        .role-card {
+            position: relative; overflow: hidden;
+        }
+        .role-card::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+            width: 4px; border-radius: 4px 0 0 4px;
+        }
+        .role-card.role-2::before { background: var(--emerald); }
+        .role-card.role-3::before { background: var(--accent-1); }
+        .role-card.role-4::before { background: var(--amber); }
+        .role-number { font-size: 32px; font-weight: 900; margin-bottom: 4px; }
+        .role-2 .role-number { color: var(--emerald); }
+        .role-3 .role-number { color: var(--accent-1); }
+        .role-4 .role-number { color: var(--amber); }
+        .role-title { font-weight: 700; font-size: 16px; margin-bottom: 8px; }
+        .role-access { font-size: 13px; color: var(--text-secondary); }
+
+        /* ═══════════════ STRENGTHS / WARNINGS ═══════════════ */
+        .obs-item {
+            display: flex; gap: 12px; padding: 14px 0;
+            border-bottom: 1px solid rgba(42,42,58,0.5);
+        }
+        .obs-item:last-child { border-bottom: none; }
+        .obs-icon {
+            width: 28px; height: 28px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; flex-shrink: 0;
+        }
+        .obs-icon.ok { background: rgba(16,185,129,0.12); color: var(--emerald); }
+        .obs-icon.warn { background: rgba(245,158,11,0.12); color: var(--amber); }
+        .obs-text { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+
+        /* ═══════════════ DEPLOY TABLE ═══════════════ */
+        .deploy-card {
+            display: flex; align-items: center; gap: 16px;
+        }
+        .deploy-icon {
+            width: 44px; height: 44px; border-radius: 12px;
+            background: rgba(6,182,212,0.1);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; flex-shrink: 0;
+        }
+
+        /* ═══════════════ TAGS ═══════════════ */
+        .tag {
+            display: inline-block; padding: 3px 10px;
+            border-radius: 6px; font-size: 11px; font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .tag-purple { background: rgba(99,102,241,0.12); color: var(--accent-1); }
+        .tag-green { background: rgba(16,185,129,0.12); color: var(--emerald); }
+        .tag-amber { background: rgba(245,158,11,0.12); color: var(--amber); }
+        .tag-cyan { background: rgba(6,182,212,0.12); color: var(--cyan); }
+        .tag-rose { background: rgba(244,63,94,0.12); color: var(--rose); }
+
+        /* ═══════════════ PRINT BUTTON ═══════════════ */
+        .print-btn {
+            position: fixed; bottom: 24px; right: 24px; z-index: 100;
+            padding: 14px 24px; border-radius: 14px;
+            background: var(--gradient-1); border: none;
+            color: white; font-size: 14px; font-weight: 600;
+            cursor: pointer; font-family: 'Inter', sans-serif;
+            box-shadow: 0 4px 24px rgba(99,102,241,0.4);
+            display: flex; align-items: center; gap: 8px;
+            transition: all 0.3s ease;
+        }
+        .print-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 32px rgba(99,102,241,0.5); }
+
+        /* ═══════════════ RESPONSIVE ═══════════════ */
+        @media (max-width: 768px) {
+            .hero { padding: 80px 24px 60px; min-height: auto; }
+            .hero h1 { font-size: 32px; }
+            .hero-stats { flex-wrap: wrap; gap: 24px; }
+            .section { padding: 48px 24px; }
+            .section h2 { font-size: 28px; }
+            .workflow-steps { flex-wrap: wrap; justify-content: center; }
+        }
+
+        /* ═══════════════ PRINT STYLES ═══════════════ */
+        @media print {
+            .sidebar, .sidebar-toggle, .print-btn, .sidebar-overlay { display: none !important; }
+            .main-content { margin-left: 0 !important; }
+            .hero { min-height: auto; padding: 40px; }
+            .section { padding: 30px 40px; break-inside: avoid; }
+            .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
+            body { background: white; color: #111; }
+            .hero h1 { -webkit-text-fill-color: #111; }
+            * { color-adjust: exact; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+
+        /* ═══════════════ COMPARISON DIFF ═══════════════ */
+        .diff-table td:first-child { font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+        .diff-col-a { background: rgba(99,102,241,0.04); }
+        .diff-col-b { background: rgba(245,158,11,0.04); }
+
+        /* ═══════════════ DOC FILE LIST ═══════════════ */
+        .doc-item {
+            display: flex; align-items: center; gap: 16px;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+        .doc-item:hover { background: var(--bg-card); }
+        .doc-item:last-child { border-bottom: none; }
+        .doc-icon {
+            width: 40px; height: 40px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; flex-shrink: 0;
+        }
+        .doc-icon.md { background: rgba(99,102,241,0.1); }
+        .doc-icon.pptx { background: rgba(244,63,94,0.1); }
+        .doc-icon.sql { background: rgba(16,185,129,0.1); }
+        .doc-name { font-weight: 600; font-size: 14px; }
+        .doc-meta { font-size: 12px; color: var(--text-muted); }
+        .doc-size { margin-left: auto; font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+
+        /* ═══════════════ MODEL RELATIONSHIP CARD ═══════════════ */
+        .model-card { position: relative; }
+        .model-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700; font-size: 16px; color: var(--accent-2);
+            margin-bottom: 8px;
+        }
+        .model-fields { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; font-family: 'JetBrains Mono', monospace; line-height: 1.8; }
+        .model-rels { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+
+        /* Scrolled indicator on sidebar */
+        .sidebar-progress {
+            height: 3px; background: var(--bg-primary);
+            position: relative;
+        }
+        .sidebar-progress-bar {
+            height: 100%; background: var(--gradient-1);
+            width: 0%; transition: width 0.15s;
+            border-radius: 0 2px 2px 0;
+        }
+    </style>
+</head>
+<body>
+
+<!-- SIDEBAR TOGGLE (Mobile) -->
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle navigation">☰</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-brand">
+            <div class="sidebar-logo">PMS</div>
+            <div>
+                <div class="sidebar-title">PMS Docs</div>
+                <div class="sidebar-subtitle">Melcom Group</div>
+            </div>
+        </div>
+    </div>
+    <div class="sidebar-progress">
+        <div class="sidebar-progress-bar" id="progressBar"></div>
+    </div>
+    <div class="sidebar-nav">
+        <div class="nav-section-label">Overview</div>
+        <a class="nav-item active" href="#hero"><span class="nav-dot"></span> Executive Summary</a>
+        <a class="nav-item" href="#architecture"><span class="nav-dot"></span> Architecture</a>
+        <a class="nav-item" href="#codebases"><span class="nav-dot"></span> Three Codebases</a>
+
+        <div class="nav-section-label">Backend</div>
+        <a class="nav-item" href="#backend"><span class="nav-dot"></span> Laravel Deep Dive</a>
+        <a class="nav-item" href="#api-routes"><span class="nav-dot"></span> API Routes</a>
+        <a class="nav-item" href="#controllers"><span class="nav-dot"></span> Controllers</a>
+        <a class="nav-item" href="#models"><span class="nav-dot"></span> Models</a>
+
+        <div class="nav-section-label">Frontend</div>
+        <a class="nav-item" href="#pms-frontend"><span class="nav-dot"></span> PMS Frontend</a>
+        <a class="nav-item" href="#hr-portal"><span class="nav-dot"></span> HR Portal</a>
+        <a class="nav-item" href="#roles"><span class="nav-dot"></span> Roles & Access</a>
+
+        <div class="nav-section-label">Workflows</div>
+        <a class="nav-item" href="#pms-workflow"><span class="nav-dot"></span> PMS Workflow</a>
+        <a class="nav-item" href="#onboarding-workflow"><span class="nav-dot"></span> Onboarding</a>
+
+        <div class="nav-section-label">Operations</div>
+        <a class="nav-item" href="#deployment"><span class="nav-dot"></span> Deployment</a>
+        <a class="nav-item" href="#docs"><span class="nav-dot"></span> Documentation</a>
+        <a class="nav-item" href="#observations"><span class="nav-dot"></span> Observations</a>
+    </div>
+    <div class="sidebar-footer">
+        v1.0 — Generated Aug 2026
+    </div>
+</nav>
+
+<!-- MAIN -->
+<main class="main-content">
+
+    <!-- ═══════════ HERO ═══════════ -->
+    <section class="hero" id="hero">
+        <div class="hero-grid"></div>
+        <div class="hero-content">
+            <div class="hero-badge"><span class="pulse"></span> Full-Stack Enterprise Application</div>
+            <h1>Performance Management System</h1>
+            <p>A comprehensive HR & performance management platform built for the <strong>Melcom Group</strong> — Ghana's largest retail conglomerate. Managing employee lifecycle from onboarding to performance appraisal across the entire organization.</p>
+            <div class="hero-stats">
+                <div>
+                    <div class="hero-stat-value purple">10</div>
+                    <div class="hero-stat-label">Companies</div>
+                </div>
+                <div>
+                    <div class="hero-stat-value emerald">179</div>
+                    <div class="hero-stat-label">Branches</div>
+                </div>
+                <div>
+                    <div class="hero-stat-value amber">16</div>
+                    <div class="hero-stat-label">Regions</div>
+                </div>
+                <div>
+                    <div class="hero-stat-value cyan">27</div>
+                    <div class="hero-stat-label">Models</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ ARCHITECTURE ═══════════ -->
+    <section class="section" id="architecture">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> System Design</div>
+            <h2>Architecture Overview</h2>
+            <p class="section-desc">Three applications deployed on an internal XAMPP server, sharing a single MySQL database.</p>
+        </div>
+        <div class="arch-diagram reveal" style="transition-delay: 0.1s;">
+            <svg viewBox="0 0 900 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- Server box -->
+                <rect x="30" y="20" width="840" height="380" rx="20" fill="#111119" stroke="#2a2a3a" stroke-width="1.5"/>
+                <text x="60" y="55" font-family="Inter" font-size="12" fill="#6a6a82" font-weight="600" letter-spacing="2">INTERNAL SERVER · 192.168.0.20 · XAMPP</text>
+                
+                <!-- PMS Frontend -->
+                <rect x="60" y="80" width="220" height="100" rx="14" fill="#16161f" stroke="#3d3d5c" stroke-width="1"/>
+                <rect x="60" y="80" width="220" height="4" rx="2" fill="url(#grad-vue)"/>
+                <text x="170" y="118" font-family="Inter" font-size="14" fill="#e8e8f0" font-weight="700" text-anchor="middle">/pms/</text>
+                <text x="170" y="138" font-family="Inter" font-size="11" fill="#9898b0" text-anchor="middle">PMS Frontend</text>
+                <text x="170" y="158" font-family="JetBrains Mono" font-size="10" fill="#42b883" text-anchor="middle">Vue 3 + Vite + PrimeVue</text>
+
+                <!-- HR Onboarding -->
+                <rect x="340" y="80" width="220" height="100" rx="14" fill="#16161f" stroke="#3d3d5c" stroke-width="1"/>
+                <rect x="340" y="80" width="220" height="4" rx="2" fill="url(#grad-amber)"/>
+                <text x="450" y="118" font-family="Inter" font-size="14" fill="#e8e8f0" font-weight="700" text-anchor="middle">/hrproject/</text>
+                <text x="450" y="138" font-family="Inter" font-size="11" fill="#9898b0" text-anchor="middle">HR Onboarding Portal</text>
+                <text x="450" y="158" font-family="JetBrains Mono" font-size="10" fill="#42b883" text-anchor="middle">Vue 3 + Vite + PrimeVue</text>
+
+                <!-- Backend API -->
+                <rect x="200" y="230" width="260" height="100" rx="14" fill="#16161f" stroke="#3d3d5c" stroke-width="1"/>
+                <rect x="200" y="230" width="260" height="4" rx="2" fill="url(#grad-red)"/>
+                <text x="330" y="268" font-family="Inter" font-size="14" fill="#e8e8f0" font-weight="700" text-anchor="middle">/pms_backend/</text>
+                <text x="330" y="288" font-family="Inter" font-size="11" fill="#9898b0" text-anchor="middle">Shared Backend API</text>
+                <text x="330" y="308" font-family="JetBrains Mono" font-size="10" fill="#ff2d20" text-anchor="middle">Laravel 8 + Sanctum</text>
+
+                <!-- MySQL -->
+                <rect x="620" y="200" width="200" height="140" rx="14" fill="#16161f" stroke="#3d3d5c" stroke-width="1"/>
+                <rect x="620" y="200" width="200" height="4" rx="2" fill="url(#grad-cyan)"/>
+                <text x="720" y="255" font-family="Inter" font-size="14" fill="#e8e8f0" font-weight="700" text-anchor="middle">MySQL</text>
+                <text x="720" y="278" font-family="JetBrains Mono" font-size="11" fill="#06b6d4" text-anchor="middle">Database: hr</text>
+                <text x="720" y="298" font-family="Inter" font-size="10" fill="#6a6a82" text-anchor="middle">58 migrations · 27 models</text>
+                <text x="720" y="318" font-family="Inter" font-size="10" fill="#6a6a82" text-anchor="middle">55+ tables</text>
+
+                <!-- Arrows -->
+                <line x1="170" y1="180" x2="270" y2="230" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6"/>
+                <line x1="450" y1="180" x2="390" y2="230" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6"/>
+                <line x1="460" y1="280" x2="620" y2="280" stroke="#10b981" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6"/>
+
+                <!-- Arrow labels -->
+                <text x="190" y="210" font-family="JetBrains Mono" font-size="9" fill="#6366f1" transform="rotate(-22 190 210)">Axios + Bearer</text>
+                <text x="400" y="208" font-family="JetBrains Mono" font-size="9" fill="#f59e0b" transform="rotate(22 400 208)">pms_axios</text>
+                <text x="530" y="272" font-family="JetBrains Mono" font-size="9" fill="#10b981">Eloquent</text>
+
+                <!-- Gradients -->
+                <defs>
+                    <linearGradient id="grad-vue" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#42b883"/><stop offset="100%" stop-color="#35495e"/></linearGradient>
+                    <linearGradient id="grad-amber" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#ef4444"/></linearGradient>
+                    <linearGradient id="grad-red" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ff2d20"/><stop offset="100%" stop-color="#e5342e"/></linearGradient>
+                    <linearGradient id="grad-cyan" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#38bdf8"/></linearGradient>
+                </defs>
+            </svg>
+        </div>
+    </section>
+
+    <!-- ═══════════ THREE CODEBASES ═══════════ -->
+    <section class="section" id="codebases">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> Repository</div>
+            <h2>Three Codebases, One Repo</h2>
+        </div>
+        <div class="grid-3">
+            <div class="card reveal" style="transition-delay:0.1s">
+                <div class="tech-card">
+                    <div class="tech-icon laravel">🔧</div>
+                    <div>
+                        <div class="tech-name">Backend API</div>
+                        <div class="tech-stack-tag">PMS_BACKEND_LARAVEL/</div>
+                        <div class="tech-desc">Laravel 8, PHP 7.3+, MySQL, Sanctum</div>
+                        <div style="margin-top:10px">
+                            <span class="tag tag-purple">30 Controllers</span>
+                            <span class="tag tag-green">27 Models</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card reveal" style="transition-delay:0.2s">
+                <div class="tech-card">
+                    <div class="tech-icon vue">⚡</div>
+                    <div>
+                        <div class="tech-name">PMS Frontend</div>
+                        <div class="tech-stack-tag">PMS_FRONTEND_VUE/</div>
+                        <div class="tech-desc">Vue 3.4, Vite 5, PrimeVue 4 (Nora), Tailwind 3</div>
+                        <div style="margin-top:10px">
+                            <span class="tag tag-purple">14 Views</span>
+                            <span class="tag tag-cyan">ApexCharts</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card reveal" style="transition-delay:0.3s">
+                <div class="tech-card">
+                    <div class="tech-icon hr">👥</div>
+                    <div>
+                        <div class="tech-name">HR Onboarding Portal</div>
+                        <div class="tech-stack-tag">HR Onboarding/</div>
+                        <div class="tech-desc">Vue 3.4, Vite 5, PrimeVue 4, Role-based access</div>
+                        <div style="margin-top:10px">
+                            <span class="tag tag-amber">3 Roles</span>
+                            <span class="tag tag-rose">5K+ lines</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ BACKEND DEEP DIVE ═══════════ -->
+    <section class="section" id="backend">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> Backend</div>
+            <h2>Laravel 8 Deep Dive</h2>
+            <p class="section-desc">Token-based authentication via Laravel Sanctum. MySQL database with 58 migrations.</p>
+        </div>
+
+        <div class="grid-auto reveal" style="transition-delay:0.1s; margin-bottom: 40px;">
+            <div class="card">
+                <div style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:12px">Authentication</div>
+                <div style="font-size:14px;color:var(--text-secondary);line-height:1.8">
+                    <strong style="color:var(--accent-1)">Laravel Sanctum</strong> token-based auth<br>
+                    <span class="mono">POST /api/login</span> → validates credentials → returns <span class="mono">plainTextToken</span><br>
+                    All routes protected by <span class="mono">auth:sanctum</span> middleware<br>
+                    Users have <span class="mono">admin</span> boolean for role differentiation
+                </div>
+            </div>
+            <div class="card">
+                <div style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:12px">Database</div>
+                <div style="font-size:14px;color:var(--text-secondary);line-height:1.8">
+                    MySQL <span class="mono">hr</span> on <span class="mono">127.0.0.1:3306</span><br>
+                    <strong>58 migration files</strong> (Aug 2024 – Feb 2026)<br>
+                    Full dump: <span class="mono">hrproject.sql</span> (8.6MB)<br>
+                    CORS: <span class="mono">localhost:5173</span>, <span class="mono">192.168.0.20:5173</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Routes -->
+        <div id="api-routes" class="reveal" style="transition-delay:0.2s; margin-bottom: 40px;">
+            <h3 style="font-size:20px;font-weight:700;margin-bottom:20px">API Routes</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Prefix</th><th>Endpoints</th><th>Controller</th></tr></thead>
+                    <tbody>
+                        <tr><td class="mono">/api/</td><td><span class="mono">login</span></td><td>LoginController</td></tr>
+                        <tr><td class="mono">/api/</td><td><span class="mono">fetchusers, adduser, updateuser, updatepassword</span></td><td>UserController</td></tr>
+                        <tr><td class="mono">/api/pms/</td><td><span class="mono">dashboard, leaderboard</span></td><td>PMSDashboardController</td></tr>
+                        <tr><td class="mono">/api/pms/</td><td><span class="mono">goals</span> (apiResource) + <span class="mono">upload-attachment</span></td><td>GoalController</td></tr>
+                        <tr><td class="mono">/api/pms/</td><td><span class="mono">appraisals, appraisals/all, appraisals/{id}/review</span></td><td>AppraisalController</td></tr>
+                        <tr><td class="mono">/api/pms/</td><td><span class="mono">assessments</span></td><td>AssessmentController</td></tr>
+                        <tr><td class="mono">/api/pms/</td><td><span class="mono">reviews</span></td><td>ReviewController</td></tr>
+                        <tr><td class="mono">/api/pms/</td><td><span class="mono">reports</span> (apiResource)</td><td>HrReportController</td></tr>
+                        <tr><td class="mono">/api/pms/</td><td><span class="mono">drafts</span></td><td>DraftController</td></tr>
+                        <tr><td class="mono">/api/pms/</td><td><span class="mono">employee-master, my-team</span></td><td>EmployeeMasterController</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Controllers -->
+        <div id="controllers" class="reveal" style="transition-delay:0.3s; margin-bottom: 40px;">
+            <h3 style="font-size:20px;font-weight:700;margin-bottom:20px">Controllers <span class="tag tag-purple">30 total</span></h3>
+            <div class="grid-2">
+                <div class="card" style="padding:0; overflow:hidden">
+                    <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:rgba(99,102,241,0.05)">
+                        <span style="font-weight:700;font-size:14px">PMS Module</span> <span class="tag tag-purple">10</span>
+                    </div>
+                    <div class="controller-item"><span class="controller-name">GoalController</span><div class="controller-desc">SMART goal CRUD, file attachments (PDF/DOC/XLS ≤10MB), quarterly tracking</div></div>
+                    <div class="controller-item"><span class="controller-name">AppraisalController</span><div class="controller-desc">Annual appraisal workflow: draft → pending → reviewed → approved/rejected</div></div>
+                    <div class="controller-item"><span class="controller-name">ReviewController</span><div class="controller-desc">Periodic reviews with JSON arrays (goals, initiatives, feedback)</div></div>
+                    <div class="controller-item"><span class="controller-name">AssessmentController</span><div class="controller-desc">Manager evaluations: 5 dimensions rated 1-5</div></div>
+                    <div class="controller-item"><span class="controller-name">DraftController</span><div class="controller-desc">Generic autosave keyed by user_id + type</div></div>
+                    <div class="controller-item"><span class="controller-name">HrReportController</span> <span class="controller-badge badge-stub">STUB</span><div class="controller-desc">Report CRUD (generation logic not yet implemented)</div></div>
+                    <div class="controller-item"><span class="controller-name">PMSDashboardController</span><div class="controller-desc">Aggregate stats: employees, goals, completion rate</div></div>
+                    <div class="controller-item"><span class="controller-name">EmployeeMasterController</span><div class="controller-desc">Employee hierarchy, myTeam returns direct reports</div></div>
+                </div>
+                <div class="card" style="padding:0; overflow:hidden">
+                    <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:rgba(245,158,11,0.05)">
+                        <span style="font-weight:700;font-size:14px">HR Module</span> <span class="tag tag-amber">14+</span>
+                    </div>
+                    <div class="controller-item"><span class="controller-name">EmployeeController</span> <span class="controller-badge badge-large">~1,450 LINES</span><div class="controller-desc">Complete employee lifecycle, complex filtering (AND/OR, 5 operators), 12+ document upload endpoints, CSV export</div></div>
+                    <div class="controller-item"><span class="controller-name">DashboardController</span><div class="controller-desc">HR analytics: gender, company, citizenship, department, age groups</div></div>
+                    <div class="controller-item">
+                        <div class="controller-desc" style="color:var(--text-muted)">
+                            <strong>Supporting controllers:</strong> PresentJobController, EmergencyContactController, SocialContactController, EducationController, WorkExperienceController, ReferenceController, ChildrenController, GuarantorController, WifeController, UnionController, NomineeController, DriverlicenseController, WorkpermitController, BankSocialController, IrrGuaranteeController, IrrGuarWitnessController, HistoryController
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Models -->
+        <div id="models" class="reveal" style="transition-delay:0.2s">
+            <h3 style="font-size:20px;font-weight:700;margin-bottom:20px">Models <span class="tag tag-green">27 Eloquent Models</span></h3>
+            <div class="grid-3">
+                <div class="card model-card">
+                    <div class="model-name">User</div>
+                    <div class="model-fields">name, email, username, admin, position_id, department, line_manager_id, employee_code</div>
+                    <div class="model-rels"><span class="tag tag-cyan">HasApiTokens</span> Sanctum</div>
+                </div>
+                <div class="card model-card">
+                    <div class="model-name">Employee</div>
+                    <div class="model-fields">40+ fields — personal, Ghana Card, address, DOB, company, citizenship</div>
+                    <div class="model-rels"><span class="tag tag-green">hasOne×8</span> <span class="tag tag-purple">hasMany×7</span> <span class="tag tag-amber">Polymorphic</span></div>
+                </div>
+                <div class="card model-card">
+                    <div class="model-name">Goal</div>
+                    <div class="model-fields">title, description, weight, target/actual, rating, smart_criteria (JSON), quarterly_tracking (JSON)</div>
+                    <div class="model-rels"><span class="tag tag-purple">belongsTo</span> User (owner & creator)</div>
+                </div>
+                <div class="card model-card">
+                    <div class="model-name">Appraisal</div>
+                    <div class="model-fields">goals_data (JSON), competencies_data (JSON), self_assessment, signatures</div>
+                    <div class="model-rels"><span class="tag tag-purple">belongsTo</span> User ×3 (employee, reviewer, approver)</div>
+                </div>
+                <div class="card model-card">
+                    <div class="model-name">Review</div>
+                    <div class="model-fields">goal_achievement, initiatives, next_steps, improvements, manager_feedback</div>
+                    <div class="model-rels">All fields stored as <span class="tag tag-cyan">JSON arrays</span></div>
+                </div>
+                <div class="card model-card">
+                    <div class="model-name">Assessment</div>
+                    <div class="model-fields">5 rating dimensions (1-5), checklist (JSON)</div>
+                    <div class="model-rels"><span class="tag tag-purple">belongsTo</span> User (employee & assessor)</div>
+                </div>
+                <div class="card model-card">
+                    <div class="model-name">Department</div>
+                    <div class="model-fields">name, code, is_active, parent_id</div>
+                    <div class="model-rels"><span class="tag tag-amber">Self-referential</span> hierarchy</div>
+                </div>
+                <div class="card model-card">
+                    <div class="model-name">Upload</div>
+                    <div class="model-fields">uploadable_type, uploadable_id, type, file_path</div>
+                    <div class="model-rels"><span class="tag tag-rose">Polymorphic</span> 12+ document types</div>
+                </div>
+                <div class="card model-card">
+                    <div class="model-name">History</div>
+                    <div class="model-fields">histos_type, histos_id, user_id, recordstatus, details</div>
+                    <div class="model-rels"><span class="tag tag-rose">Polymorphic</span> audit trail</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ PMS FRONTEND ═══════════ -->
+    <section class="section" id="pms-frontend">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> Frontend</div>
+            <h2>PMS Frontend — Vue 3</h2>
+            <p class="section-desc">14 views with PrimeVue 4 (Nora), ApexCharts, digital signatures, and PDF export.</p>
+        </div>
+        <div class="table-wrapper reveal" style="transition-delay:0.1s;margin-bottom:40px">
+            <table>
+                <thead><tr><th>Route</th><th>View</th><th>Size</th><th>Description</th></tr></thead>
+                <tbody>
+                    <tr><td class="mono">/</td><td>LoginView</td><td>7KB</td><td>Glassmorphism login with Melcom branding</td></tr>
+                    <tr><td class="mono">/dashboard</td><td>DashboardView</td><td>61KB</td><td>HR analytics: gender, company, citizenship, department charts</td></tr>
+                    <tr><td class="mono">/app/pms/dashboard</td><td>pms/DashboardView</td><td>17KB</td><td>PMS KPIs, trends, leaderboard</td></tr>
+                    <tr><td class="mono">/app/pms/goals</td><td>GoalsView</td><td>54KB</td><td>Multi-step SMART goal creation, quarterly tracking</td></tr>
+                    <tr><td class="mono">/app/pms/appraisal</td><td>AppraisalView</td><td>35KB</td><td>2-step appraisal with weighted competencies</td></tr>
+                    <tr><td class="mono">/app/pms/review</td><td>ReviewView</td><td>23KB</td><td>End-of-year review (5 dynamic sections)</td></tr>
+                    <tr><td class="mono">/app/pms/assessment</td><td>AssessmentView</td><td>35KB</td><td>Manager assessment form</td></tr>
+                    <tr><td class="mono">/onboarding</td><td>OnboardingView</td><td style="color:var(--rose);font-weight:600">163KB</td><td>4-tab employee onboarding (5,000+ lines)</td></tr>
+                    <tr><td class="mono">/employees</td><td>EmployeesView</td><td>31KB</td><td>Paginated employee table with filtering</td></tr>
+                    <tr><td class="mono">/employee/:empid</td><td>EmployeeView</td><td>55KB</td><td>Read-only employee detail</td></tr>
+                    <tr><td class="mono">/app/hr/submissions</td><td>SubmissionsView</td><td>23KB</td><td>HR/IT heads review appraisals</td></tr>
+                    <tr><td class="mono">/app/hr/reports</td><td>ReportsView</td><td>29KB</td><td>Report generation templates</td></tr>
+                    <tr><td class="mono">/users</td><td>UsersManageView</td><td>12KB</td><td>User management (admin)</td></tr>
+                    <tr><td class="mono">/profile</td><td>ProfileView</td><td>6KB</td><td>User profile</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="grid-auto reveal" style="transition-delay:0.2s">
+            <div class="card">
+                <div style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:12px">Auth Flow</div>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:2">
+                    Login stores <span class="mono">pms_user</span> + <span class="mono">pms_user_token</span> in localStorage & Pinia<br>
+                    Axios interceptor injects <span class="mono">Bearer</span> token on every request<br>
+                    401 response → clears store → redirects to <span class="mono">/</span><br>
+                    Route guard checks <span class="mono">pms_user_token</span> in localStorage
+                </div>
+            </div>
+            <div class="card">
+                <div style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:12px">Key Libraries</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+                    <span class="tag tag-green">PrimeVue 4</span>
+                    <span class="tag tag-purple">ApexCharts</span>
+                    <span class="tag tag-cyan">Chart.js</span>
+                    <span class="tag tag-amber">vue3-signature</span>
+                    <span class="tag tag-rose">vue-pdf</span>
+                    <span class="tag tag-purple">SweetAlert2</span>
+                    <span class="tag tag-green">jsPDF</span>
+                    <span class="tag tag-amber">Quill Editor</span>
+                    <span class="tag tag-cyan">Tailwind CSS 3</span>
+                    <span class="tag tag-rose">vue3-toastify</span>
+                </div>
+            </div>
+            <div class="card">
+                <div style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:12px">Static Master Data</div>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:2">
+                    <strong>10</strong> companies · <strong>48</strong> departments · <strong>16</strong> regions<br>
+                    <strong>179</strong> branches · <strong>23</strong> banks · <strong>190+</strong> countries<br>
+                    Genders, marital statuses, contract types, qualification types, ID types, record statuses
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ HR PORTAL ═══════════ -->
+    <section class="section" id="hr-portal">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> HR Portal</div>
+            <h2>HR Onboarding Portal</h2>
+            <p class="section-desc">A unified HR portal combining employee onboarding with PMS features. Uses the same backend API with role-based access control.</p>
+        </div>
+
+        <!-- Roles -->
+        <div class="grid-3 reveal" id="roles" style="transition-delay:0.1s;margin-bottom:40px">
+            <div class="card role-card role-2">
+                <div class="role-number">02</div>
+                <div class="role-title">HR Operations</div>
+                <div class="role-access">Dashboard, Onboarding, Employees, Users, Profile</div>
+            </div>
+            <div class="card role-card role-3">
+                <div class="role-number">03</div>
+                <div class="role-title">PMS User</div>
+                <div class="role-access">PMS Dashboard, Goals, Review, Appraisal, Employee Master</div>
+            </div>
+            <div class="card role-card role-4">
+                <div class="role-number">04</div>
+                <div class="role-title">HR Head</div>
+                <div class="role-access"><strong>Full access</strong> to all HR + PMS routes</div>
+            </div>
+        </div>
+
+        <!-- Comparison -->
+        <h3 class="reveal" style="font-size:20px;font-weight:700;margin-bottom:20px;transition-delay:0.2s">Frontend Comparison</h3>
+        <div class="table-wrapper reveal" style="transition-delay:0.2s">
+            <table class="diff-table">
+                <thead><tr><th>Aspect</th><th class="diff-col-a">PMS Frontend</th><th class="diff-col-b">HR Onboarding Portal</th></tr></thead>
+                <tbody>
+                    <tr><td>Auth Keys</td><td class="diff-col-a mono">pms_user / pms_user_token</td><td class="diff-col-b mono">hrproject_user / hrproject_user_token</td></tr>
+                    <tr><td>Axios Instances</td><td class="diff-col-a">1 (pms_axios.js)</td><td class="diff-col-b">2 (hrproject_axios + pms_axios)</td></tr>
+                    <tr><td>Unique Views</td><td class="diff-col-a">AssessmentView, ReportsView, UploadView</td><td class="diff-col-b">EmployeeMasterView, LeaderboardView</td></tr>
+                    <tr><td>Role System</td><td class="diff-col-a">Department-based (IT/HR HEAD)</td><td class="diff-col-b">3-tier role-based routing</td></tr>
+                    <tr><td>Deploy Path</td><td class="diff-col-a mono">/pms/</td><td class="diff-col-b mono">/hrproject/</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ═══════════ PMS WORKFLOW ═══════════ -->
+    <section class="section" id="pms-workflow">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> Workflows</div>
+            <h2>PMS Workflow</h2>
+            <p class="section-desc">End-to-end performance management cycle from goal setting to HR reporting.</p>
+        </div>
+
+        <div class="workflow-steps reveal" style="transition-delay:0.1s;margin-bottom:48px">
+            <div class="workflow-step">
+                <div class="workflow-circle" style="background:var(--gradient-1);color:#fff">🎯</div>
+                <div class="workflow-step-title">Goal Setting</div>
+                <div class="workflow-step-desc">SMART Goals + Q1-Q4 Tracking</div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+                <div class="workflow-circle" style="background:var(--gradient-2);color:#fff">📝</div>
+                <div class="workflow-step-title">Reviews</div>
+                <div class="workflow-step-desc">End-of-Year 5-Section Review</div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+                <div class="workflow-circle" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff">⚖️</div>
+                <div class="workflow-step-title">Appraisal</div>
+                <div class="workflow-step-desc">4 Weighted Competencies</div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+                <div class="workflow-circle" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff">✅</div>
+                <div class="workflow-step-title">HR Approval</div>
+                <div class="workflow-step-desc">Approve/Reject + Score</div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+                <div class="workflow-circle" style="background:linear-gradient(135deg,#06b6d4,#0284c7);color:#fff">📊</div>
+                <div class="workflow-step-title">Reports</div>
+                <div class="workflow-step-desc">Performance Summary</div>
+            </div>
+        </div>
+
+        <div class="grid-2 reveal" style="transition-delay:0.2s">
+            <div class="card">
+                <h4 style="font-weight:700;margin-bottom:12px;color:var(--accent-1)">🎯 Goal Setting</h4>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:2">
+                    Employee creates SMART goals → title, description, purposes, challenges, category, weight, target<br>
+                    Quarterly milestones (Q1-Q4) with dates, measures, evidence uploads<br>
+                    Status: <span class="mono">not_started → in_progress → completed / on_hold</span>
+                </div>
+            </div>
+            <div class="card">
+                <h4 style="font-weight:700;margin-bottom:12px;color:var(--emerald)">📝 Review</h4>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:2">
+                    5 dynamic sections:<br>
+                    A — Goal Achievement vs Target<br>
+                    B — Additional Initiatives<br>
+                    C — Next Steps<br>
+                    D — Improvements<br>
+                    E — Manager Feedback
+                </div>
+            </div>
+            <div class="card">
+                <h4 style="font-weight:700;margin-bottom:12px;color:var(--amber)">⚖️ Appraisal</h4>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:2">
+                    4 weighted competencies:<br>
+                    Performance <span class="tag tag-purple">20%</span> · Customer Service <span class="tag tag-green">30%</span><br>
+                    Execution <span class="tag tag-amber">30%</span> · Continuous Improvement <span class="tag tag-cyan">20%</span><br>
+                    Formula: <span class="mono">(Rating/5) × Weight</span><br>
+                    Digital signatures · Draft autosave
+                </div>
+            </div>
+            <div class="card">
+                <h4 style="font-weight:700;margin-bottom:12px;color:var(--rose)">Appraisal Status Flow</h4>
+                <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-top:12px">
+                    <span class="pipeline-node" style="background:rgba(100,116,139,0.15);color:#94a3b8">Draft</span>
+                    <span style="color:var(--text-muted);padding:0 8px">→</span>
+                    <span class="pipeline-node" style="background:rgba(245,158,11,0.15);color:var(--amber)">Pending</span>
+                    <span style="color:var(--text-muted);padding:0 8px">→</span>
+                    <span class="pipeline-node" style="background:rgba(99,102,241,0.15);color:var(--accent-1)">Reviewed</span>
+                    <span style="color:var(--text-muted);padding:0 8px">→</span>
+                    <span class="pipeline-node" style="background:rgba(16,185,129,0.15);color:var(--emerald)">Approved</span>
+                    <span style="color:var(--text-muted);padding:0 6px">/</span>
+                    <span class="pipeline-node" style="background:rgba(244,63,94,0.15);color:var(--rose)">Rejected</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ ONBOARDING WORKFLOW ═══════════ -->
+    <section class="section" id="onboarding-workflow">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> HR Workflow</div>
+            <h2>Employee Onboarding</h2>
+            <p class="section-desc">A massive 4-tab wizard with 15+ document uploads and 3 digital signatures.</p>
+        </div>
+
+        <div class="grid-2 reveal" style="transition-delay:0.1s;margin-bottom:40px">
+            <div class="card" style="border-left:3px solid var(--accent-1)">
+                <h4 style="font-weight:700;margin-bottom:12px">Tab 1 — Employee Info</h4>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:2">
+                    4 steps: Personal details, Education, Emergency contacts, Job details<br>
+                    Children, Wives, References, Work experience
+                </div>
+            </div>
+            <div class="card" style="border-left:3px solid var(--emerald)">
+                <h4 style="font-weight:700;margin-bottom:12px">Tab 2 — Bank / Social Security</h4>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:2">
+                    Bank account details · Social security number<br>
+                    SSNIT details · Account type
+                </div>
+            </div>
+            <div class="card" style="border-left:3px solid var(--amber)">
+                <h4 style="font-weight:700;margin-bottom:12px">Tab 3 — Irrevocable Guarantee</h4>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:2">
+                    3 steps: Guarantor details, Witnesses, ID uploads<br>
+                    3 digital signature pads
+                </div>
+            </div>
+            <div class="card" style="border-left:3px solid var(--rose)">
+                <h4 style="font-weight:700;margin-bottom:12px">Tab 4 — Checklist</h4>
+                <div style="font-size:13px;color:var(--text-secondary);line-height:2">
+                    15+ document types verified:<br>
+                    Ghana Card, SSNIT, NHIS, Birth cert, CV, Police clearance, Petra Trust, Appointment letters
+                </div>
+            </div>
+        </div>
+
+        <div class="card reveal" style="transition-delay:0.2s">
+            <h4 style="font-weight:700;margin-bottom:16px">Record Status Workflow</h4>
+            <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap">
+                <span class="pipeline-node" style="background:rgba(100,116,139,0.15);color:#94a3b8">0 = Draft</span>
+                <span style="color:var(--text-muted);padding:0 10px">→</span>
+                <span class="pipeline-node" style="background:rgba(99,102,241,0.15);color:var(--accent-1)">1 = Submitted</span>
+                <span style="color:var(--text-muted);padding:0 10px">→</span>
+                <span class="pipeline-node" style="background:rgba(245,158,11,0.15);color:var(--amber)">2 = Verified</span>
+                <span style="color:var(--text-muted);padding:0 10px">→</span>
+                <span class="pipeline-node" style="background:rgba(16,185,129,0.15);color:var(--emerald)">3 = Approved</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:12px">Can move back: Approved → Recheck (1) or Draft (0). All changes tracked via polymorphic History model.</div>
+        </div>
+    </section>
+
+    <!-- ═══════════ DEPLOYMENT ═══════════ -->
+    <section class="section" id="deployment">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> DevOps</div>
+            <h2>Deployment Architecture</h2>
+            <p class="section-desc">Internal XAMPP server at 192.168.0.20 with batch script deployments.</p>
+        </div>
+
+        <div class="table-wrapper reveal" style="transition-delay:0.1s;margin-bottom:40px">
+            <table>
+                <thead><tr><th>URL Path</th><th>Source</th><th>Content</th></tr></thead>
+                <tbody>
+                    <tr><td class="mono">/pms/</td><td>PMS Frontend Vue <span class="mono">dist/</span></td><td>PMS Single Page App</td></tr>
+                    <tr><td class="mono">/pms_backend/</td><td>PMS Backend Laravel</td><td>API Server</td></tr>
+                    <tr><td class="mono">/hrproject/</td><td>HR Onboarding Vue <span class="mono">dist/</span></td><td>HR Onboarding SPA</td></tr>
+                    <tr><td class="mono">/hr/</td><td>HR Laravel backend</td><td>HR API</td></tr>
+                    <tr><td class="mono">/pms_test/</td><td>PMS Frontend Vue <span class="mono">dist/</span></td><td>Test Deployment</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="grid-2 reveal" style="transition-delay:0.2s">
+            <div class="card">
+                <div class="deploy-card">
+                    <div class="deploy-icon">🚀</div>
+                    <div>
+                        <div style="font-weight:700;font-size:14px;margin-bottom:4px">deploy_pms_frontend.bat</div>
+                        <div style="font-size:12px;color:var(--text-secondary)">Build PMS Vue → copy <span class="mono">dist/</span> to <span class="mono">\\192.168.0.20</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="deploy-card">
+                    <div class="deploy-icon">👥</div>
+                    <div>
+                        <div style="font-weight:700;font-size:14px;margin-bottom:4px">deploy_hronboarding.bat</div>
+                        <div style="font-size:12px;color:var(--text-secondary)">Build HR Vue → copy <span class="mono">dist/</span> to <span class="mono">\\192.168.0.20</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="deploy-card">
+                    <div class="deploy-icon">🔧</div>
+                    <div>
+                        <div style="font-weight:700;font-size:14px;margin-bottom:4px">deploy_pms_to_share.bat</div>
+                        <div style="font-size:12px;color:var(--text-secondary)">Robocopy Laravel → <span class="mono">\\192.168.0.20\pms_backend</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="deploy-card">
+                    <div class="deploy-icon">💾</div>
+                    <div>
+                        <div style="font-weight:700;font-size:14px;margin-bottom:4px">backup_server20.bat</div>
+                        <div style="font-size:12px;color:var(--text-secondary)">Full timestamped backup of all 4 apps</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ DOCUMENTATION ═══════════ -->
+    <section class="section" id="docs">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> Reference</div>
+            <h2>Key Documentation Files</h2>
+        </div>
+        <div class="card reveal" style="padding:0;overflow:hidden;transition-delay:0.1s">
+            <div class="doc-item">
+                <div class="doc-icon md" style="color:var(--accent-1)">📄</div>
+                <div><div class="doc-name">PMS_PROJECT_ANALYSIS.md</div><div class="doc-meta">Complete project analysis — architecture, models, workflows</div></div>
+                <div class="doc-size">16KB</div>
+            </div>
+            <div class="doc-item">
+                <div class="doc-icon md" style="color:var(--accent-2)">📄</div>
+                <div><div class="doc-name">PROJECT_CHANGELOG.md</div><div class="doc-meta">UI/UX enhancements changelog</div></div>
+                <div class="doc-size">6KB</div>
+            </div>
+            <div class="doc-item">
+                <div class="doc-icon pptx" style="color:var(--rose)">📊</div>
+                <div><div class="doc-name">HR_Portal_Developer_Walkthrough.pptx</div><div class="doc-meta">PowerPoint dev walkthrough (build_walkthrough.cjs)</div></div>
+                <div class="doc-size">836KB</div>
+            </div>
+            <div class="doc-item">
+                <div class="doc-icon sql" style="color:var(--emerald)">🗃️</div>
+                <div><div class="doc-name">hrproject.sql</div><div class="doc-meta">Full database dump</div></div>
+                <div class="doc-size">8.6MB</div>
+            </div>
+            <div class="doc-item">
+                <div class="doc-icon sql" style="color:var(--cyan)">🗃️</div>
+                <div><div class="doc-name">fix_appraisals_table.sql</div><div class="doc-meta">Appraisals table migration fix</div></div>
+                <div class="doc-size">1KB</div>
+            </div>
+            <div class="doc-item">
+                <div class="doc-icon sql" style="color:var(--amber)">🗃️</div>
+                <div><div class="doc-name">insert_admin.sql</div><div class="doc-meta">Admin user seed script</div></div>
+                <div class="doc-size">667B</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ OBSERVATIONS ═══════════ -->
+    <section class="section" id="observations">
+        <div class="section-header reveal">
+            <div class="section-label"><span class="label-line"></span> Analysis</div>
+            <h2>Technical Observations</h2>
+        </div>
+        <div class="grid-2 reveal" style="transition-delay:0.1s">
+            <div class="card">
+                <h3 style="font-size:18px;font-weight:700;margin-bottom:20px;color:var(--emerald)">✅ Strengths</h3>
+                <div class="obs-item"><div class="obs-icon ok">✓</div><div class="obs-text">Comprehensive domain model covering full HR + PMS lifecycle</div></div>
+                <div class="obs-item"><div class="obs-icon ok">✓</div><div class="obs-text">Polymorphic Upload and History models for clean document management + audit trail</div></div>
+                <div class="obs-item"><div class="obs-icon ok">✓</div><div class="obs-text">Complex filtering with AND/OR conditions and 5 operators</div></div>
+                <div class="obs-item"><div class="obs-icon ok">✓</div><div class="obs-text">Digital signature capture integrated into forms</div></div>
+                <div class="obs-item"><div class="obs-icon ok">✓</div><div class="obs-text">Rich data visualization (ApexCharts + Chart.js)</div></div>
+                <div class="obs-item"><div class="obs-icon ok">✓</div><div class="obs-text">Ghana-specific features (SSNIT, Ghana Card, ECOWAS, 23 banks, 16 regions, 179 branches)</div></div>
+                <div class="obs-item"><div class="obs-icon ok">✓</div><div class="obs-text">Draft/autosave system for long forms</div></div>
+            </div>
+            <div class="card">
+                <h3 style="font-size:18px;font-weight:700;margin-bottom:20px;color:var(--amber)">⚠️ Areas for Improvement</h3>
+                <div class="obs-item"><div class="obs-icon warn">!</div><div class="obs-text">No centralized API service layer — each view calls Axios directly</div></div>
+                <div class="obs-item"><div class="obs-icon warn">!</div><div class="obs-text">No TypeScript — plain JavaScript throughout</div></div>
+                <div class="obs-item"><div class="obs-icon warn">!</div><div class="obs-text">No unit or integration tests</div></div>
+                <div class="obs-item"><div class="obs-icon warn">!</div><div class="obs-text">Massive view files (OnboardingView: 5,048 lines, DashboardView: ~1,800 lines)</div></div>
+                <div class="obs-item"><div class="obs-icon warn">!</div><div class="obs-text">Two separate frontends with significant code duplication</div></div>
+                <div class="obs-item"><div class="obs-icon warn">!</div><div class="obs-text">HrReportController report generation is a stub</div></div>
+                <div class="obs-item"><div class="obs-icon warn">!</div><div class="obs-text">Auth relies entirely on localStorage (no refresh token)</div></div>
+                <div class="obs-item"><div class="obs-icon warn">!</div><div class="obs-text">No frontend input validation library (manual only)</div></div>
+                <div class="obs-item"><div class="obs-icon warn">!</div><div class="obs-text">README files are default boilerplate — no project-specific docs</div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer style="padding:40px 60px;border-top:1px solid var(--border);text-align:center;">
+        <div style="font-size:13px;color:var(--text-muted)">PMS Documentation · Melcom Group of Companies · Generated August 2026</div>
+    </footer>
+
+</main>
+
+<!-- PRINT BUTTON -->
+<button class="print-btn" onclick="window.print()" title="Export as PDF">
+    <span>📄</span> Print / PDF
+</button>
+
+<script>
+    // Intersection Observer for reveal animations
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+            }
+        });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.reveal, .reveal-left').forEach(el => observer.observe(el));
+
+    // Active nav tracking
+    const sections = document.querySelectorAll('section[id], div[id]');
+    const navItems = document.querySelectorAll('.nav-item');
+
+    const navObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                navItems.forEach(item => item.classList.remove('active'));
+                const target = document.querySelector(`.nav-item[href="#${entry.target.id}"]`);
+                if (target) target.classList.add('active');
+            }
+        });
+    }, { threshold: 0.2, rootMargin: '-100px 0px -50% 0px' });
+
+    sections.forEach(section => navObserver.observe(section));
+
+    // Scroll progress bar
+    window.addEventListener('scroll', () => {
+        const scrollTop = window.scrollY;
+        const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+        const scrollPercent = (scrollTop / docHeight) * 100;
+        document.getElementById('progressBar').style.width = scrollPercent + '%';
+    });
+
+    // Mobile sidebar toggle
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('sidebarOverlay').classList.toggle('active');
+    }
+
+    // Close sidebar on nav click (mobile)
+    navItems.forEach(item => {
+        item.addEventListener('click', () => {
+            if (window.innerWidth <= 1024) {
+                toggleSidebar();
+            }
+        });
+    });
+</script>
+</body>
+</html>

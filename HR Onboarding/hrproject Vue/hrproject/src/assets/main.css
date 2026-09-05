@@ -523,6 +523,110 @@ body.dark-mode .p-chip {
   color: #f1f5f9 !important;
 }
 
+/* ===== CATCH-ALL DARK MODE: Hardcoded backgrounds in scoped component styles ===== */
+
+/* Any element with inline style background: #fff/#ffffff/white — attribute selectors */
+body.dark-mode [style*="background-color: #fff"],
+body.dark-mode [style*="background-color: #FFF"],
+body.dark-mode [style*="background-color:#fff"],
+body.dark-mode [style*="background-color:#FFF"],
+body.dark-mode [style*="background-color: #ffffff"],
+body.dark-mode [style*="background-color: #FFFFFF"],
+body.dark-mode [style*="background-color:#ffffff"],
+body.dark-mode [style*="background-color:#FFFFFF"],
+body.dark-mode [style*="backgroundColor: '#F1F5F9'"],
+body.dark-mode [style*="backgroundColor: '#f1f5f9'"],
+body.dark-mode [style*="background: #fff"],
+body.dark-mode [style*="background: #FFF"],
+body.dark-mode [style*="background: white"],
+body.dark-mode [style*="background:#fff"],
+body.dark-mode [style*="background: #ffffff"],
+body.dark-mode [style*="background:#ffffff"],
+body.dark-mode [style*="backgroundColor: 'white'"],
+body.dark-mode [style*="background-color: white"] {
+  background-color: #1e293b !important;
+  background: #1e293b !important;
+}
+
+/* Scoped hardcoded #f8fafc / #f9fafb / #f3f4f6 backgrounds */
+body.dark-mode [style*="background: #f8fafc"],
+body.dark-mode [style*="background: #F8FAFC"],
+body.dark-mode [style*="background-color: #f8fafc"],
+body.dark-mode [style*="background-color: #F8FAFC"],
+body.dark-mode [style*="background: #f9fafb"],
+body.dark-mode [style*="background-color: #f9fafb"],
+body.dark-mode [style*="background: #f3f4f6"],
+body.dark-mode [style*="background-color: #f3f4f6"],
+body.dark-mode [style*="background: #f1f5f9"],
+body.dark-mode [style*="background: #F1F5F9"],
+body.dark-mode [style*="background-color: #f1f5f9"],
+body.dark-mode [style*="background-color: #F1F5F9"] {
+  background-color: #0f172a !important;
+  background: #0f172a !important;
+}
+
+/* PrimeVue Dialog contentStyle overrides — dialogs with inline padding/bg */
+body.dark-mode .p-dialog-content[style] {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+/* PrimeVue MultiSelect & AutoComplete panels */
+body.dark-mode .p-multiselect-panel,
+body.dark-mode .p-multiselect-header,
+body.dark-mode .p-multiselect-items-wrapper,
+body.dark-mode .p-multiselect {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+body.dark-mode .p-multiselect-item {
+  color: #f1f5f9 !important;
+}
+body.dark-mode .p-multiselect-item:hover {
+  background: #334155 !important;
+}
+
+/* PrimeVue Column filter, header */
+body.dark-mode .p-column-filter-overlay,
+body.dark-mode .p-column-filter-menu {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+/* ConfirmDialog / ConfirmPopup */
+body.dark-mode .p-confirmdialog,
+body.dark-mode .p-confirmdialog .p-dialog-content,
+body.dark-mode .p-confirmdialog .p-dialog-footer {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+/* PrimeVue Stepper / Steps */
+body.dark-mode .p-steps,
+body.dark-mode .p-stepper {
+  background: transparent !important;
+}
+body.dark-mode .p-steps .p-steps-item .p-menuitem-link {
+  background: transparent !important;
+  color: #94a3b8 !important;
+}
+
+/* Tooltip */
+body.dark-mode .p-tooltip .p-tooltip-text {
+  background: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+/* PrimeVue Button variants */
+body.dark-mode .p-button.p-button-outlined {
+  color: #818cf8 !important;
+  border-color: #818cf8 !important;
+}
+body.dark-mode .p-button.p-button-text {
+  color: #818cf8 !important;
+}
+
 /* Misc overrides for common patterns */
 body.dark-mode hr {
   border-color: #334155 !important;
@@ -1005,4 +1109,86 @@ select:focus {
   height: 12px;
   border-radius: 50%;
   background: var(--accent);
+}
+
+/* AppraisalView Dark Mode Fixes */
+body.dark-mode .text-slate-800,
+body.dark-mode .text-slate-700,
+body.dark-mode .text-gray-800,
+body.dark-mode .text-gray-700,
+body.dark-mode .text-gray-600 {
+  color: #f1f5f9 !important;
+}
+body.dark-mode .text-indigo-600,
+body.dark-mode .text-indigo-700 {
+  color: #a5b4fc !important;
+}
+body.dark-mode .text-blue-600,
+body.dark-mode .text-blue-700 {
+  color: #93c5fd !important;
+}
+body.dark-mode .text-emerald-600,
+body.dark-mode .text-emerald-700 {
+  color: #6ee7b7 !important;
+}
+body.dark-mode .text-orange-600,
+body.dark-mode .text-orange-700 {
+  color: #fdba74 !important;
+}
+body.dark-mode .text-amber-600,
+body.dark-mode .text-amber-700 {
+  color: #fcd34d !important;
+}
+
+/* Fix complex borders and opacities in AppraisalView */
+body.dark-mode .border-indigo-50,
+body.dark-mode .border-blue-50,
+body.dark-mode .border-emerald-50,
+body.dark-mode .border-orange-50,
+body.dark-mode .border-amber-50,
+body.dark-mode .border-gray-50,
+body.dark-mode .border-slate-50,
+body.dark-mode .border-gray-100,
+body.dark-mode .border-slate-100,
+body.dark-mode .border-emerald-100,
+body.dark-mode .border-orange-100,
+body.dark-mode .border-amber-100,
+body.dark-mode .border-blue-100,
+body.dark-mode .border-emerald-200,
+body.dark-mode .border-orange-200,
+body.dark-mode .border-amber-200,
+body.dark-mode .border-blue-200,
+body.dark-mode .border-indigo-200,
+body.dark-mode .border-blue-200\/60,
+body.dark-mode .border-amber-200\/60,
+body.dark-mode .border-emerald-200\/60,
+body.dark-mode .border-orange-200\/60,
+body.dark-mode .border-indigo-200\/60,
+body.dark-mode .border-white\/10,
+body.dark-mode .border-white\/20,
+body.dark-mode .border-indigo-100 {
+  border-color: #334155 !important;
+}
+
+body.dark-mode .bg-blue-200\/60,
+body.dark-mode .bg-amber-200\/60,
+body.dark-mode .bg-emerald-200\/60,
+body.dark-mode .bg-orange-200\/60,
+body.dark-mode .bg-indigo-200\/60,
+body.dark-mode .bg-emerald-50\/30,
+body.dark-mode .bg-orange-50\/30,
+body.dark-mode .bg-indigo-50\/30,
+body.dark-mode .bg-blue-50\/30,
+body.dark-mode .bg-amber-50\/30 {
+  background-color: rgba(30, 41, 59, 0.5) !important;
+}
+
+body.dark-mode .bg-white\/15,
+body.dark-mode .bg-white\/10 {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Fix shadows acting strangely in dark mode on cards */
+body.dark-mode .shadow-indigo-900\/5 {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2) !important;
 }

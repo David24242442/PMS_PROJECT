@@ -5,7 +5,7 @@ echo ===========================================
 echo.
 
 :: 1. Navigate to Frontend Directory
-cd /d "c:\Users\USER\Workspaces\htdocs\HR Onboarding\hrproject Vue\hrproject"
+cd /d "c:\Users\USER\Workspaces\htdocs\PMS\HR Onboarding\hrproject Vue\hrproject"
 
 :: 2. Build for Production
 echo [1/3] Building Vue Application...
@@ -27,7 +27,7 @@ IF %ERRORLEVEL% NEQ 0 (
 :: 4. Deploy Backend
 echo.
 echo [3/3] Deploying Backend to Test Server
-cd /d "c:\Users\USER\Workspaces\htdocs\HR Onboarding\hr\hr"
+cd /d "c:\Users\USER\Workspaces\htdocs\PMS\HR Onboarding\hr\hr"
 powershell -Command "Copy-Item -Path '*.*' -Destination '\\192.168.0.20\c$\xampp\htdocs\HR_PROJECT\Backend\' -Recurse -Force"
 IF %ERRORLEVEL% NEQ 0 (
     echo Warning: Deployment encountered an error.

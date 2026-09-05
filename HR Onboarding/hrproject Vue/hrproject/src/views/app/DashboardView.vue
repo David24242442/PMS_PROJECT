@@ -9,6 +9,10 @@ import { useUsersStore } from '@/stores/user';
 const userstore = useUsersStore()
 const { loguser } = userstore
 
+const isDark = ref(document.body.classList.contains('dark-mode'));
+const _darkObserver = new MutationObserver(() => { isDark.value = document.body.classList.contains('dark-mode'); });
+_darkObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
 const loading = ref(false)
 watch(loading, (val) => userstore.setIsLoading(val), { immediate: true })
 const result = ref(null)
@@ -17,6 +21,29 @@ const showEmpsPopup = ref(false)
 const emplist = ref([])
 const empPopupTitle = ref('Employee List')
 const empSearch = ref('')
+
+const showListPopup = ref(false)
+const listPopupTitle = ref('')
+const listPopupData = ref([])
+const listPopupTotal = ref(0)
+
+const openListView = (title, items) => {
+    // Calculate total
+    const total = items.reduce((sum, item) => sum + Number(item.count || 0), 0)
+    listPopupTotal.value = total;
+
+    // Map and add percentage
+    const itemsWithPercent = items.map(item => ({
+        ...item,
+        percent: total > 0 ? ((Number(item.count || 0) / total) * 100).toFixed(1) : '0.0'
+    }));
+
+    // Sort items highest to lowest
+    const sorted = [...itemsWithPercent].sort((a, b) => b.count - a.count);
+    listPopupTitle.value = title;
+    listPopupData.value = sorted;
+    showListPopup.value = true;
+}
 
 // Computed Data
 const hospitalitiesData = computed(() => result.value?.deptsCount?.filter((item) => hospitalityDeptsIDs.includes(item.joining_dept_id)) || [])
@@ -240,8 +267,14 @@ onMounted(() => { loadchart() })
                         <h3 class="chart-title">Monthly Joining Trend</h3>
                         <p class="chart-subtitle">New employee onboarding over time</p>
                     </div>
-                    <div class="chart-badge chart-badge--indigo">
-                        <i class="pi pi-chart-line text-[10px]"></i> Trend
+                    <div class="flex items-center gap-2">
+                        <button @click="openListView('Monthly Joining Trend', Object.keys(result.monthlyData).map(k => ({name: k, count: result.monthlyData[k]})))"
+                            class="w-7 h-7 rounded bg-slate-100 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
+                            <i class="pi pi-list text-[11px]"></i>
+                        </button>
+                        <div class="chart-badge chart-badge--indigo">
+                            <i class="pi pi-chart-line text-[10px]"></i> Trend
+                        </div>
                     </div>
                 </div>
                 <apexchart type="area" height="280" :options="optionsMonthly" :series="seriesMonthly"></apexchart>
@@ -255,8 +288,14 @@ onMounted(() => { loadchart() })
                             <h3 class="chart-title">Melcom Departments</h3>
                             <p class="chart-subtitle">Staff distribution by department</p>
                         </div>
-                        <div class="chart-badge chart-badge--violet">
-                            <i class="pi pi-building text-[10px]"></i> {{ melcomDeptsData.length }}
+                        <div class="flex items-center gap-2">
+                            <button @click="openListView('Melcom Departments', melcomDeptsData.map(i => ({name: finddept(i.joining_dept_id), count: i.total_count})))"
+                                class="w-7 h-7 rounded bg-slate-100 hover:bg-violet-50 text-slate-400 hover:text-violet-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
+                                <i class="pi pi-list text-[11px]"></i>
+                            </button>
+                            <div class="chart-badge chart-badge--violet">
+                                <i class="pi pi-building text-[10px]"></i> {{ melcomDeptsData.length }}
+                            </div>
                         </div>
                     </div>
                     <apexchart type="treemap" height="380" :options="optionsMelcom" :series="seriesMelcom"></apexchart>
@@ -268,8 +307,14 @@ onMounted(() => { loadchart() })
                             <h3 class="chart-title">Employees by Region</h3>
                             <p class="chart-subtitle">Geographic distribution across Ghana</p>
                         </div>
-                        <div class="chart-badge chart-badge--cyan">
-                            <i class="pi pi-map text-[10px]"></i> {{ totalRegionEmployees }}
+                        <div class="flex items-center gap-2">
+                            <button @click="openListView('Employees by Region', finalLocationData.names.map((n, idx) => ({name: n, count: finalLocationData.count[idx]})))"
+                                class="w-7 h-7 rounded bg-slate-100 hover:bg-cyan-50 text-slate-400 hover:text-cyan-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
+                                <i class="pi pi-list text-[11px]"></i>
+                            </button>
+                            <div class="chart-badge chart-badge--cyan">
+                                <i class="pi pi-map text-[10px]"></i> {{ totalRegionEmployees }}
+                            </div>
                         </div>
                     </div>
                     <apexchart type="bar" height="340" :options="optionsRegions" :series="seriesRegions"></apexchart>
@@ -284,8 +329,14 @@ onMounted(() => { loadchart() })
                             <h3 class="chart-title">Gender Distribution</h3>
                             <p class="chart-subtitle">Workforce diversity breakdown</p>
                         </div>
-                        <div class="chart-badge chart-badge--pink">
-                            <i class="pi pi-users text-[10px]"></i> Split
+                        <div class="flex items-center gap-2">
+                            <button @click="openListView('Gender Distribution', result.genderCounts.filter(i => i.gender).map(i => ({name: findgender(i.gender), count: i.total_count})))"
+                                class="w-7 h-7 rounded bg-slate-100 hover:bg-pink-50 text-slate-400 hover:text-pink-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
+                                <i class="pi pi-list text-[11px]"></i>
+                            </button>
+                            <div class="chart-badge chart-badge--pink">
+                                <i class="pi pi-users text-[10px]"></i> Split
+                            </div>
                         </div>
                     </div>
                     <apexchart type="donut" height="300" :options="optionsGender" :series="seriesGender"></apexchart>
@@ -297,8 +348,14 @@ onMounted(() => { loadchart() })
                             <h3 class="chart-title">Age Groups</h3>
                             <p class="chart-subtitle">Employee age demographics</p>
                         </div>
-                        <div class="chart-badge chart-badge--teal">
-                            <i class="pi pi-chart-bar text-[10px]"></i> Range
+                        <div class="flex items-center gap-2">
+                            <button @click="openListView('Age Groups', Object.keys(result.ageGroups).map(k => ({name: k, count: result.ageGroups[k]})))"
+                                class="w-7 h-7 rounded bg-slate-100 hover:bg-teal-50 text-slate-400 hover:text-teal-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
+                                <i class="pi pi-list text-[11px]"></i>
+                            </button>
+                            <div class="chart-badge chart-badge--teal">
+                                <i class="pi pi-chart-bar text-[10px]"></i> Range
+                            </div>
                         </div>
                     </div>
                     <apexchart type="bar" height="300" :options="optionsAge" :series="seriesAge"></apexchart>
@@ -312,8 +369,14 @@ onMounted(() => { loadchart() })
                         <h3 class="chart-title">Hospitality Departments</h3>
                         <p class="chart-subtitle">Staff count across hospitality divisions</p>
                     </div>
-                    <div class="chart-badge chart-badge--amber">
-                        <i class="pi pi-star text-[10px]"></i> {{ hospitalitiesData.length }}
+                    <div class="flex items-center gap-2">
+                        <button @click="openListView('Hospitality Departments', hospitalitiesData.map(i => ({name: finddept(i.joining_dept_id), count: i.total_count})))"
+                            class="w-7 h-7 rounded bg-slate-100 hover:bg-amber-50 text-slate-400 hover:text-amber-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
+                            <i class="pi pi-list text-[11px]"></i>
+                        </button>
+                        <div class="chart-badge chart-badge--amber">
+                            <i class="pi pi-star text-[10px]"></i> {{ hospitalitiesData.length }}
+                        </div>
                     </div>
                 </div>
                 <apexchart type="bar" height="280" :options="optionsHospitality" :series="seriesHospitality"></apexchart>
@@ -331,7 +394,7 @@ onMounted(() => { loadchart() })
 
     <!-- Employee Drill-down Dialog -->
     <Dialog v-model:visible="showEmpsPopup" modal :header="empPopupTitle" :style="{ width: '48rem' }" :breakpoints="{ '1199px': '75vw', '575px': '95vw' }"
-        :contentStyle="{ padding: '0', background: '#ffffff', color: '#1e293b' }"
+        :contentStyle="{ padding: '0', background: isDark ? '#1e293b' : '#ffffff', color: isDark ? '#f1f5f9' : '#1e293b' }"
         class="emp-dialog-light">
         <div class="p-5">
             <!-- Search + Count -->
@@ -369,6 +432,43 @@ onMounted(() => { loadchart() })
                 <div v-if="filteredEmpList.length === 0" class="text-center py-10">
                     <i class="pi pi-inbox text-3xl text-slate-200 mb-2"></i>
                     <p class="text-sm font-bold text-slate-400">No employees found</p>
+                </div>
+            </div>
+        </div>
+    </Dialog>
+
+    <!-- List View Dialog -->
+    <Dialog v-model:visible="showListPopup" modal :header="listPopupTitle" :style="{ width: '48rem' }" :breakpoints="{ '1199px': '75vw', '575px': '95vw' }"
+        :contentStyle="{ padding: '0', background: isDark ? '#1e293b' : '#ffffff', color: isDark ? '#f1f5f9' : '#1e293b' }"
+        class="emp-dialog-light">
+        <div class="p-6">
+            <!-- Summary Header -->
+            <div class="flex items-center justify-between mb-5 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <span class="text-sm font-bold text-slate-500 uppercase tracking-wider">Total Count</span>
+                <span class="text-xl font-black text-indigo-600">{{ listPopupTotal }}</span>
+            </div>
+
+            <div class="space-y-2 max-h-[65vh] overflow-y-auto pr-2">
+                <div v-for="(item, index) in listPopupData" :key="index"
+                    class="relative overflow-hidden p-4 rounded-xl border border-slate-100 hover:border-slate-200 bg-white hover:bg-slate-50 transition-colors group">
+                    
+                    <!-- Background Progress Bar -->
+                    <div class="absolute inset-y-0 left-0 bg-indigo-50/60 transition-all duration-500 ease-out"
+                         :style="{ width: `${item.percent}%` }"></div>
+
+                    <!-- Content -->
+                    <div class="relative z-10 flex items-center justify-between">
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[14px] font-extrabold text-slate-800">{{ item.name }}</span>
+                            <span class="text-[11px] font-bold text-slate-400">{{ item.percent }}% of total</span>
+                        </div>
+                        <span class="text-sm font-black text-indigo-700 bg-white shadow-sm border border-slate-100 px-3 py-1.5 rounded-lg">{{ item.count }}</span>
+                    </div>
+                </div>
+                
+                <div v-if="listPopupData.length === 0" class="text-center py-12">
+                    <i class="pi pi-inbox text-4xl text-slate-200 mb-3"></i>
+                    <p class="text-sm font-bold text-slate-400">No data found</p>
                 </div>
             </div>
         </div>
@@ -596,4 +696,10 @@ onMounted(() => { loadchart() })
 :global(body.dark-mode) .stat-card--pink .stat-icon { background: rgba(236,72,153,0.15); }
 :global(body.dark-mode) .stat-card--amber .stat-icon { background: rgba(245,158,11,0.15); }
 :global(body.dark-mode) .stat-card--teal .stat-icon { background: rgba(20,184,166,0.15); }
+:global(body.dark-mode) .chart-badge--indigo { background: rgba(99,102,241,0.15); }
+:global(body.dark-mode) .chart-badge--violet { background: rgba(124,58,237,0.15); }
+:global(body.dark-mode) .chart-badge--cyan { background: rgba(6,182,212,0.15); }
+:global(body.dark-mode) .chart-badge--pink { background: rgba(236,72,153,0.15); }
+:global(body.dark-mode) .chart-badge--teal { background: rgba(20,184,166,0.15); }
+:global(body.dark-mode) .chart-badge--amber { background: rgba(245,158,11,0.15); }
 </style>

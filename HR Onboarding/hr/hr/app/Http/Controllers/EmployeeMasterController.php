@@ -135,6 +135,45 @@ class EmployeeMasterController extends Controller
      * Get employees from the HR master table for dropdowns.
      * Admins see all employees. Managers see only their assigned team.
      */
+    /**
+     * Lookup maps for resolving joining_dept_id and joining_branch_id to names.
+     * These match the frontend masterdata.js reference data.
+     */
+    private static $deptLookup = [
+        1=>'ACCOUNTS',17=>'ADVERT',2=>'ADMINISTRATION',18=>'ARTS KITCHEN',3=>'AUDIT',
+        19=>'BAKERY',20=>'BAR',21=>'BUTCHERY',16=>'CHOP BAR',22=>'CROWN STAR',
+        23=>'ELECTRICAL APPLIANCES',24=>'GIORDANO',25=>'HALLAB',26=>'HOMEDECORE & TEXTILES',
+        27=>'HOUSEWARE & KITCHENWARE',6=>'HR',8=>'IT',7=>'IMPORT',28=>'LOGISTICS',
+        29=>'LUGGAGE',30=>'MANAGEMENT',10=>'MARKETING',11=>'MERCHANDISE',13=>'OPERATIONS',
+        31=>'OTHERS',14=>'PIZZA HUT',15=>'PROJECT',32=>'PRODUCTION',33=>'RESTAURANT',
+        34=>'RETAIL',35=>'SECURITY',36=>'SERVICE CENTER',37=>'SPORTS & FITNESS',
+        38=>'SUPERMARKET',39=>'WARE HOUSE',40=>'MELCOM NOW',41=>'DIGITAL COMMERCE',
+        42=>'CENTURY',43=>'SIP CAFE',44=>'ON THE ROCK, BAR',45=>'WASABI',
+        46=>'MAHARAJA',47=>'YOLE',48=>'SIP GOURMET',
+    ];
+
+    private static $branchLookup = [
+        1=>'ABLEKUMA',2=>'ACCRA',3=>'ACCRA MALL',4=>'ACCRA WHOLESALES',
+        6=>'ACHIMOTA',7=>'ACHIMOTA MALL',9=>'ADABRAKA',10=>'ADENTA',
+        12=>'AFEINYA',13=>'AFLAO',14=>'AMASAMAN',16=>'ARCADIA SPINTEX NEW',
+        24=>'ASAMANKESE',26=>'ASHAIMAN',29=>'ASHONGMAN',30=>'ASSIN FOSU',
+        33=>'BEREKUM',34=>'BIBIANI',35=>'BOLGATANGA',36=>'CAPECOAST',
+        39=>'DANSOMAN',41=>'EAST LEGON',47=>'EASTLEGON BOUNDARY ROAD',
+        49=>'FRAFRAHA',50=>'GBAWE',62=>'HAATSO',66=>'HAMPTON SQUARE',
+        67=>'HEAD OFFICE',68=>'HO',69=>'HOHOE',71=>'KANESHIE',75=>'KASOA',
+        78=>'KASS',79=>'KISSEMAN',80=>'KOFORIDIA',83=>'KUMASI',
+        91=>'KUMASI MALL',92=>'KUMASI SANTASI',94=>'LABADI',95=>'LABONE',
+        96=>'LAPAZ SHOP',97=>'LOGISTICS',98=>'MADINA',102=>'MAKOLA',
+        103=>'MANKESSIM',107=>'MELCOM NOW',110=>'MINI-DOME',112=>'NANAKROM',
+        113=>'NKAWKAW',114=>'OBUASI',120=>'SAKUMONO',121=>'SEFWI WIAWSO',
+        122=>'SERVICE CENTER',128=>'SPINTEX NEW MALL',133=>'SPINTEX RD.',
+        134=>'SUNIYANI',137=>'SWEDRU',140=>'TAKORADI',141=>'TAMALE',
+        143=>'TARKWA',144=>'TECHIMAN',148=>'TEMA',153=>'TEPA',
+        154=>'TESHIE NUNGUA',156=>'UPSA',157=>'WA SHOP',161=>'WAREHOUSE',
+        163=>'WEIJA SHOP',164=>'WENCHI',165=>'WH-TEMA-FZ',178=>'DOME',
+        180=>'OYARIFA',181=>'LASHIBI',
+    ];
+
     public function getEmployees(Request $request)
     {
         $user = $request->user();
@@ -146,17 +185,20 @@ class EmployeeMasterController extends Controller
 
         $selectColumns = [
             'employees.id as emp_id',
-            'employees.employeeid', 
-            'employees.firstname', 
+            'employees.employeeid',
+            'employees.firstname',
             'employees.surname',
             'employees.department as emp_dept',
             'employees.job_title as emp_position',
+            'employees.joiningposition',
             'employees.joining_dept_id',
             'employees.joining_branch_id',
             'employees.line_manager_id', // Source of truth for standard staff
+            'employees.email as emp_email',
             'users.id as user_id',
             'users.department',
             'users.location',
+            'users.email as user_email',
         ];
 
         if ($hasJoiningDept) $selectColumns[] = 'employees.joiningdepartment';
@@ -181,33 +223,92 @@ class EmployeeMasterController extends Controller
                 $managerName = $mgr ? $mgr->name : 'Unknown';
             }
 
-                // Fallback logic for Department
-                $dept = $emp->department; // From users table
-                if (empty($dept) || $dept === 'N/A') {
-                    $dept = $emp->emp_dept ?: ($emp->joiningdepartment ?? 'N/A');
-                }
+            // Fallback logic for Department: users table → employees.department → joiningdepartment → resolve joining_dept_id
+            $dept = $emp->department; // From users table
+            if (empty($dept) || $dept === 'N/A') {
+                $dept = $emp->emp_dept ?: ($emp->joiningdepartment ?? null);
+            }
+            if (empty($dept) || $dept === 'N/A') {
+                $dept = self::$deptLookup[$emp->joining_dept_id] ?? 'N/A';
+            }
 
-                // Fallback logic for Location
-                $loc = $emp->location; // From users table
-                if (empty($loc) || $loc === 'N/A') {
-                    $loc = $emp->emp_location ?? 'N/A';
-                }
+            // Fallback logic for Location: users table → employees.location → resolve joining_branch_id
+            $loc = $emp->location; // From users table
+            if (empty($loc) || $loc === 'N/A') {
+                $loc = $emp->emp_location ?? null;
+            }
+            if (empty($loc) || $loc === 'N/A') {
+                $loc = self::$branchLookup[$emp->joining_branch_id] ?? 'N/A';
+            }
 
-                return [
-                    'id' => $emp->emp_id,
-                    'user_id' => $emp->user_id,
-                    'employee_code' => $emp->employeeid,
-                    'name' => $emp->firstname . ' ' . $emp->surname,
-                    'location' => $loc,
-                    'department' => $dept,
-                    'position' => $emp->emp_position ?? 'N/A',
-                    'joining_dept_id' => $emp->joining_dept_id,
-                    'joining_branch_id' => $emp->joining_branch_id,
-                    'line_manager_id' => $emp->line_manager_id,
-                    'line_manager_name' => $managerName,
-                    'full_string' => $emp->employeeid . ' - ' . $emp->firstname . ' ' . $emp->surname
-                ];
-            });
+            // Fallback logic for Position: job_title → joiningposition
+            $position = $emp->emp_position;
+            if (empty($position) || $position === 'N/A') {
+                $position = $emp->joiningposition ?? 'N/A';
+            }
+
+            return [
+                'id' => $emp->emp_id,
+                'user_id' => $emp->user_id,
+                'employee_code' => $emp->employeeid,
+                'name' => trim($emp->firstname . ' ' . $emp->surname),
+                'firstname' => $emp->firstname,
+                'surname' => $emp->surname,
+                'email' => $emp->user_email ?: $emp->emp_email,
+                'location' => $loc,
+                'department' => $dept,
+                'position' => $position,
+                'joining_dept_id' => $emp->joining_dept_id,
+                'joining_branch_id' => $emp->joining_branch_id,
+                'line_manager_id' => $emp->line_manager_id,
+                'line_manager_name' => $managerName,
+                'full_string' => $emp->employeeid . ' - ' . trim($emp->firstname . ' ' . $emp->surname)
+            ];
+        });
+
+        // --- Central Database Fallback Logic ---
+        try {
+            $localEmployeeIds = $employees->pluck('employee_code')->filter()->toArray();
+            
+            $centralQuery = \App\Models\CentralEmployee::query();
+            if (!empty($localEmployeeIds)) {
+                $centralQuery->whereNotIn('employeeid', $localEmployeeIds);
+            }
+
+            // Note: Central DB doesn't have local 'line_manager_id', so if non-admin is filtering by line_manager_id, 
+            // we won't return central employees since they are not explicitly assigned to this manager yet.
+            // But if it's admin or a general search where manager filter isn't strictly applied to the central query:
+            if ($isAdmin || !$user) {
+                $centralEmployeesData = $centralQuery->get()->map(function ($emp) {
+                    $dept = self::$deptLookup[$emp->joining_dept_id ?? 0] ?? $emp->department ?? $emp->joiningdepartment ?? 'N/A';
+                    $loc = self::$branchLookup[$emp->joining_branch_id ?? 0] ?? $emp->location ?? $emp->joininglocation ?? 'N/A';
+                    $position = $emp->job_title ?? $emp->joiningposition ?? 'N/A';
+
+                    return [
+                        'id' => $emp->id,
+                        'user_id' => null,
+                        'employee_code' => $emp->employeeid,
+                        'name' => trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
+                        'firstname' => $emp->firstname ?? '',
+                        'surname' => $emp->surname ?? '',
+                        'email' => $emp->email ?? null,
+                        'location' => $loc,
+                        'department' => $dept,
+                        'position' => $position,
+                        'joining_dept_id' => $emp->joining_dept_id,
+                        'joining_branch_id' => $emp->joining_branch_id,
+                        'line_manager_id' => null,
+                        'line_manager_name' => null,
+                        'full_string' => $emp->employeeid . ' - ' . trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
+                        'is_central' => true
+                    ];
+                });
+
+                $employees = $employees->concat($centralEmployeesData)->values();
+            }
+        } catch (\Exception $e) {
+            \Log::error('Central DB Fallback Error: ' . $e->getMessage());
+        }
 
         return response()->json([
             'status' => 'success',
@@ -253,6 +354,110 @@ class EmployeeMasterController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => "Successfully synchronized team. $syncedCount members assigned to roster.",
+        ]);
+    }
+
+    /**
+     * Parse a CSV of employee codes and return matched employee records.
+     * Accepts a CSV file with an employee_code column (or single-column with codes).
+     */
+    public function parseTeamCsv(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt|max:2048',
+        ]);
+
+        $file = $request->file('file');
+        $content = file_get_contents($file->getRealPath());
+        $lines = array_filter(array_map('trim', explode("\n", $content)));
+
+        if (empty($lines)) {
+            return response()->json(['status' => 'error', 'message' => 'CSV file is empty'], 400);
+        }
+
+        // Detect header row
+        $header = str_getcsv(array_shift($lines));
+        $header = array_map(function ($h) {
+            return strtolower(trim(str_replace([' ', '_'], ['_', '_'], $h)));
+        }, $header);
+
+        // Find the employee_code column index
+        $codeIndex = null;
+        $possibleNames = ['employee_code', 'employeecode', 'emp_code', 'empcode', 'code', 'employeeid', 'employee_id', 'id'];
+        foreach ($possibleNames as $name) {
+            $idx = array_search($name, $header);
+            if ($idx !== false) {
+                $codeIndex = $idx;
+                break;
+            }
+        }
+
+        // If no matching header, assume single-column CSV (just codes)
+        $codes = [];
+        if ($codeIndex === null) {
+            // Try treating the header itself as a code (single-column, no header)
+            $allLines = array_merge([$header[0] ?? ''], $lines);
+            foreach ($allLines as $line) {
+                $val = trim(str_getcsv($line)[0] ?? '');
+                if (!empty($val)) $codes[] = $val;
+            }
+        } else {
+            foreach ($lines as $line) {
+                $cols = str_getcsv($line);
+                $val = trim($cols[$codeIndex] ?? '');
+                if (!empty($val)) $codes[] = $val;
+            }
+        }
+
+        $codes = array_unique($codes);
+
+        // Match against employees table
+        $matched = \DB::table('employees')
+            ->whereIn('employeeid', $codes)
+            ->orWhereIn('emp_code', $codes)
+            ->get();
+
+        $matchedCodes = $matched->pluck('employeeid')->merge($matched->pluck('emp_code'))->filter()->unique()->toArray();
+        $unmatched = array_values(array_diff($codes, $matchedCodes));
+
+        // Build response in the same format as getEmployees
+        $employees = $matched->map(function ($emp) {
+            $user = User::where('employee_code', $emp->employeeid)->first();
+
+            // Resolve department
+            $dept = $user->department ?? $emp->department ?? null;
+            if (empty($dept) || $dept === 'N/A') {
+                $dept = self::$deptLookup[$emp->joining_dept_id ?? 0] ?? 'N/A';
+            }
+
+            // Resolve location from branch
+            $loc = $user->location ?? $emp->joininglocation ?? null;
+            if (empty($loc) || $loc === 'N/A') {
+                $loc = self::$branchLookup[$emp->joining_branch_id ?? 0] ?? 'N/A';
+            }
+
+            // Resolve position
+            $position = $emp->job_title ?? $emp->joiningposition ?? 'N/A';
+
+            return [
+                'id' => $emp->id,
+                'user_id' => $user ? $user->id : null,
+                'employee_code' => $emp->employeeid,
+                'name' => ($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''),
+                'location' => $loc,
+                'department' => $dept,
+                'position' => $position,
+                'line_manager_id' => $emp->line_manager_id,
+                'full_string' => $emp->employeeid . ' - ' . ($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''),
+            ];
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $employees->values(),
+            'matched_count' => $employees->count(),
+            'unmatched_codes' => $unmatched,
+            'total_parsed' => count($codes),
         ]);
     }
 }

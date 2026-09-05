@@ -24,6 +24,38 @@ class EmployeeMasterController extends Controller
             return $user;
         });
 
+        // --- Central Database Fallback Logic ---
+        try {
+            $localEmployeeCodes = $users->pluck('employee_code')->filter()->toArray();
+
+            $centralQuery = \App\Models\CentralEmployee::query();
+            if (!empty($localEmployeeCodes)) {
+                $centralQuery->whereNotIn('employeeid', $localEmployeeCodes);
+            }
+
+            $centralEmployees = $centralQuery->get()->map(function ($emp) {
+                return [
+                    'id' => null, // Central employee doesn't have a local User ID yet
+                    'name' => trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
+                    'username' => strtolower($emp->employeeid),
+                    'email' => null,
+                    'position_id' => $emp->job_title ?? $emp->joiningposition ?? 'N/A',
+                    'department' => $emp->department ?? $emp->joiningdepartment ?? 'N/A',
+                    'line_manager_id' => null,
+                    'manager_name' => null,
+                    'line_manager_name' => null,
+                    'employee_code' => $emp->employeeid,
+                    'location' => $emp->location ?? $emp->joininglocation ?? 'N/A',
+                    'is_central' => true
+                ];
+            });
+
+            // Merge local users and central employees
+            $users = $users->concat($centralEmployees)->values();
+        } catch (\Exception $e) {
+            \Log::error('Central DB Fallback Error: ' . $e->getMessage());
+        }
+
         return response()->json([
             'status' => 'success',
             'data' => $users

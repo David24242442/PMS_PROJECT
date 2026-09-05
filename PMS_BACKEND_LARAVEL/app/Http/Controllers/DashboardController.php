@@ -3,36 +3,36 @@
 namespace App\Http\Controllers;
 
 use Carbon\Carbon;
-use App\Models\Employee;
+use App\Models\CentralEmployee as Employee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
     public function index(){
-        $totalemp = DB::table('employees')->count();
+        $totalemp = DB::connection('central')->table('employees')->count();
 
-        $genderCounts = DB::table('employees')
+        $genderCounts = DB::connection('central')->table('employees')
         ->select('gender', DB::raw('COUNT(*) as total_count'))
         ->groupBy('gender')
         ->get();
 
-        $companiesCounts = DB::table('employees')
+        $companiesCounts = DB::connection('central')->table('employees')
         ->select('company', DB::raw('COUNT(*) as total_count'))
         ->groupBy('company')
         ->get();
 
-        $citizenshipCounts = DB::table('employees')
+        $citizenshipCounts = DB::connection('central')->table('employees')
         ->select('citizenship', DB::raw('COUNT(*) as total_count'))
         ->groupBy('citizenship')
         ->get();
 
-        $deptsCounts = DB::table('employees')
+        $deptsCounts = DB::connection('central')->table('employees')
         ->select('joining_dept_id', DB::raw('COUNT(*) as total_count'))
         ->groupBy('joining_dept_id')
         ->get();
 
-        $locationCounts = DB::table('employees')
+        $locationCounts = DB::connection('central')->table('employees')
         ->select('joining_branch_id', DB::raw('COUNT(*) as total_count'))
         ->groupBy('joining_branch_id')
         ->get();

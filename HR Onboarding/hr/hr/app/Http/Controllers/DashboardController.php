@@ -4,40 +4,49 @@ namespace App\Http\Controllers;
 
 use Carbon\Carbon;
 use App\Models\Employee;
+use App\Models\CentralEmployee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
     public function index(){
-        $totalemp = DB::table('employees')->count();
+        // Use central database for all dashboard stats (live, accurate data)
+        try {
+            $centralConn = DB::connection('central');
+        } catch (\Exception $e) {
+            \Log::error('Central DB Connection Error: ' . $e->getMessage());
+            $centralConn = DB::connection(); // fallback to local
+        }
 
-        $genderCounts = DB::table('employees')
+        $totalemp = $centralConn->table('employees')->count();
+
+        $genderCounts = $centralConn->table('employees')
         ->select('gender', DB::raw('COUNT(*) as total_count'))
         ->groupBy('gender')
         ->get();
 
-        $companiesCounts = DB::table('employees')
+        $companiesCounts = $centralConn->table('employees')
         ->select('company', DB::raw('COUNT(*) as total_count'))
         ->groupBy('company')
         ->get();
 
-        $citizenshipCounts = DB::table('employees')
+        $citizenshipCounts = $centralConn->table('employees')
         ->select('citizenship', DB::raw('COUNT(*) as total_count'))
         ->groupBy('citizenship')
         ->get();
 
-        $deptsCounts = DB::table('employees')
+        $deptsCounts = $centralConn->table('employees')
         ->select('joining_dept_id', DB::raw('COUNT(*) as total_count'))
         ->groupBy('joining_dept_id')
         ->get();
 
-        $locationCounts = DB::table('employees')
+        $locationCounts = $centralConn->table('employees')
         ->select('joining_branch_id', DB::raw('COUNT(*) as total_count'))
         ->groupBy('joining_branch_id')
         ->get();
 
-        $employees = Employee::select('dob')->get();
+        $employees = CentralEmployee::on('central')->select('dob')->get();
 
       
         $ageGroups = [
@@ -79,7 +88,7 @@ class DashboardController extends Controller
         ];
         
         // Get monthly data
-        $monthlyData = Employee::selectRaw('DATE_FORMAT(joiningdate, "%b") as month, COUNT(*) as count')
+        $monthlyData = CentralEmployee::on('central')->selectRaw('DATE_FORMAT(joiningdate, "%b") as month, COUNT(*) as count')
             ->whereYear('joiningdate', $currentYear)
             ->groupBy('month')
             ->pluck('count', 'month')

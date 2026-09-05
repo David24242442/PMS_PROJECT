@@ -20,14 +20,14 @@ function range(start, end) {
     return arr;
 }
 
-// Performance Key Competencies (matching reference image)
+// Performance Key Competencies (5 items, 20% weight each)
 const performanceCompetencies = ref([
     {
         id: 1,
-        title: 'Performance',
+        title: 'Performance & Teamwork',
         descriptions: [
             'a) Overall performance - based on feedback from Line or Operations Managers',
-            'b) Teamwork, People issues - how it has been managed, number of queries tracked as compared to last year and'
+            'b) Teamwork, People issues - how it has been managed, number of queries tracked as compared to last year and compared to your peers.'
         ],
         weight: 20,
         selfRating: 0,
@@ -38,9 +38,9 @@ const performanceCompetencies = ref([
         title: 'Customer Service / Relationship Building',
         descriptions: [
             'a) Number of super saver cards sold vs number of invoices made without the use of super saver card on the invoices',
-            'b) Google scores – Improvement over last year\'s Shop Google or overall Melcom Google score.'
+            "b) Google review 4.6 / Improvement query in the weekly Shop Google vs overall Melcom Google score."
         ],
-        weight: 30,
+        weight: 20,
         selfRating: 0,
         managerRating: 0
     },
@@ -49,18 +49,29 @@ const performanceCompetencies = ref([
         title: 'Execution / Sales Results Driven',
         descriptions: [
             'a) Business Driven Metric (Set by Department with Management input)',
-            'b) Loss to company % (Factors and calculations must be provided), where application and relevant'
+            'b) Loss to company % (Factors and calculations must be provided), where applicable and relevant'
         ],
-        weight: 30,
+        weight: 20,
         selfRating: 0,
         managerRating: 0
     },
     {
         id: 4,
+        title: 'Compliance & Quality Standards',
+        descriptions: [
+            'a) Adherence to company policies, SOPs, safety, and regulatory compliance',
+            'b) % implementation of Wooqer checklist and shop/department standards'
+        ],
+        weight: 20,
+        selfRating: 0,
+        managerRating: 0
+    },
+    {
+        id: 5,
         title: 'Continuous Improvement in workflows/processes',
         descriptions: [
-            'a)Culture of adaptability and innovation among staff, such as inventory management, employee training',
-            'b)Adaptability / Flexibility'
+            'a) Culture of adaptability and innovation among staff, such as inventory management, employee training',
+            'b) Adaptability / Flexibility and operational problem solving'
         ],
         weight: 20,
         selfRating: 0,

@@ -31,7 +31,7 @@ if %errorlevel% geq 8 echo [ERROR] Frontend transfer failed with error %errorlev
 :: 3. Clean and Transfer Backend
 echo [3/3] Cleaning and Mirroring Backend to Share...
 echo Transferring Laravel files (Mirroring source, excluding vendor/nodes)...
-robocopy "%BACKEND_SRC%" "%BACKEND_DEST%" /MIR /MT /R:2 /W:5 /NP /XD vendor node_modules .git storage/logs storage/framework/sessions storage/framework/views /XF .env.local .env.development
+robocopy "%BACKEND_SRC%" "%BACKEND_DEST%" /MIR /MT /R:2 /W:5 /NP /XD vendor node_modules .git storage public\storage /XF .env.local .env.development
 
 echo.
 echo ===========================================

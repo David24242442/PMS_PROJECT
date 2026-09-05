@@ -72,13 +72,46 @@ const MyPreset = definePreset(Nora, {
             800: '{mcolor.800}',
             900: '{mcolor.900}',
             950: '{mcolor.950}'
+        },
+        colorScheme: {
+            dark: {
+                surface: {
+                    0: '#ffffff',
+                    50: '#1a2332',
+                    100: '#1e293b',
+                    200: '#334155',
+                    300: '#475569',
+                    400: '#64748b',
+                    500: '#94a3b8',
+                    600: '#cbd5e1',
+                    700: '#e2e8f0',
+                    800: '#f1f5f9',
+                    900: '#f8fafc',
+                    950: '#ffffff'
+                },
+                primary: {
+                    color: '#818cf8',
+                    inverseColor: '#1e1b4b',
+                    hoverColor: '#a5b4fc',
+                    activeColor: '#6366f1'
+                },
+                highlight: {
+                    background: 'rgba(129, 140, 248, 0.16)',
+                    focusBackground: 'rgba(129, 140, 248, 0.24)',
+                    color: '#c7d2fe',
+                    focusColor: '#e0e7ff'
+                }
+            }
         }
     }
 });
 
 app.use(PrimeVue, {
     theme: {
-        preset: MyPreset
+        preset: MyPreset,
+        options: {
+            darkModeSelector: '.dark-mode',
+        }
     }
 });
 app.use(ConfirmationService)

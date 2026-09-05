@@ -1,11 +1,10 @@
 <script setup>
-    import { ref, onMounted, watch } from "vue";
+    import { ref, computed, onMounted, watch } from "vue";
     import { useRouter, useRoute } from 'vue-router';
     import { useUsersStore } from '@/stores/user';
     import axios from '@/helpers/pms_axios';
     
     const userstore = useUsersStore()
-    // Destructure specifically what was used in the original file plus what we need
     let { setloguser, loguser } = userstore
 
     const router = useRouter()
@@ -13,8 +12,9 @@
 
     const hasPendingAppraisals = ref(false);
 
-    // State for Sidebar Collapse
-    const isCollapsed = ref(localStorage.getItem('hr-sidebar-collapsed') === 'true');
+    // State for Hover-based Sidebar Expand/Collapse
+    const isHovered = ref(false);
+    const isExpanded = computed(() => isHovered.value);
 
     // Dark Mode State
     const isDarkMode = ref(localStorage.getItem('hr-theme') === 'dark');
@@ -34,26 +34,31 @@
     };
 
     // State for Dropdown Menus
-    // We default them to closed or open depending on preference. 
-    // Let's default 'onboarding' to open since it's the main app.
     const openMenus = ref({
-        onboarding: true,
+        onboarding: false,
         pms: false,
         admin: false
     });
 
-    const toggleMenu = (menu) => {
-        if (!isCollapsed.value) {
-            openMenus.value[menu] = !openMenus.value[menu];
-        }
+    const emit = defineEmits(['hover-change']);
+
+    const onMouseEnter = () => {
+        isHovered.value = true;
+        emit('hover-change', true);
     };
 
-    const emit = defineEmits(['toggle-collapse']);
+    const onMouseLeave = () => {
+        isHovered.value = false;
+        openMenus.value.onboarding = false;
+        openMenus.value.pms = false;
+        openMenus.value.admin = false;
+        emit('hover-change', false);
+    };
 
-    const toggleCollapse = () => {
-        isCollapsed.value = !isCollapsed.value;
-        localStorage.setItem('hr-sidebar-collapsed', isCollapsed.value.toString());
-        emit('toggle-collapse', isCollapsed.value);
+    const toggleMenu = (menu) => {
+        if (isExpanded.value) {
+            openMenus.value[menu] = !openMenus.value[menu];
+        }
     };
 
     const logout = () => {
@@ -82,51 +87,38 @@
         }
     });
 
-    watch(isCollapsed, (newVal) => {
-        if (newVal) {
-            // Close submenus when collapsed to avoid floating weirdness
-            openMenus.value.onboarding = false;
-            openMenus.value.pms = false;
-            openMenus.value.admin = false;
-        }
-    });
-
 </script>
 
 <template>
-    <!-- Removed 'dark' class binding -->
-    <aside class="sidebar-container" :class="{ 'collapsed': isCollapsed }">
+    <aside class="sidebar-container" :class="{ 'collapsed': !isExpanded, 'expanded-hover': isExpanded }" @mouseenter="onMouseEnter" @mouseleave="onMouseLeave">
         
         <!-- Sidebar Header / Logo -->
         <div class="sidebar-top">
             <div class="logo">
-                <span class="logo-text" v-show="!isCollapsed"> HR <span class="pms-styled">PORTAL</span></span>
-                <span class="logo-text-collapsed" v-show="isCollapsed">HR</span>
+                <span class="logo-text" v-show="isExpanded"> HR <span class="pms-styled">PORTAL</span></span>
+                <span class="logo-text-collapsed" v-show="!isExpanded">HR</span>
             </div>
-            <button class="collapse-btn" @click="toggleCollapse">
-                <i class="pi pi-chevron-left" :class="{ 'rotate-180': isCollapsed }"></i>
-            </button>
         </div>
 
         <!-- Sidebar Navigation -->
         <nav class="sidebar-menu">
             
             <!-- Dashboard (Global) -->
-            <router-link v-if="loguser?.permissions?.includes('/dashboard')" to="/dashboard" class="menu-item" :title="isCollapsed ? 'Dashboard' : ''">
+            <router-link v-if="loguser?.permissions?.includes('/dashboard')" to="/dashboard" class="menu-item" :title="!isExpanded ? 'Dashboard' : ''">
                 <div class="active-indicator"></div>
                 <span class="pi pi-th-large"></span>
-                <span class="link-name" v-show="!isCollapsed">Dashboard</span>
+                <span class="link-name" v-show="isExpanded">Dashboard</span>
             </router-link>
 
             <!-- Onboarding Group -->
-            <div v-if="loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees')" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.onboarding && !isCollapsed }">
-                <div class="menu-item" @click="toggleMenu('onboarding')" :title="isCollapsed ? 'Onboarding' : ''">
+            <div v-if="loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees')" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.onboarding && isExpanded }">
+                <div class="menu-item" @click="toggleMenu('onboarding')" :title="!isExpanded ? 'Onboarding' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-briefcase"></span>
-                    <span class="link-name" v-show="!isCollapsed">Onboarding</span>
-                    <span class="pi pi-chevron-down arrow" v-show="!isCollapsed"></span>
+                    <span class="link-name" v-show="isExpanded">Onboarding</span>
+                    <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
                 </div>
-                <div class="sub-menu" v-show="!isCollapsed">
+                <div class="sub-menu" v-show="isExpanded">
                     <router-link v-if="loguser?.permissions?.includes('/onboarding')" to="/onboarding">
                         <span class="pi pi-list"></span>
                         Onboarding
@@ -138,15 +130,15 @@
                 </div>
             </div>
 
-            <!-- PMS Group (Renamed from Performance) -->
-            <div v-if="['/pms/dashboard', '/pms/goals', '/pms/review'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.pms && !isCollapsed }">
-                <div class="menu-item" @click="toggleMenu('pms')" :title="isCollapsed ? 'PMS' : ''">
+            <!-- PMS Group (Renamed to PMS, contains PMS Submissions) -->
+            <div v-if="['/pms/dashboard', '/pms/goals', '/pms/review', '/pms/appraisal', '/hr/submissions'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.pms && isExpanded }">
+                <div class="menu-item" @click="toggleMenu('pms')" :title="!isExpanded ? 'PMS' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-chart-bar"></span>
-                    <span class="link-name" v-show="!isCollapsed">Performance</span>
-                    <span class="pi pi-chevron-down arrow" v-show="!isCollapsed"></span>
+                    <span class="link-name" v-show="isExpanded">PMS</span>
+                    <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
                 </div>
-                <div class="sub-menu" v-show="!isCollapsed">
+                <div class="sub-menu" v-show="isExpanded">
                     <router-link v-if="loguser?.permissions?.includes('/pms/dashboard')" to="/pms/dashboard">
                         <span class="pi pi-home"></span>
                         Dashboard
@@ -163,18 +155,22 @@
                         <span class="pi pi-check-circle"></span>
                         Review
                     </router-link>
+                    <router-link v-if="loguser?.permissions?.includes('/hr/submissions')" to="/hr/submissions">
+                        <span class="pi pi-inbox"></span>
+                        PMS Submissions
+                    </router-link>
                 </div>
             </div>
 
             <!-- Admin Group -->
-            <div v-if="['/users', '/pms/employee-master', '/hr/submissions'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.admin && !isCollapsed }">
-                <div class="menu-item" @click="toggleMenu('admin')" :title="isCollapsed ? 'Admin' : ''">
+            <div v-if="['/users', '/pms/employee-master'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.admin && isExpanded }">
+                <div class="menu-item" @click="toggleMenu('admin')" :title="!isExpanded ? 'HR Admin' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-users"></span>
-                    <span class="link-name" v-show="!isCollapsed">HR Admin</span>
-                    <span class="pi pi-chevron-down arrow" v-show="!isCollapsed"></span>
+                    <span class="link-name" v-show="isExpanded">HR Admin</span>
+                    <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
                 </div>
-                <div class="sub-menu" v-show="!isCollapsed">
+                <div class="sub-menu" v-show="isExpanded">
                     <router-link v-if="loguser?.permissions?.includes('/users')" to="/users">
                         <span class="pi pi-user-edit"></span>
                         Manage Users
@@ -183,49 +179,43 @@
                         <span class="pi pi-users"></span>
                         Line Manager Console
                     </router-link>
-                    
-                    <!-- PMS Admin Links -->
-                    <router-link v-if="loguser?.permissions?.includes('/hr/submissions')" to="/hr/submissions">
-                        <span class="pi pi-inbox"></span>
-                        PMS Submissions
-                    </router-link>
                 </div>
             </div>
 
-            <router-link to="/profile" class="menu-item" :title="isCollapsed ? 'Profile' : ''">
+            <router-link to="/profile" class="menu-item" :title="!isExpanded ? 'Profile' : ''">
                 <div class="active-indicator"></div>
                 <span class="pi pi-user"></span>
-                <span class="link-name" v-show="!isCollapsed">Profile</span>
+                <span class="link-name" v-show="isExpanded">Profile</span>
             </router-link>
 
             <!-- Logout -->
-            <a @click="logout" class="menu-item mt-auto" :title="isCollapsed ? 'Logout' : ''">
+            <a @click="logout" class="menu-item mt-auto" :title="!isExpanded ? 'Logout' : ''">
                 <div class="active-indicator opacity-0"></div>
                 <span class="pi pi-sign-out"></span>
-                <span class="link-name" v-show="!isCollapsed">Logout</span>
+                <span class="link-name" v-show="isExpanded">Logout</span>
             </a>
 
         </nav>
 
         <!-- Sidebar Footer (Profile) -->
         <div class="sidebar-footer">
-            <div class="user-profile" v-show="!isCollapsed">
+            <div class="user-profile" v-show="isExpanded">
                 <div class="avatar">
-                    <i class="pi pi-user text-xl"></i>
+                    <i class="pi pi-user text-lg"></i>
                 </div>
                 <div class="user-details">
                     <p>{{ loguser?.name }}</p>
                     <small>{{ loguser?.admin ? 'Administrator' : 'Employee' }}</small>
                 </div>
             </div>
-            <div class="avatar collapsed-avatar" v-show="isCollapsed" :title="loguser?.name">
+            <div class="avatar collapsed-avatar" v-show="!isExpanded" :title="loguser?.name">
                 <i class="pi pi-user"></i>
             </div>
             
             <!-- Dark/Light Mode Toggle -->
             <button class="theme-toggle-btn" @click="toggleDarkMode" :title="isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
                 <i :class="isDarkMode ? 'pi pi-sun' : 'pi pi-moon'"></i>
-                <span v-show="!isCollapsed" class="theme-toggle-label">{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</span>
+                <span v-show="isExpanded" class="theme-toggle-label">{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</span>
             </button>
         </div>
     </aside>
@@ -481,9 +471,15 @@
         color: white !important;
     }
 
-    /* Collapsed State */
+    /* Collapsed State (Default) */
     .sidebar-container.collapsed {
         width: 80px;
+    }
+
+    /* Hover Expanded State */
+    .sidebar-container.expanded-hover {
+        width: 260px;
+        box-shadow: 10px 0 35px rgba(0, 0, 0, 0.45);
     }
 
     .collapsed .sidebar-top {

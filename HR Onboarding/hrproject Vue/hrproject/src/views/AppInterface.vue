@@ -9,11 +9,10 @@
     const userstore = useUsersStore()
     let { loguser } = userstore
 
-    // Default to collapsed state from LocalStorage (match Nav.vue default)
-    const isCollapsed = ref(localStorage.getItem('hr-sidebar-collapsed') === 'true');
+    const isNavExpanded = ref(false);
 
-    const handleCollapse = (collapsedState) => {
-        isCollapsed.value = collapsedState;
+    const handleHoverChange = (expanded) => {
+        isNavExpanded.value = expanded;
     };
 </script>
 
@@ -21,10 +20,10 @@
 
     <div id='mainDiv'>
         <LoadingOverlay />
-        <Nav @toggle-collapse="handleCollapse"></Nav>
+        <Nav @hover-change="handleHoverChange"></Nav>
         <div
             id="mainview"
-            :class="{ 'collapsed-view': isCollapsed }"
+            :class="{ 'expanded-view': isNavExpanded }"
         >
             <div style="padding:24px">
                 <RouterView></RouterView>
@@ -71,17 +70,15 @@
         position: absolute;
         top: 0;
         bottom: 0;
-        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         overflow-y: auto;
-
-        /* Default Expanded State */
-        left: 260px;
-        width: calc(100% - 260px);
-    }
-
-    #mainview.collapsed-view {
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         left: 80px;
         width: calc(100% - 80px);
+    }
+
+    #mainview.expanded-view {
+        left: 260px;
+        width: calc(100% - 260px);
     }
     
 </style>

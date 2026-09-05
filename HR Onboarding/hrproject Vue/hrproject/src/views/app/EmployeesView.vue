@@ -1268,4 +1268,13 @@
     #divtoscroll > div {
         overflow-x: auto;
     }
+
+    /* Dark mode */
+    :global(body.dark-mode) .col-picker-checkbox input[type="checkbox"]:not(:checked) {
+        background: #0f172a !important;
+        border-color: #475569 !important;
+    }
+    :global(body.dark-mode) .col-picker-checkbox:hover {
+        background: rgba(129, 140, 248, 0.1) !important;
+    }
 </style>

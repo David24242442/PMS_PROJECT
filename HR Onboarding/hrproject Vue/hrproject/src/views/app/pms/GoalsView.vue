@@ -7,10 +7,15 @@ import { showAlert, showConfirm } from '@/helpers/essential';
 import AutoComplete from 'primevue/autocomplete';
 import { finddept, findbranch } from '@/data/masterdata';
 import melcomLogo from '@/assets/img/melcom_logo.png';
+import PrintableHardCopyDossier from '@/components/pms/PrintableHardCopyDossier.vue';
 
 const userstore = useUsersStore();
 const { loguser } = userstore;
 const router = useRouter();
+
+const isDark = ref(document.body.classList.contains('dark-mode'));
+const _darkObserver = new MutationObserver(() => { isDark.value = document.body.classList.contains('dark-mode'); });
+_darkObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
 const goals = ref([]);
 const loading = ref(true);
@@ -95,7 +100,7 @@ const defaultAppraisalData = () => ({
     competencies: [
         { 
             id: 1, 
-            title: 'Performance', 
+            title: 'Performance & Teamwork', 
             descriptions: [
                 'a) Overall performance - based on feedback from Line or Operations Managers', 
                 'b) Teamwork, People issues - how it has been managed, number of queries tracked as compared to last year and compared to your peers.'
@@ -109,9 +114,9 @@ const defaultAppraisalData = () => ({
             title: 'Customer Service / Relationship Building', 
             descriptions: [
                 'a) Number of super saver cards sold vs number of invoices made without the use of super saver card on the invoices', 
-                "b) Google scores â€“ Improvement over last year's Shop Google or overall Melcom Google score."
+                "b) Google review 4.6 / Improvement query in the weekly Shop Google vs overall Melcom Google score."
             ], 
-            weight: 30, 
+            weight: 20, 
             selfRating: 0, 
             managerRating: 0 
         },
@@ -120,19 +125,29 @@ const defaultAppraisalData = () => ({
             title: 'Execution / Sales Results Driven', 
             descriptions: [
                 'a) Business Driven Metric (Set by Department with Management input)', 
-                'b) Loss to company % (Factors and calculations must be provided), where application and relevant'
+                'b) Loss to company % (Factors and calculations must be provided), where applicable and relevant'
             ], 
-            weight: 30, 
+            weight: 20, 
             selfRating: 0, 
             managerRating: 0 
         },
         { 
             id: 4, 
+            title: 'Compliance & Quality Standards', 
+            descriptions: [
+                'a) Adherence to company policies, SOPs, safety, and regulatory compliance', 
+                'b) % implementation of Wooqer checklist and shop/department standards'
+            ], 
+            weight: 20, 
+            selfRating: 0, 
+            managerRating: 0 
+        },
+        { 
+            id: 5, 
             title: 'Continuous Improvement in workflows/processes', 
             descriptions: [
                 'a) Culture of adaptability and innovation among staff, such as inventory management, employee training', 
-                'b) Adaptability / Flexibility',
-                'c) Compliance :- % implementation of Wooqer checklist for the shop'
+                'b) Adaptability / Flexibility and operational problem solving'
             ], 
             weight: 20, 
             selfRating: 0, 
@@ -276,8 +291,8 @@ const onCandidateSelect = (event) => {
         : (finddept(candidate.joining_dept_id) || 'N/A');
         
     // Job Title fallback logic
-    newGoal.value.job_title = (candidate.job_title && candidate.job_title !== 'N/A')
-        ? candidate.job_title
+    newGoal.value.job_title = (candidate.position && candidate.position !== 'N/A')
+        ? candidate.position
         : newGoal.value.department;
         
     // Manager stays as logged in user (the creator)
@@ -387,6 +402,7 @@ const addGoal = async (status = 'in_progress') => {
             employee_code: newGoal.value.employee_code,
             location: newGoal.value.location,
             department: newGoal.value.department,
+            job_title: newGoal.value.job_title || '',
             manager_name: loguser.name || '',
             smart_criteria: newGoal.value.smart_criteria,
             quarterly_tracking: newGoal.value.quarterly_tracking,
@@ -561,6 +577,7 @@ const saveDraft = async (toServer = false) => {
                 employee_code: newGoal.value.employee_code,
                 location: newGoal.value.location,
                 department: newGoal.value.department,
+                job_title: newGoal.value.job_title || '',
                 manager_name: loguser.name || '',
                 smart_criteria: newGoal.value.smart_criteria,
                 quarterly_tracking: newGoal.value.quarterly_tracking,
@@ -608,13 +625,11 @@ const triggerPrint = () => {
     const source = document.getElementById('protocol-report');
     if (!source) return;
 
-    // Clone report content into a standalone wrapper appended to body
     const printContainer = document.createElement('div');
     printContainer.id = 'print-clone';
     printContainer.innerHTML = source.innerHTML;
     document.body.appendChild(printContainer);
 
-    // Add a style tag for the clone
     const printStyle = document.createElement('style');
     printStyle.id = 'print-clone-style';
     printStyle.textContent = `
@@ -626,48 +641,53 @@ const triggerPrint = () => {
                 display: block !important;
                 position: static !important;
                 width: 100% !important;
-                overflow: visible !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
-            #print-clone .doc-page {
-                padding: 10mm !important;
+            #print-clone .hardcopy-page {
                 margin: 0 !important;
+                padding: 8mm 10mm !important;
                 width: 100% !important;
                 min-height: auto !important;
                 max-height: none !important;
                 height: auto !important;
-                box-shadow: none !important;
-                border: none !important;
                 page-break-after: always !important;
                 break-after: page !important;
-                display: block !important;
+                box-shadow: none !important;
+                border: none !important;
+                display: flex !important;
+                flex-direction: column !important;
                 overflow: visible !important;
-                border-radius: 0 !important;
             }
-            #print-clone .doc-page:last-child {
+            #print-clone .hardcopy-page:last-child {
                 page-break-after: avoid !important;
+                break-after: avoid !important;
             }
-            #print-clone .no-print { display: none !important; }
-            #print-clone table { page-break-inside: auto !important; }
-            #print-clone tr { page-break-inside: avoid !important; break-inside: avoid !important; }
-            #print-clone thead { display: table-header-group !important; }
-            #print-clone .space-y-4 > *, #print-clone .space-y-6 > *, #print-clone .space-y-8 > *, #print-clone .space-y-10 > * {
+            #print-clone table {
+                page-break-inside: auto !important;
+            }
+            #print-clone tr {
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
             }
-            #print-clone .grid { page-break-inside: avoid !important; break-inside: avoid !important; }
-            #print-clone .mt-auto { margin-top: 10mm !important; }
-            #print-clone .watermark-logo {
-                position: absolute !important;
-                top: 50% !important;
-                left: 50% !important;
-                transform: translate(-50%, -50%) !important;
-                width: 280px !important;
-                opacity: 0.04 !important;
-                pointer-events: none !important;
-                z-index: 0 !important;
-                display: block !important;
+            #print-clone thead {
+                display: table-header-group !important;
             }
-            @page { size: A4 portrait; margin: 8mm 5mm; }
+            #print-clone .section-box, 
+            #print-clone .quarterly-section, 
+            #print-clone .feedback-split-box, 
+            #print-clone .scale-guide-wrapper, 
+            #print-clone .review-section-block, 
+            #print-clone .auth-signoff-section {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            @page {
+                size: A4 portrait;
+                margin: 6mm 6mm;
+            }
         }
         @media screen {
             #print-clone { display: none !important; }
@@ -675,13 +695,11 @@ const triggerPrint = () => {
     `;
     document.head.appendChild(printStyle);
 
-    // Small delay to let browser render, then print
     setTimeout(() => {
         window.print();
-        // Cleanup after print dialog closes
         setTimeout(() => {
-            document.body.removeChild(printContainer);
-            document.head.removeChild(printStyle);
+            if (document.body.contains(printContainer)) document.body.removeChild(printContainer);
+            if (document.head.contains(printStyle)) document.head.removeChild(printStyle);
         }, 500);
     }, 300);
 };
@@ -805,11 +823,11 @@ const downloadPDF = () => {
     const runDownload = () => {
         const opt = {
           margin:       0,
-          filename:     `Protocol_${selectedGoal.value.id}.pdf`,
+          filename:     `PMS_Appraisal_${selectedGoal.value.candidate_name || selectedGoal.value.employee_code || selectedGoal.value.id}_${selectedGoal.value.year || 'Record'}.pdf`,
           image:        { type: 'jpeg', quality: 0.98 },
           html2canvas:  { scale: 2, useCORS: true, logging: false },
           jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+          pagebreak:    { mode: ['css', 'legacy'] }
         };
         window.html2pdf().from(element).set(opt).save();
     };
@@ -982,6 +1000,7 @@ watch(newGoal, () => {
 
 onMounted(() => {
     fetchGoals();
+    fetchMasterEmployees();
 });
 
 // â”€â”€â”€ Filter State â”€â”€â”€
@@ -1496,9 +1515,9 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 </template>
                             </AutoComplete>
                             <div class="flex flex-wrap gap-2">
-                                <span class="px-3 py-1 bg-[#F1F5F9] rounded text-[10px] font-semibold text-gray-500 border border-gray-100">Dept: {{ newGoal.department || 'N/A' }}</span>
-                                <span class="px-3 py-1 bg-[#F1F5F9] rounded text-[10px] font-semibold text-gray-500 border border-gray-100">Loc: {{ newGoal.location || 'N/A' }}</span>
-                                <span class="px-3 py-1 bg-indigo-50 rounded text-[10px] font-black text-indigo-700 border border-indigo-100">Job Title: {{ newGoal.job_title || 'N/A' }}</span>
+                                <span class="px-3 py-1 bg-[#F1F5F9] rounded text-[10px] font-semibold text-gray-500 border border-gray-100">Joining Department: {{ newGoal.department || 'N/A' }}</span>
+                                <span class="px-3 py-1 bg-[#F1F5F9] rounded text-[10px] font-semibold text-gray-500 border border-gray-100">Joining Location: {{ newGoal.location || 'N/A' }}</span>
+                                <span class="px-3 py-1 bg-indigo-50 rounded text-[10px] font-black text-indigo-700 border border-indigo-100">Joining Position: {{ newGoal.job_title || 'N/A' }}</span>
                             </div>
                         </div>
                     </div>
@@ -1928,367 +1947,15 @@ const removeAttachment = (qIndex, fileIndex) => {
         <Dialog v-model:visible="showDetailModal" :modal="true" :showHeader="false" 
             class="!p-0 overflow-hidden shadow-2xl border-none" 
             :style="{ width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh', margin: '0' }"
-            :contentStyle="{ padding: '0', backgroundColor: '#F1F5F9', display: 'flex' }">
+            :contentStyle="{ padding: '0', backgroundColor: isDark ? '#0f172a' : '#F1F5F9', display: 'flex' }">
             
             <div v-if="selectedGoal" class="flex w-full h-full overflow-hidden">
                 
                 <!-- Document Viewport (Left/Center) -->
                 <div class="flex-1 overflow-y-auto bg-slate-200 p-8 md:p-12 lg:p-20 flex flex-col items-center custom-scrollbar scroll-smooth">
                     
-                    <div id="protocol-report" class="w-full max-w-[210mm] space-y-8 print:m-0 print:shadow-none print:w-full no-scrollbar">
-                        
-                        <!-- Page 1: Profile & Definitions -->
-                        <div class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 w-[210mm] min-h-[297mm] flex flex-col relative">
-                            <img :src="melcomLogo" class="watermark-logo" alt="" />
-                            <!-- Header -->
-                            <div class="flex justify-between items-start mb-12 border-b-2 border-slate-900 pb-8">
-                                <div>
-                                    <div class="text-[10px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-3">MELCOM HR PMS</div>
-                                    <h1 class="text-4xl font-black text-slate-900 tracking-tighter uppercase leading-tight">{{ selectedGoal.candidate_name }}</h1>
-                                    <div class="flex items-center gap-3 mt-4">
-                                        <span class="px-3 py-1 bg-slate-100 text-slate-600 text-[9px] font-black uppercase rounded">{{ selectedGoal.employee_code || 'EMP-XXXX' }}</span>
-                                        <span class="w-1 h-1 rounded-full bg-slate-300"></span>
-                                        <span class="text-[10px] font-bold text-slate-400 capitalize">{{ selectedGoal.department || 'N/A' }} &#x2022; {{ selectedGoal.location || 'N/A' }}</span>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Fiscal Cycle</div>
-                                    <div class="text-2xl font-black text-slate-900">{{ selectedGoal.year }}</div>
-                                    <div class="text-[9px] font-bold text-slate-400 mt-1">Created: {{ formatDate(selectedGoal.created_at) }}</div>
-                                </div>
-                            </div>
-
-                            <!-- Section A: Strategic Definition -->
-                            <div class="space-y-10">
-                                <div>
-                                    <div class="flex items-center gap-4 mb-6">
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">YEARLY SMART GOALS SETTING</span>
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                    </div>
-                                    <div class="space-y-6">
-                                        <div>
-                                            <h3 class="text-xs font-black text-slate-900 uppercase mb-2">Primary Goal Title</h3>
-                                            <p class="text-base font-black text-indigo-700 uppercase leading-snug">{{ selectedGoal.title }}</p>
-                                        </div>
-                                        <div class="grid grid-cols-2 gap-8">
-                                            <div>
-                                                <h3 class="text-[10px] font-black text-slate-400 uppercase mb-2">Category</h3>
-                                                <p class="text-xs font-bold text-slate-700 uppercase">{{ selectedGoal.category || 'General' }}</p>
-                                            </div>
-                                            <div>
-                                                <h3 class="text-[10px] font-black text-slate-400 uppercase mb-2">Target Performance</h3>
-                                                <p class="text-xs font-black text-slate-900 uppercase">{{ selectedGoal.target }}%</p>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <h3 class="text-[10px] font-black text-slate-400 uppercase mb-3">Narrative Description & Objectives</h3>
-                                            <div class="space-y-3">
-                                                <div v-for="(desc, index) in parseList(selectedGoal.description)" :key="index" class="p-4 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600 leading-relaxed">
-                                                    <span class="text-indigo-600 mr-2 opacity-50">{{ (index+1).toString().padStart(2, '0') }}</span> {{ desc }}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <div class="flex items-center gap-4 mb-6">
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">PURPOSE & VALUE</span>
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                    </div>
-                                    <div class="grid grid-cols-1 gap-4">
-                                        <div v-for="(p, pIdx) in parseList(selectedGoal.purposes)" :key="pIdx" class="flex gap-4 p-4 bg-white border border-slate-100 rounded-xl shadow-sm">
-                                            <div class="w-2 h-2 rounded-full bg-teal-500 mt-1.5 shrink-0"></div>
-                                            <p class="text-[11px] font-bold text-slate-600 leading-normal">{{ p }}</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Challenges -->
-                                <div v-if="parseList(selectedGoal.challenges).filter(c => c && c.trim()).length">
-                                    <div class="flex items-center gap-4 mb-6">
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">CHALLENGES & RISKS</span>
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                    </div>
-                                    <div class="grid grid-cols-1 gap-4">
-                                        <div v-for="(c, cIdx) in parseList(selectedGoal.challenges)" :key="cIdx" class="flex gap-4 p-4 bg-red-50/50 border border-red-100 rounded-xl">
-                                            <div class="w-2 h-2 rounded-full bg-red-400 mt-1.5 shrink-0"></div>
-                                            <p class="text-[11px] font-bold text-slate-600 leading-normal">{{ c }}</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- SMART Criteria -->
-                                <div v-if="selectedGoal.smart_criteria">
-                                    <div class="flex items-center gap-4 mb-6">
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">SMART CRITERIA CHECKLIST</span>
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                    </div>
-                                    <table class="w-full text-left text-xs border-collapse">
-                                        <thead class="bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest">
-                                            <tr>
-                                                <th class="px-5 py-3 rounded-tl-xl">My Goal Is...</th>
-                                                <th class="px-5 py-3 text-center rounded-tr-xl w-20">Check</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-slate-100 bg-white border-x border-b border-slate-100">
-                                            <tr v-for="(item, key) in { specific: { letter: 'S', label: 'Specific', color: 'bg-indigo-600', desc: 'Clearly defines what needs to be accomplished' }, measurable: { letter: 'M', label: 'Measurable', color: 'bg-purple-600', desc: 'Has quantifiable indicators of progress' }, attainable: { letter: 'A', label: 'Attainable', color: 'bg-emerald-600', desc: 'Realistic and achievable with available resources' }, relevant: { letter: 'R', label: 'Relevant', color: 'bg-red-500', desc: 'Aligned with broader business objectives' }, time_bound: { letter: 'T', label: 'Time-Bound', color: 'bg-violet-600', desc: 'Has a clear deadline or timeframe' } }" :key="key">
-                                                <td class="px-5 py-4">
-                                                    <div class="flex items-center gap-3">
-                                                        <span class="w-7 h-7 rounded-lg text-white text-[10px] font-black flex items-center justify-center shrink-0" :class="item.color">{{ item.letter }}</span>
-                                                        <div>
-                                                            <p class="text-[11px] font-black text-slate-800">{{ item.label }}</p>
-                                                            <p class="text-[9px] text-slate-400">{{ item.desc }}</p>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td class="px-5 py-4 text-center">
-                                                    <i class="pi text-base" :class="selectedGoal.smart_criteria[key] ? 'pi-check-square text-emerald-500' : 'pi-stop text-slate-300'"></i>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                        <tfoot class="bg-slate-50">
-                                            <tr>
-                                                <td class="px-5 py-3 text-[10px] font-black text-slate-500 uppercase">{{ Object.values(selectedGoal.smart_criteria).filter(v => v).length }}/5 Criteria Met</td>
-                                                <td></td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <div class="mt-auto pt-10 text-center">
-                                <p class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Page 01 // Official Performance Record // RecordId: {{ getDossierId(selectedGoal) }}</p>
-                            </div>
-                        </div>
-
-                        <!-- Page 2: Quarterly Progress -->
-                        <div class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 w-[210mm] min-h-[297mm] flex flex-col break-before-page relative">
-                            <img :src="melcomLogo" class="watermark-logo" alt="" />
-                            <div class="flex items-center gap-4 mb-10">
-                                <div class="w-10 h-1 bg-indigo-600"></div>
-                                <h2 class="text-xl font-black text-slate-900 uppercase tracking-tight">Goal Start Date — Key Steps</h2>
-                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Measure (Growth Over Last Year & Quarters) — Keep a log of your progress</p>
-                            </div>
-
-                            <table class="w-full text-left text-xs border-collapse">
-                                <thead class="bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest">
-                                    <tr>
-                                        <th class="px-5 py-3 rounded-tl-xl w-[100px]">Date</th>
-                                        <th class="px-5 py-3">Target Measure</th>
-                                        <th class="px-5 py-3 rounded-tr-xl">Attachments</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100 bg-white border-x border-b border-slate-100">
-                                    <tr v-for="(q, qIdx) in selectedGoal.quarterly_tracking" :key="qIdx">
-                                        <td class="px-5 py-4 align-top">
-                                            <span class="inline-block px-2 py-0.5 rounded text-[9px] font-black text-white mb-1" :class="['bg-red-400','bg-amber-500','bg-emerald-500','bg-indigo-500'][qIdx] || 'bg-slate-500'">{{ q.quarter ? q.quarter.toUpperCase() : 'Q'+(qIdx+1) }}</span>
-                                            <p class="text-[9px] text-slate-400 font-bold leading-tight">{{ formatDate(q.start_date) }}</p>
-                                            <p class="text-[9px] text-slate-400 font-bold leading-tight">{{ formatDate(q.end_date) }}</p>
-                                        </td>
-                                        <td class="px-5 py-4 align-top">
-                                            <div v-for="(m, mIdx) in parseList(q.target_measures)" :key="mIdx" class="flex items-start gap-2 mb-1">
-                                                <i class="pi pi-check-circle text-indigo-400 text-[9px] mt-0.5 shrink-0"></i>
-                                                <p class="text-[11px] font-bold text-slate-600 leading-snug">{{ m }}</p>
-                                            </div>
-                                            <p v-if="!parseList(q.target_measures).length" class="text-[10px] text-slate-300 italic">—</p>
-                                        </td>
-                                        <td class="px-5 py-4 align-top">
-                                            <div v-if="q.attachments && q.attachments.length" class="space-y-1">
-                                                <span v-for="(att, aIdx) in q.attachments" :key="aIdx" class="block px-2 py-1 bg-slate-50 border border-slate-100 rounded text-[9px] font-bold text-slate-500 truncate">
-                                                    <i class="pi pi-paperclip mr-1 text-[8px]"></i>{{ typeof att === 'string' ? att.split('/').pop() : att.name || ('File ' + (aIdx+1)) }}
-                                                </span>
-                                            </div>
-                                            <p v-else class="text-[10px] text-slate-300 italic">—</p>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-
-                            <div class="mt-auto pt-10 text-center">
-                                <p class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Page 02 // Official Performance Record // RecordId: {{ getDossierId(selectedGoal) }}</p>
-                            </div>
-                        </div>
-
-                        <!-- Page 3: Appraisal & Review -->
-                        <div v-if="selectedGoal.appraisal_data || selectedGoal.status === 'completed' || selectedGoal.status === 'in_progress'"
-                            class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 w-[210mm] min-h-[297mm] flex flex-col break-before-page relative">
-                            <img :src="melcomLogo" class="watermark-logo" alt="" />
-
-                            <div class="flex items-center gap-4 mb-10">
-                                <div class="w-10 h-1 bg-indigo-600"></div>
-                                <h2 class="text-xl font-black text-slate-900 uppercase tracking-tight">Yearly Performance Assessment</h2>
-                            </div>
-
-                            <div class="space-y-10">
-                                <!-- Competency Matrix with Descriptions -->
-                                <div v-if="selectedGoal.appraisal_data && selectedGoal.appraisal_data.competencies">
-                                    <table class="w-full text-left font-black text-xs border-collapse">
-                                        <thead class="bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest">
-                                            <tr>
-                                                <th class="px-6 py-4 rounded-tl-xl">Assessment Unit</th>
-                                                <th class="px-6 py-4 text-center">Weight</th>
-                                                <th class="px-6 py-4 text-center">Self</th>
-                                                <th class="px-6 py-4 text-center rounded-tr-xl">Mgr</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-slate-100 bg-white border-x border-b border-slate-100 overflow-hidden">
-                                            <template v-for="(comp, cIdx) in selectedGoal.appraisal_data.competencies" :key="cIdx">
-                                                <tr>
-                                                    <td class="px-6 pt-5 pb-1 font-black text-slate-800 text-[11px]">{{ comp.title }}</td>
-                                                    <td class="px-6 pt-5 pb-1 text-center font-bold text-slate-400">{{ comp.weight }}%</td>
-                                                    <td class="px-6 pt-5 pb-1 text-center font-bold text-slate-400">{{ comp.selfRating || '0' }}</td>
-                                                    <td class="px-6 pt-5 pb-1 text-center font-black text-indigo-600">{{ comp.managerRating || '0' }}</td>
-                                                </tr>
-                                                <tr v-if="comp.descriptions && comp.descriptions.length">
-                                                    <td colspan="4" class="px-6 pb-4 pt-0">
-                                                        <div v-for="(desc, dIdx) in comp.descriptions" :key="dIdx" class="text-[9px] text-slate-400 leading-relaxed pl-2 border-l-2 border-slate-100 mt-1">
-                                                            {{ desc }}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            </template>
-                                        </tbody>
-                                        <tfoot>
-                                            <tr class="bg-slate-50 border-b border-slate-100">
-                                                <td class="px-6 py-3 text-[10px] font-bold text-slate-500 uppercase">Self Assessment Average</td>
-                                                <td></td>
-                                                <td class="px-6 py-3 text-center text-sm font-bold text-slate-500">{{ getSelfRating(selectedGoal) || '0.0' }}/5</td>
-                                                <td></td>
-                                            </tr>
-                                            <tr class="bg-indigo-600">
-                                                <td class="px-6 py-5 text-base font-black text-white uppercase tracking-wide rounded-bl-xl">Overall Achievement Score</td>
-                                                <td colspan="2"></td>
-                                                <td class="px-6 py-5 text-center text-2xl font-black text-white rounded-br-xl">{{ getManagerRating(selectedGoal) || '0.0' }}/5</td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-
-                                <!-- Performance Rating & Comments -->
-                                <div v-if="selectedGoal.appraisal_data?.performanceRating" class="space-y-6">
-                                    <div class="flex items-center gap-4 mb-4">
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">PERFORMANCE ASSESSMENT</span>
-                                        <div class="flex-1 h-[1px] bg-slate-200"></div>
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-8">
-                                        <div class="p-5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
-                                            <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Performance Rating</h4>
-                                            <p class="text-lg font-black text-indigo-600">{{ selectedGoal.appraisal_data.performanceRating }}/5</p>
-                                        </div>
-                                        <div class="p-5 bg-teal-50/50 border border-teal-100 rounded-xl">
-                                            <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Potential Rating</h4>
-                                            <p class="text-sm font-black text-teal-700">{{ selectedGoal.appraisal_data.potentialRating || 'Not assessed' }}</p>
-                                        </div>
-                                    </div>
-                                    <!-- Rating-specific comment -->
-                                    <div v-if="selectedGoal.appraisal_data.rating_comments && selectedGoal.appraisal_data.rating_comments[selectedGoal.appraisal_data.performanceRating]" class="p-5 bg-slate-50 border border-slate-100 rounded-xl">
-                                        <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Rating Comment</h4>
-                                        <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.rating_comments[selectedGoal.appraisal_data.performanceRating] }}</p>
-                                    </div>
-                                </div>
-
-                            </div>
-
-                            <div class="mt-auto pt-10 text-center">
-                                <p class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Page 03 // Official Performance Record // RecordId: {{ getDossierId(selectedGoal) }}</p>
-                            </div>
-                        </div>
-
-                        <!-- Page 4: Manager Commentary & Signatures -->
-                        <div v-if="selectedGoal.appraisal_data"
-                            class="doc-page bg-white shadow-2xl rounded-sm p-12 md:p-16 w-[210mm] min-h-[297mm] flex flex-col break-before-page relative">
-                            <img :src="melcomLogo" class="watermark-logo" alt="" />
-
-                            <div class="flex items-center gap-4 mb-10">
-                                <div class="w-10 h-1 bg-indigo-600"></div>
-                                <h2 class="text-xl font-black text-slate-900 uppercase tracking-tight">Manager Commentary</h2>
-                            </div>
-
-                            <div class="space-y-10">
-                                <!-- Feedback: What impressed most/least, general comments -->
-                                <div v-if="selectedGoal.appraisal_data?.impressedMost || selectedGoal.appraisal_data?.impressedLeast || selectedGoal.appraisal_data?.comments" class="space-y-4">
-                                    <div class="grid grid-cols-1 gap-4">
-                                        <div v-if="selectedGoal.appraisal_data.impressedMost" class="p-5 bg-emerald-50/50 border border-emerald-100 rounded-xl">
-                                            <h4 class="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-2">What Impressed Most</h4>
-                                            <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.impressedMost }}</p>
-                                        </div>
-                                        <div v-if="selectedGoal.appraisal_data.impressedLeast" class="p-5 bg-amber-50/50 border border-amber-100 rounded-xl">
-                                            <h4 class="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-2">What Impressed Least</h4>
-                                            <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.impressedLeast }}</p>
-                                        </div>
-                                        <div v-if="selectedGoal.appraisal_data.comments" class="p-5 bg-slate-50 border border-slate-100 rounded-xl">
-                                            <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">General Comments</h4>
-                                            <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.comments }}</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- HOD Comments & Director Remarks -->
-                                <div v-if="selectedGoal.appraisal_data?.hod_comments || selectedGoal.appraisal_data?.director_remarks" class="space-y-4">
-                                    <div v-if="selectedGoal.appraisal_data.hod_comments" class="p-5 bg-slate-50 border border-slate-100 rounded-xl">
-                                        <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">HOD Comments</h4>
-                                        <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.hod_comments }}</p>
-                                    </div>
-                                    <div v-if="selectedGoal.appraisal_data.director_remarks" class="p-5 bg-slate-50 border border-slate-100 rounded-xl">
-                                        <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Director Remarks</h4>
-                                        <p class="text-[11px] font-bold text-slate-600 leading-relaxed">{{ selectedGoal.appraisal_data.director_remarks }}</p>
-                                    </div>
-                                </div>
-
-                                <!-- All Signatures -->
-                                <div class="grid grid-cols-2 gap-12 pt-8 border-t border-slate-100">
-                                    <!-- Employee Signature -->
-                                    <div>
-                                        <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">Employee Signature</h4>
-                                        <div class="h-16 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
-                                            {{ selectedGoal.appraisal_data?.candidate_signature_name || 'Signature pending' }}
-                                        </div>
-                                        <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.candidate_signature_name || selectedGoal.candidate_name }}</p>
-                                        <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.signature_date) || 'Date' }}</p>
-                                    </div>
-                                    <!-- Manager Signature -->
-                                    <div>
-                                        <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">Line Manager Signature</h4>
-                                        <div class="h-16 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
-                                            {{ selectedGoal.appraisal_data?.manager_signature_name || 'Signature pending' }}
-                                        </div>
-                                        <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.manager_signature_name || selectedGoal.manager_name || 'Manager' }}</p>
-                                        <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.signature_date) || 'Date' }}</p>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-2 gap-12 pt-6">
-                                    <!-- HOD Signature -->
-                                    <div>
-                                        <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">HOD / Functional Head</h4>
-                                        <div class="h-16 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
-                                            {{ selectedGoal.appraisal_data?.hod_signature_name || 'Signature pending' }}
-                                        </div>
-                                        <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.hod_signature_name || 'Designee' }}</p>
-                                        <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.hod_signature_date) || 'Date' }}</p>
-                                    </div>
-                                    <!-- Director Signature -->
-                                    <div>
-                                        <h4 class="text-[9px] font-black text-slate-400 uppercase mb-4 tracking-widest">Director / Management</h4>
-                                        <div class="h-16 border-b-2 border-slate-900 mt-2 mb-2 italic text-slate-400 text-[10px] flex items-end pb-2">
-                                            {{ selectedGoal.appraisal_data?.director_signature_name || 'Signature pending' }}
-                                        </div>
-                                        <p class="text-xs font-black text-slate-900 uppercase tracking-tighter">{{ selectedGoal.appraisal_data?.director_signature_name || 'Director' }}</p>
-                                        <p class="text-[9px] font-bold text-slate-400 uppercase">{{ formatDate(selectedGoal.appraisal_data?.director_signature_date) || 'Date' }}</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="mt-auto pt-10 text-center">
-                                <p class="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Page 04 // Official Performance Record // RecordId: {{ getDossierId(selectedGoal) }}</p>
-                            </div>
-                        </div>
-
+                    <div id="protocol-report" class="w-full max-w-[210mm] print:m-0 print:shadow-none print:w-full no-scrollbar">
+                        <PrintableHardCopyDossier :goal="selectedGoal" :employees="masterEmployees" />
                     </div>
                 </div>
 

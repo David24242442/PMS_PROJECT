@@ -47,19 +47,23 @@ class GoalController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
         }
 
-        // Fetch team user IDs if applicable
-        $teamUserIds = \App\Models\User::where('line_manager_id', $userId)->pluck('id')->toArray();
+        $isAdmin = $user && $user->admin;
 
-        $goals = \App\Models\Goal::where(function ($query) use ($userId, $user, $teamUserIds) {
-                $query->where('user_id', $userId)
-                      ->orWhereIn('user_id', $teamUserIds);
+        // Admin sees all goals; regular users see only their own + their team's
+        $query = \App\Models\Goal::where('year', $year);
+
+        if (!$isAdmin) {
+            $teamUserIds = \App\Models\User::where('line_manager_id', $userId)->pluck('id')->toArray();
+            $query->where(function ($q) use ($userId, $user, $teamUserIds) {
+                $q->where('user_id', $userId)
+                  ->orWhereIn('user_id', $teamUserIds);
                 if ($user) {
-                    $query->orWhere('manager_name', $user->name);
+                    $q->orWhere('manager_name', $user->name);
                 }
-            })
-            ->where('year', $year)
-            ->orderBy('created_at', 'desc')
-            ->get();
+            });
+        }
+
+        $goals = $query->orderBy('created_at', 'desc')->get();
 
         // Fetch completed reviews for this year to determine review status
         $completedReviewEmpCodes = \App\Models\Review::where('year', $year)
@@ -67,9 +71,18 @@ class GoalController extends Controller
             ->pluck('emp_code')
             ->toArray();
 
-        // Add computed display_status to each goal
+        // Add computed display_status to each goal and resolve job_title from employee joining position
         $goals->each(function ($goal) use ($completedReviewEmpCodes) {
             $goal->display_status = $this->computeDisplayStatus($goal, $completedReviewEmpCodes);
+            if ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
+                $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
+                if ($emp) {
+                    $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
+                    if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
+                        $goal->job_title = $pos;
+                    }
+                }
+            }
         });
 
         return response()->json([
@@ -86,7 +99,18 @@ class GoalController extends Controller
         // Debug: log what we receive
         \Log::info('GoalController@store - incoming data keys: ' . implode(', ', array_keys($request->all())));
         
-        $goal = \App\Models\Goal::create($request->all());
+        $data = $request->all();
+        if ((empty($data['job_title']) || in_array($data['job_title'], ['Employee', 'N/A', ''])) && !empty($data['employee_code'])) {
+            $emp = \App\Models\Employee::where('employeeid', $data['employee_code'])->first();
+            if ($emp) {
+                $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
+                if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
+                    $data['job_title'] = $pos;
+                }
+            }
+        }
+
+        $goal = \App\Models\Goal::create($data);
         $goal->display_status = $this->computeDisplayStatus($goal);
 
         return response()->json([
@@ -104,8 +128,18 @@ class GoalController extends Controller
         try {
             $goal = \App\Models\Goal::findOrFail($id);
             
-            // Exclude dynamically computed fields from the update payload
-            $goal->update($request->except(['display_status']));
+            $data = $request->except(['display_status']);
+            if ((empty($data['job_title']) || in_array($data['job_title'], ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
+                $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
+                if ($emp) {
+                    $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
+                    if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
+                        $data['job_title'] = $pos;
+                    }
+                }
+            }
+
+            $goal->update($data);
             $goal->display_status = $this->computeDisplayStatus($goal);
 
             return response()->json([
@@ -184,14 +218,34 @@ class GoalController extends Controller
     {
         try {
             $year = $request->get('year', date('Y'));
-            
-            $goals = \App\Models\Goal::with('user')
+            $user = $request->user();
+            $isAdmin = $user && $user->admin;
+
+            $query = \App\Models\Goal::with('user')
                 ->where('year', $year)
                 ->whereNotNull('appraisal_data')
-                ->where('status', '!=', 'draft')
-                ->orderBy('submitted_at', 'desc')
+                ->where('status', '!=', 'draft');
+
+            // Non-admin users only see their own submissions
+            if (!$isAdmin && $user) {
+                $query->where('user_id', $user->id);
+            }
+
+            $goals = $query->orderBy('submitted_at', 'desc')
                 ->orderBy('updated_at', 'desc')
                 ->get();
+
+            $goals->each(function ($goal) {
+                if ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
+                    $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
+                    if ($emp) {
+                        $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
+                        if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
+                            $goal->job_title = $pos;
+                        }
+                    }
+                }
+            });
 
             return response()->json([
                 'status' => 'success',

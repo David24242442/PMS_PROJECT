@@ -1,494 +1,541 @@
 <script setup>
-    import { ref, onMounted, watch } from "vue";
-    import { useRouter } from 'vue-router';
+    import { ref, computed, onMounted, watch } from "vue";
+    import { useRouter, useRoute } from 'vue-router';
     import { useUsersStore } from '@/stores/user';
-    const emit = defineEmits(['update:collapsed']);
+    import axios from '@/helpers/pms_axios';
     
-    const userstore = useUsersStore();
-    const { setloguser, loguser } = userstore;
-    const router = useRouter();
+    const userstore = useUsersStore()
+    let { setloguser, loguser } = userstore
 
-    const isDarkMode = ref(localStorage.getItem('pms-theme') === 'dark');
-    const isCollapsed = ref(localStorage.getItem('pms-sidebar-collapsed') === 'true');
-    const openMenus = ref({
-        performance: true,
-        hrAdmin: true
-    }); 
+    const router = useRouter()
+    const route = useRoute()
 
-    const toggleMenu = (menu) => {
-        if (!isCollapsed.value) {
-            openMenus.value[menu] = !openMenus.value[menu];
-        }
-    };
+    const hasPendingAppraisals = ref(false);
 
-    const toggleCollapse = () => {
-        isCollapsed.value = !isCollapsed.value;
-        localStorage.setItem('pms-sidebar-collapsed', isCollapsed.value.toString());
-        emit('update:collapsed', isCollapsed.value);
-    };
+    // State for Hover-based Sidebar Expand/Collapse
+    const isHovered = ref(false);
+    const isExpanded = computed(() => isHovered.value);
 
-    const toggleTheme = () => {
-        isDarkMode.value = !isDarkMode.value;
-        const mode = isDarkMode.value ? 'dark' : 'light';
-        localStorage.setItem('pms-theme', mode);
-        updateThemeClass();
-    };
+    // Dark Mode State
+    const isDarkMode = ref(localStorage.getItem('hr-theme') === 'dark');
 
-    const updateThemeClass = () => {
-        if (isDarkMode.value) {
+    const applyTheme = (dark) => {
+        if (dark) {
             document.body.classList.add('dark-mode');
         } else {
             document.body.classList.remove('dark-mode');
         }
     };
 
-    onMounted(() => {
-        updateThemeClass();
-        emit('update:collapsed', isCollapsed.value);
+    const toggleDarkMode = () => {
+        isDarkMode.value = !isDarkMode.value;
+        localStorage.setItem('hr-theme', isDarkMode.value ? 'dark' : 'light');
+        applyTheme(isDarkMode.value);
+    };
+
+    // State for Dropdown Menus
+    const openMenus = ref({
+        onboarding: false,
+        pms: false,
+        admin: false
     });
 
-    watch(isCollapsed, (newVal) => {
-        // When collapsed, close all submenus
-        if (newVal) {
-            openMenus.value.performance = false;
-            openMenus.value.hrAdmin = false;
+    const emit = defineEmits(['hover-change']);
+
+    const onMouseEnter = () => {
+        isHovered.value = true;
+        emit('hover-change', true);
+    };
+
+    const onMouseLeave = () => {
+        isHovered.value = false;
+        openMenus.value.onboarding = false;
+        openMenus.value.pms = false;
+        openMenus.value.admin = false;
+        emit('hover-change', false);
+    };
+
+    const toggleMenu = (menu) => {
+        if (isExpanded.value) {
+            openMenus.value[menu] = !openMenus.value[menu];
+        }
+    };
+
+    const logout = () => {
+        setloguser(null)
+        localStorage.removeItem('hrproject_user');
+        localStorage.removeItem('hrproject_user_token');
+        router.push('/')
+    };
+
+    onMounted(async () => {
+        // Apply saved theme preference
+        applyTheme(isDarkMode.value);
+
+        // Check for pending appraisals for navigation status
+        if (loguser?.permissions?.includes('/pms/appraisal') || loguser?.position_id === 4) {
+            try {
+                const currentYear = new Date().getFullYear();
+                const res = await axios.get('pms/goals', { params: { year: currentYear } });
+                if (res && res.data && res.data.status === 'success') {
+                    const goals = res.data.data;
+                    hasPendingAppraisals.value = goals.some(g => ['goal_created', 'appraisal_completed', 'review_completed'].includes(g.display_status));
+                }
+            } catch (e) {
+                console.warn('Failed to get goals for nav - not authenticated or no access', e.message);
+            }
         }
     });
 
-    const logout = () => {
-        setloguser(null);
-        localStorage.removeItem('hrproject_user');
-        localStorage.removeItem('hrproject_user_token');
-        router.push('/');
-    };
 </script>
 
 <template>
-    <aside class="sidebar-container" :class="{ 'dark': isDarkMode, 'collapsed': isCollapsed }">
+    <aside class="sidebar-container" :class="{ 'collapsed': !isExpanded, 'expanded-hover': isExpanded }" @mouseenter="onMouseEnter" @mouseleave="onMouseLeave">
+        
+        <!-- Sidebar Header / Logo -->
         <div class="sidebar-top">
             <div class="logo">
-                <span class="logo-text" v-show="!isCollapsed">MELCOM <span class="pms-styled">PMS</span></span>
-                <span class="logo-text-collapsed" v-show="isCollapsed">P</span>
+                <span class="logo-text" v-show="isExpanded"> HR <span class="pms-styled">PORTAL</span></span>
+                <span class="logo-text-collapsed" v-show="!isExpanded">HR</span>
             </div>
-            <button class="collapse-btn" @click="toggleCollapse" :title="isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'">
-                <span class="pi" :class="isCollapsed ? 'pi-angle-right' : 'pi-angle-left'"></span>
-            </button>
         </div>
 
+        <!-- Sidebar Navigation -->
         <nav class="sidebar-menu">
-            <router-link to="/app/pms/dashboard" class="menu-item" :title="isCollapsed ? 'Dashboard' : ''">
-                <span class="pi pi-home"></span>
-                <span class="link-name" v-show="!isCollapsed">Dashboard</span>
-            </router-link>
             
-            <div class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.performance && !isCollapsed }">
-                <div class="menu-item" @click="toggleMenu('performance')" :title="isCollapsed ? 'Performance' : ''">
-                    <span class="pi pi-chart-bar"></span>
-                    <span class="link-name" v-show="!isCollapsed">Performance</span>
-                    <span class="pi pi-chevron-down arrow" v-show="!isCollapsed"></span>
+            <!-- Dashboard (Global) -->
+            <router-link v-if="loguser?.permissions?.includes('/dashboard')" to="/dashboard" class="menu-item" :title="!isExpanded ? 'Dashboard' : ''">
+                <div class="active-indicator"></div>
+                <span class="pi pi-th-large"></span>
+                <span class="link-name" v-show="isExpanded">Dashboard</span>
+            </router-link>
+
+            <!-- Onboarding Group -->
+            <div v-if="loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees')" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.onboarding && isExpanded }">
+                <div class="menu-item" @click="toggleMenu('onboarding')" :title="!isExpanded ? 'Onboarding' : ''">
+                    <div class="active-indicator"></div>
+                    <span class="pi pi-briefcase"></span>
+                    <span class="link-name" v-show="isExpanded">Onboarding</span>
+                    <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
                 </div>
-                <div class="sub-menu" v-show="!isCollapsed">
-                    <router-link to="/app/pms/goals">
+                <div class="sub-menu" v-show="isExpanded">
+                    <router-link v-if="loguser?.permissions?.includes('/onboarding')" to="/onboarding">
+                        <span class="pi pi-list"></span>
+                        Onboarding
+                    </router-link>
+                    <router-link v-if="loguser?.permissions?.includes('/employees')" to="/employees">
+                        <span class="pi pi-users"></span>
+                        Employees
+                    </router-link>
+                </div>
+            </div>
+
+            <!-- PMS Group (Renamed to PMS, contains PMS Submissions) -->
+            <div v-if="['/pms/dashboard', '/pms/goals', '/pms/review', '/pms/appraisal', '/hr/submissions'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.pms && isExpanded }">
+                <div class="menu-item" @click="toggleMenu('pms')" :title="!isExpanded ? 'PMS' : ''">
+                    <div class="active-indicator"></div>
+                    <span class="pi pi-chart-bar"></span>
+                    <span class="link-name" v-show="isExpanded">PMS</span>
+                    <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
+                </div>
+                <div class="sub-menu" v-show="isExpanded">
+                    <router-link v-if="loguser?.permissions?.includes('/pms/dashboard')" to="/pms/dashboard">
+                        <span class="pi pi-home"></span>
+                        Dashboard
+                    </router-link>
+                    <router-link v-if="loguser?.permissions?.includes('/pms/goals')" to="/pms/goals">
                         <span class="pi pi-bullseye"></span>
                         Goals
                     </router-link>
-                    <router-link to="/app/pms/appraisal">
+                    <router-link v-if="loguser?.permissions?.includes('/pms/appraisal')" to="/pms/appraisal" :class="{ 'opacity-50 pointer-events-none': !hasPendingAppraisals }" :title="!hasPendingAppraisals ? 'No goals awaiting appraisal' : ''">
                         <span class="pi pi-file-edit"></span>
-                        My Appraisal
+                        Appraisal
                     </router-link>
-                    <router-link to="/app/pms/review">
+                    <router-link v-if="loguser?.permissions?.includes('/pms/review')" to="/pms/review">
                         <span class="pi pi-check-circle"></span>
                         Review
                     </router-link>
-                </div>
-            </div>
-
-            <div class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.hrAdmin && !isCollapsed }">
-                <div class="menu-item" @click="toggleMenu('hrAdmin')" :title="isCollapsed ? 'HR Admin' : ''">
-                    <span class="pi pi-users"></span>
-                    <span class="link-name" v-show="!isCollapsed">HR Admin</span>
-                    <span class="pi pi-chevron-down arrow" v-show="!isCollapsed"></span>
-                </div>
-                <div class="sub-menu" v-show="!isCollapsed">
-                    <router-link to="/app/hr/submissions">
+                    <router-link v-if="loguser?.permissions?.includes('/hr/submissions')" to="/hr/submissions">
                         <span class="pi pi-inbox"></span>
-                        Submissions
-                    </router-link>
-                    <router-link to="/app/hr/reports">
-                        <span class="pi pi-file"></span>
-                        Reports
-                    </router-link>
-                    <router-link v-if="loguser?.admin" to="/app/admin/users">
-                        <span class="pi pi-shield"></span>
-                        PMS Admin
-                    </router-link>
-                    <router-link v-if="loguser?.admin" to="/users">
-                        <span class="pi pi-user-plus"></span>
-                        App Users
-                    </router-link>
-                    <router-link v-if="loguser?.admin" to="/app/admin/upload">
-                        <span class="pi pi-upload"></span>
-                        Upload Data
+                        PMS Submissions
                     </router-link>
                 </div>
             </div>
 
-            <router-link to="/profile" class="menu-item" :title="isCollapsed ? 'Profile' : ''">
+            <!-- Admin Group -->
+            <div v-if="['/users', '/pms/employee-master'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.admin && isExpanded }">
+                <div class="menu-item" @click="toggleMenu('admin')" :title="!isExpanded ? 'HR Admin' : ''">
+                    <div class="active-indicator"></div>
+                    <span class="pi pi-users"></span>
+                    <span class="link-name" v-show="isExpanded">HR Admin</span>
+                    <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
+                </div>
+                <div class="sub-menu" v-show="isExpanded">
+                    <router-link v-if="loguser?.permissions?.includes('/users')" to="/users">
+                        <span class="pi pi-user-edit"></span>
+                        Manage Users
+                    </router-link>
+                    <router-link v-if="loguser?.permissions?.includes('/pms/employee-master')" to="/pms/employee-master">
+                        <span class="pi pi-users"></span>
+                        Line Manager Console
+                    </router-link>
+                </div>
+            </div>
+
+            <router-link to="/profile" class="menu-item" :title="!isExpanded ? 'Profile' : ''">
+                <div class="active-indicator"></div>
                 <span class="pi pi-user"></span>
-                <span class="link-name" v-show="!isCollapsed">Profile</span>
+                <span class="link-name" v-show="isExpanded">Profile</span>
             </router-link>
 
-            <a @click="logout" class="menu-item logout-link" :title="isCollapsed ? 'Logout' : ''">
+            <!-- Logout -->
+            <a @click="logout" class="menu-item mt-auto" :title="!isExpanded ? 'Logout' : ''">
+                <div class="active-indicator opacity-0"></div>
                 <span class="pi pi-sign-out"></span>
-                <span class="link-name" v-show="!isCollapsed">Logout</span>
+                <span class="link-name" v-show="isExpanded">Logout</span>
             </a>
+
         </nav>
 
+        <!-- Sidebar Footer (Profile) -->
         <div class="sidebar-footer">
-            <div class="user-profile" v-show="!isCollapsed">
+            <div class="user-profile" v-show="isExpanded">
                 <div class="avatar">
-                    <i class="pi pi-user text-xl"></i>
+                    <i class="pi pi-user text-lg"></i>
                 </div>
                 <div class="user-details">
                     <p>{{ loguser?.name }}</p>
                     <small>{{ loguser?.admin ? 'Administrator' : 'Employee' }}</small>
                 </div>
             </div>
-            <div class="avatar collapsed-avatar" v-show="isCollapsed" :title="loguser?.name">
+            <div class="avatar collapsed-avatar" v-show="!isExpanded" :title="loguser?.name">
                 <i class="pi pi-user"></i>
             </div>
             
-            <div class="theme-toggler" @click="toggleTheme" v-show="!isCollapsed">
-                <span class="pi pi-sun" :class="{ active: !isDarkMode }"></span>
-                <span class="pi pi-moon" :class="{ active: isDarkMode }"></span>
-            </div>
+            <!-- Dark/Light Mode Toggle -->
+            <button class="theme-toggle-btn" @click="toggleDarkMode" :title="isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+                <i :class="isDarkMode ? 'pi pi-sun' : 'pi pi-moon'"></i>
+                <span v-show="isExpanded" class="theme-toggle-label">{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</span>
+            </button>
         </div>
     </aside>
 </template>
 
 <style scoped>
-.sidebar-container {
-    width: var(--sidebar-width);
-    height: 100vh;
-    background: linear-gradient(180deg, #4f46e5 0%, #7c3aed 50%, #6d28d9 100%);
-    display: flex;
-    flex-direction: column;
-    box-shadow: 4px 0 24px rgba(79, 70, 229, 0.15);
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 1000;
-    transition: all 0.3s ease;
-}
+    /* 
+       VARIABLES 
+       Match the PMS styling variables or hardcode them if global vars aren't available.
+       Since we know PMS uses a purple gradient, we'll implement that directly.
+    */
+    :root {
+        --sidebar-width: 260px;
+        --sidebar-collapsed-width: 80px;
+        --spacing-md: 10px;
+        --spacing-lg: 16px;
+    }
 
-.sidebar-top {
-    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 90px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
+    .sidebar-container {
+        width: 260px;
+        height: 100vh;
+        background: linear-gradient(180deg, #1A237E 0%, #121858 100%); /* Indigo 900 to Deep Navy */
+        display: flex;
+        flex-direction: column;
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 1000;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        color: white; 
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
 
-.logo {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-}
+    /* Active Indicator Pill */
+    .active-indicator {
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 24px;
+        background: white;
+        border-radius: 0 4px 4px 0;
+        opacity: 0;
+        transition: all 0.2s ease;
+    }
 
-.logo-text {
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: #ffffff;
-    white-space: nowrap;
-    letter-spacing: -0.5px;
-}
+    .router-link-active > .active-indicator,
+    .showMenu .menu-item > .active-indicator {
+        opacity: 1;
+    }
 
-.pms-styled {
-    color: #ff4444;
-    font-size: 1.4rem;
-    font-weight: 900;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    font-family: 'Arial Black', sans-serif;
-    letter-spacing: 1px;
-}
+    /* Professional Icon Colors */
+    .sidebar-container .pi {
+        color: var(--prof-text-muted) !important;
+        transition: color 0.3s ease;
+    }
 
-.logo-text-collapsed {
-    color: #ff4444;
-    font-size: 1.5rem;
-    font-weight: 900;
-    font-family: 'Arial Black', sans-serif;
-}
+    .sidebar-top {
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 80px;
+        background: linear-gradient(to right, rgba(255, 255, 255, 0.05), transparent);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
 
-.sidebar-menu {
-    flex: 1;
-    padding: var(--spacing-md) 0;
-    overflow-y: auto;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
-}
+    .logo-text {
+        font-size: 1.25rem;
+        font-weight: 900;
+        color: white;
+        white-space: nowrap;
+        letter-spacing: -0.5px;
+    }
 
-/* Hide scrollbar by default */
-.sidebar-menu::-webkit-scrollbar {
-    width: 0;
-    background: transparent;
-}
+    .pms-styled {
+        color: #F97316; /* Orange */
+        font-weight: 900;
+    }
 
-/* Show thin scrollbar on hover */
-.sidebar-menu:hover {
-    scrollbar-width: thin; /* Firefox */
-    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
-}
+    .sidebar-menu {
+        flex: 1;
+        padding: 16px 0;
+        overflow-y: auto;
+    }
 
-.sidebar-menu:hover::-webkit-scrollbar {
-    width: 4px;
-}
+    /* Custom Scrollbar for Sidebar */
+    .sidebar-menu::-webkit-scrollbar {
+        width: 4px;
+    }
+    .sidebar-menu::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .sidebar-menu::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+    }
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.4);
+    }
+    
+    .menu-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 24px;
+        color: rgba(255, 255, 255, 0.95) !important;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        cursor: pointer;
+        position: relative;
+    }
 
-.sidebar-menu:hover::-webkit-scrollbar-track {
-    background: transparent;
-}
+    .menu-item:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: white !important;
+    }
 
-.sidebar-menu:hover::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 4px;
-}
+    .menu-item:hover .pi {
+        color: white !important;
+    }
 
-.sidebar-menu:hover::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
-}
+    .router-link-active, .showMenu > .menu-item {
+        background: rgba(255, 255, 255, 0.15) !important;
+        color: white !important;
+        font-weight: 600;
+    }
 
-.menu-item {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    padding: var(--spacing-md) var(--spacing-lg);
-    color: rgba(255, 255, 255, 0.75);
-    text-decoration: none;
-    transition: all 0.2s ease;
-    cursor: pointer;
-    position: relative;
-    border-left: 4px solid transparent;
-    margin: 2px 8px;
-    border-radius: var(--radius-lg);
-}
+    .router-link-active .pi, .showMenu > .menu-item .pi {
+        color: white !important;
+    }
 
-.menu-item:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-}
+    .menu-item .pi {
+        font-size: 1.1rem;
+        min-width: 24px;
+        color: rgba(255, 255, 255, 0.85) !important;
+    }
 
-.menu-item.router-link-active {
-    background: rgba(255, 255, 255, 0.15);
-    color: #ffffff;
-    border-left-color: #ffffff;
-    font-weight: 600;
-}
+    .link-name {
+        font-size: 0.95rem;
+        font-weight: 500;
+    }
 
-.menu-item .pi {
-    font-size: 1.2rem;
-    min-width: 24px;
-}
+    .arrow {
+        margin-left: auto;
+        font-size: 0.65rem !important;
+        transition: transform 0.3s ease;
+    }
 
-.link-name {
-    font-size: 0.95rem;
-    font-weight: 500;
-}
+    .showMenu .arrow {
+        transform: rotate(180deg);
+    }
 
-.arrow {
-    margin-left: auto;
-    font-size: 0.8rem !important;
-    transition: transform 0.3s ease;
-}
+    .sub-menu {
+        padding: 4px 0;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+        background: rgba(18, 24, 88, 0.6); /* Deeper Indigo */
+    }
 
-.showMenu .arrow {
-    transform: rotate(180deg);
-}
+    .showMenu .sub-menu {
+        max-height: 500px;
+    }
 
-.sub-menu {
-    padding: 0;
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
-    background: rgba(0, 0, 0, 0.15);
-    margin: 0 8px;
-    border-radius: var(--radius-md);
-}
+    .sub-menu a {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 24px 10px 60px;
+        color: rgba(255, 255, 255, 0.8) !important;
+        text-decoration: none;
+        font-size: 0.85rem;
+        transition: all 0.2s ease;
+    }
 
-.showMenu .sub-menu {
-    max-height: 250px;
-}
+    .sub-menu a:hover {
+        color: white !important;
+        background: rgba(255, 255, 255, 0.05);
+    }
 
-.sub-menu a {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    padding: var(--spacing-sm) var(--spacing-lg) var(--spacing-sm) calc(var(--spacing-lg) + 28px); /* Adjusted padding for border */
-    color: rgba(255, 255, 255, 0.65);
-    text-decoration: none;
-    font-size: 0.85rem;
-    transition: all 0.2s ease;
-    border-left: 4px solid transparent;
-}
+    .sub-menu a.router-link-active {
+        color: #818cf8 !important; /* Indigo 400 */
+        font-weight: 600;
+        background: rgba(99, 102, 241, 0.1);
+    }
 
-.sub-menu a:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.1);
-}
+    .sidebar-footer {
+        padding: 24px;
+        background: rgba(18, 24, 88, 0.8);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
 
-.sub-menu a.router-link-active {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.15);
-    border-left-color: #ffffff;
-    font-weight: 600;
-}
+    .user-profile {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
 
-.sidebar-footer {
-    padding: var(--spacing-lg);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(0, 0, 0, 0.1);
-}
+    .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
 
-.user-profile {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    margin-bottom: var(--spacing-md);
-}
+    .user-details p {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: white;
+        margin: 0;
+    }
 
-.avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-}
+    .user-details small {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.5);
+    }
 
-.user-details p {
-    font-weight: 700;
-    font-size: 0.85rem;
-    color: #ffffff;
-}
+    .logout-link {
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
 
-.user-details small {
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.7);
-}
+    .logout-link:hover {
+        background: #FFE4E6 !important;
+        color: #BE123C !important;
+    }
 
-.theme-toggler {
-    background: rgba(255, 255, 255, 0.15);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    height: 32px;
-    width: 64px;
-    cursor: pointer;
-    border-radius: var(--radius-md);
-    padding: 0 var(--spacing-xs);
-}
+    .collapse-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: white;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+    }
 
-.theme-toggler span {
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.9rem;
-    color: rgba(255, 255, 255, 0.6);
-    border-radius: var(--radius-sm);
-}
+    .collapse-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
 
-.theme-toggler span.active {
-    background: rgba(255, 255, 255, 0.25);
-    color: white;
-}
+    .collapse-btn:hover .pi {
+        color: white !important;
+    }
 
-.logout-link {
-    color: #fca5a5 !important;
-}
+    /* Collapsed State (Default) */
+    .sidebar-container.collapsed {
+        width: 80px;
+    }
 
-.logout-link:hover {
-    background: rgba(239, 68, 68, 0.15) !important;
-    color: #fecaca !important;
-}
+    /* Hover Expanded State */
+    .sidebar-container.expanded-hover {
+        width: 260px;
+        box-shadow: 10px 0 35px rgba(0, 0, 0, 0.45);
+    }
 
-/* Collapse Button */
-.collapse-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.15);
-    border: none;
-    color: rgba(255, 255, 255, 0.8);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-}
+    .collapsed .sidebar-top {
+        justify-content: center;
+        padding-top: 16px;
+    }
 
-.collapse-btn:hover {
-    background: rgba(255, 255, 255, 0.25);
-    color: white;
-}
+    .collapsed .menu-item {
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+    }
+    
+    .collapsed .sidebar-footer {
+        padding: 16px 10px;
+    }
 
-/* Collapsed State */
-.sidebar-container.collapsed {
-    width: 72px;
-}
+    /* Theme Toggle Button */
+    .theme-toggle-btn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px 14px;
+        margin-top: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        color: rgba(255, 255, 255, 0.9);
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
 
-.collapsed .sidebar-top {
-    padding: var(--spacing-md);
-    justify-content: center;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-    height: auto;
-    padding-top: var(--spacing-lg);
-}
+    .theme-toggle-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.2);
+    }
 
-.collapsed .logo {
-    justify-content: center;
-}
+    .theme-toggle-btn .pi {
+        font-size: 1rem;
+        color: #fbbf24 !important;
+        min-width: 20px;
+        text-align: center;
+    }
 
-.collapsed .logo-img {
-    width: 40px;
-    height: 40px;
-}
+    .theme-toggle-label {
+        font-weight: 500;
+        letter-spacing: 0.01em;
+    }
 
-.collapsed .menu-item {
-    justify-content: center;
-    padding: var(--spacing-md);
-    margin: 4px auto;
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    border-left: none;
-}
+    .collapsed .theme-toggle-btn {
+        justify-content: center;
+        padding: 10px;
+    }
 
-.collapsed .menu-item .pi {
-    font-size: 1.3rem;
-    min-width: auto;
-}
 
-.collapsed .menu-item.router-link-active {
-    border-left: none;
-    background: rgba(255, 255, 255, 0.2);
-}
-
-.collapsed .sidebar-footer {
-    padding: var(--spacing-md);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.collapsed-avatar {
-    width: 40px;
-    height: 40px;
-    margin: 0 auto;
-}
 </style>
