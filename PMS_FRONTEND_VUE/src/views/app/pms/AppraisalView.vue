@@ -14,12 +14,18 @@ const currentYear = ref(new Date().getFullYear());
 const years = range(currentYear.value, currentYear.value - 5);
 const loading = ref(true);
 const saving = ref(false);
-const currentStep = ref(1);
+const currentStep = ref(route.query.step ? parseInt(route.query.step) : 1);
 const totalSteps = 2;
 const route = useRoute();
 const router = useRouter();
 const goalId = ref(route.query.goal_id || null);
 const goalStatus = ref('');
+
+watch(() => route.query, (newQ) => {
+    if (newQ.step) currentStep.value = parseInt(newQ.step);
+    if (newQ.goal_id) goalId.value = newQ.goal_id;
+    fetchAppraisal();
+});
 
 const isManager = computed(() => {
     return !!(loguser?.admin || loguser?.is_manager || loguser?.position_id === 1 || loguser?.designation === 'Manager');
@@ -240,132 +246,134 @@ const getWeightedScore = (comp) => {
     return ((rating * (parseFloat(comp.weight) || 0)) / 100).toFixed(2);
 };
 
+const populateFromGoalAndAppraisal = (goal, appraisalData) => {
+    if (goal) {
+        goalId.value = goal.id;
+        goalStatus.value = goal.status || '';
+        appraisal.value.candidate_name = goal.candidate_name || '';
+        appraisal.value.employee_code = goal.employee_code || '';
+        appraisal.value.job_title = goal.job_title || goal.department || '';
+        appraisal.value.department = goal.department || '';
+        appraisal.value.location = goal.location || '';
+        appraisal.value.manager_name = goal.manager_name || loguser.name || '';
+
+        if (masterEmployees.value.length > 0 && !selectedCandidate.value) {
+            selectedCandidate.value = masterEmployees.value.find(e => e.employee_code === goal.employee_code) || null;
+        }
+
+        if (!appraisal.value.manager_signature_name) {
+            appraisal.value.manager_signature_name = appraisal.value.manager_name || loguser.name || '';
+        }
+
+        if (appraisalData) {
+            const rComments = (typeof appraisalData.rating_comments === 'object' && appraisalData.rating_comments) 
+                ? { ...appraisalData.rating_comments } 
+                : { 1: '', 2: '', 3: '', 4: '', 5: '' };
+            if (appraisalData.performanceRating && appraisalData.performanceComments && !rComments[appraisalData.performanceRating]) {
+                rComments[appraisalData.performanceRating] = appraisalData.performanceComments;
+            }
+            appraisal.value = { 
+                ...appraisal.value, 
+                comments: appraisalData.comments || '',
+                impressedMost: appraisalData.impressedMost || '',
+                impressedLeast: appraisalData.impressedLeast || '',
+                performanceRating: appraisalData.performanceRating || 0,
+                performanceComments: appraisalData.performanceComments || '',
+                rating_comments: rComments,
+                potentialRating: appraisalData.potentialRating || '',
+                candidate_signature_name: appraisalData.candidate_signature_name || '',
+                manager_signature_name: appraisalData.manager_signature_name || appraisal.value.manager_name || loguser.name || '',
+                signature_date: appraisalData.signature_date || new Date().toISOString().split('T')[0],
+                hod_comments: appraisalData.hod_comments || '',
+                hod_signature_name: appraisalData.hod_signature_name || '',
+                hod_signature_date: appraisalData.hod_signature_date || '',
+                director_remarks: appraisalData.director_remarks || '',
+                director_signature_name: appraisalData.director_signature_name || '',
+                director_signature_date: appraisalData.director_signature_date || ''
+            };
+            
+            if (appraisalData.competencies && appraisalData.competencies.length > 0) {
+                const rawComps = appraisalData.competencies;
+                const rawSum = rawComps.reduce((s, c) => s + (parseFloat(c.weight) || 0), 0);
+                const isSum100 = Math.round(rawSum) === 100;
+
+                performanceCompetencies.value = defaultCompetencyList.map((def, idx) => {
+                    let match = rawComps.find(c => c.id === def.id) || rawComps[idx];
+                    return {
+                        ...def,
+                        title: match?.title || def.title,
+                        descriptions: match?.descriptions || def.descriptions,
+                        descriptionText: match?.descriptionText || (match?.descriptions ? (Array.isArray(match.descriptions) ? match.descriptions.join('\n') : match.descriptions) : def.descriptionText),
+                        selfRating: match?.selfRating || 0,
+                        managerRating: match?.managerRating || 0,
+                        weight: isSum100 ? (match?.weight !== undefined ? Number(match.weight) : def.weight) : 20
+                    };
+                });
+            }
+        }
+    }
+};
+
 const fetchAppraisal = async () => {
     loading.value = true;
     try {
-        const params = goalId.value ? { goal_id: goalId.value } : { year: currentYear.value, user_id: loguser.id };
+        let params = {};
+        if (goalId.value) {
+            params.goal_id = goalId.value;
+        } else if (route.query.employee_code) {
+            params.employee_code = route.query.employee_code;
+            params.year = currentYear.value;
+        } else if (selectedCandidate.value?.employee_code) {
+            params.employee_code = selectedCandidate.value.employee_code;
+            params.year = currentYear.value;
+        } else {
+            params.year = currentYear.value;
+            params.user_id = loguser.id;
+        }
+
         const response = await axios.get('pms/appraisals', { params });
 
-        if (response.data.status === 'success') {
-            const result = response.data.data;
-            const goal = result.goal;
-            const appraisalData = result.appraisal_data;
+        if (response.data.status === 'success' && response.data.data?.goal) {
+            populateFromGoalAndAppraisal(response.data.data.goal, response.data.data.appraisal_data);
+        } else {
+            // Empty / fallback state (e.g. manager designing template or candidate hasn't submitted yet)
+            goalId.value = null;
+            goalStatus.value = 'draft';
+            if (selectedCandidate.value) {
+                appraisal.value.candidate_name = selectedCandidate.value.name;
+                appraisal.value.employee_code = selectedCandidate.value.employee_code;
+                appraisal.value.job_title = selectedCandidate.value.designation || selectedCandidate.value.department || '';
+                appraisal.value.department = selectedCandidate.value.department || '';
+                appraisal.value.location = selectedCandidate.value.location || '';
+                appraisal.value.manager_name = loguser.name || '';
+                appraisal.value.manager_signature_name = loguser.name || '';
+            } else if (isManager.value) {
+                appraisal.value.manager_name = loguser.name || '';
+                appraisal.value.manager_signature_name = loguser.name || '';
+            }
             
-            if (goal) {
-                goalId.value = goal.id;
-                goalStatus.value = goal.status || '';
-                // 1. Populate Profile Info from the Goal record (Always present)
-                appraisal.value.candidate_name = goal.candidate_name || '';
-                appraisal.value.employee_code = goal.employee_code || '';
-                appraisal.value.job_title = goal.job_title || goal.department || '';
-                appraisal.value.department = goal.department || '';
-                appraisal.value.location = goal.location || '';
-                appraisal.value.manager_name = goal.manager_name || '';
-                
-                // If it's a new appraisal for this goal, we might also want to set some defaults
-                if (!appraisal.value.manager_signature_name) {
-                    appraisal.value.manager_signature_name = appraisal.value.manager_name || loguser.name || '';
+            // Check for saved template in localStorage
+            const savedTpl = localStorage.getItem('pms_custom_competency_template');
+            if (savedTpl) {
+                try {
+                    const parsed = JSON.parse(savedTpl);
+                    performanceCompetencies.value = defaultCompetencyList.map((def, idx) => {
+                        const m = parsed[idx] || def;
+                        return {
+                            ...def,
+                            title: m.title || def.title,
+                            weight: m.weight !== undefined ? Number(m.weight) : def.weight,
+                            descriptions: m.descriptions || def.descriptions,
+                            descriptionText: m.descriptions ? (Array.isArray(m.descriptions) ? m.descriptions.join('\n') : m.descriptions) : def.descriptionText,
+                            selfRating: 0,
+                            managerRating: 0
+                        };
+                    });
+                } catch(e) {
+                    performanceCompetencies.value = JSON.parse(JSON.stringify(defaultCompetencyList));
                 }
-
-                // 2. Populate Appraisal Assessment Data (If previously saved as draft/submitted)
-                if (appraisalData) {
-                    const rComments = (typeof appraisalData.rating_comments === 'object' && appraisalData.rating_comments) 
-                        ? { ...appraisalData.rating_comments } 
-                        : { 1: '', 2: '', 3: '', 4: '', 5: '' };
-                    if (appraisalData.performanceRating && appraisalData.performanceComments && !rComments[appraisalData.performanceRating]) {
-                        rComments[appraisalData.performanceRating] = appraisalData.performanceComments;
-                    }
-                    appraisal.value = { 
-                        ...appraisal.value, 
-                        comments: appraisalData.comments || '',
-                        impressedMost: appraisalData.impressedMost || '',
-                        impressedLeast: appraisalData.impressedLeast || '',
-                        performanceRating: appraisalData.performanceRating || 0,
-                        performanceComments: appraisalData.performanceComments || '',
-                        rating_comments: rComments,
-                        potentialRating: appraisalData.potentialRating || '',
-                        candidate_signature_name: appraisalData.candidate_signature_name || '',
-                        manager_signature_name: appraisalData.manager_signature_name || appraisal.value.manager_name || loguser.name || '',
-                        signature_date: appraisalData.signature_date || new Date().toISOString().split('T')[0],
-                        hod_comments: appraisalData.hod_comments || '',
-                        hod_signature_name: appraisalData.hod_signature_name || '',
-                        hod_signature_date: appraisalData.hod_signature_date || '',
-                        director_remarks: appraisalData.director_remarks || '',
-                        director_signature_name: appraisalData.director_signature_name || '',
-                        director_signature_date: appraisalData.director_signature_date || ''
-                    };
-                    
-                    if (appraisalData.competencies && appraisalData.competencies.length > 0) {
-                        const rawComps = appraisalData.competencies;
-                        const rawSum = rawComps.reduce((s, c) => s + (parseFloat(c.weight) || 0), 0);
-                        const isSum100 = Math.round(rawSum) === 100;
-
-                        if (rawComps.length === 4) {
-                            performanceCompetencies.value = [
-                                {
-                                    ...defaultCompetencyList[0],
-                                    title: rawComps[0]?.title || defaultCompetencyList[0].title,
-                                    descriptions: rawComps[0]?.descriptions || defaultCompetencyList[0].descriptions,
-                                    descriptionText: rawComps[0]?.descriptions ? (Array.isArray(rawComps[0].descriptions) ? rawComps[0].descriptions.join('\n') : rawComps[0].descriptions) : defaultCompetencyList[0].descriptionText,
-                                    selfRating: rawComps[0]?.selfRating || 0,
-                                    managerRating: rawComps[0]?.managerRating || 0,
-                                    weight: isSum100 ? (Number(rawComps[0]?.weight) || 20) : 20
-                                },
-                                {
-                                    ...defaultCompetencyList[1],
-                                    title: rawComps[1]?.title || defaultCompetencyList[1].title,
-                                    descriptions: rawComps[1]?.descriptions || defaultCompetencyList[1].descriptions,
-                                    descriptionText: rawComps[1]?.descriptions ? (Array.isArray(rawComps[1].descriptions) ? rawComps[1].descriptions.join('\n') : rawComps[1].descriptions) : defaultCompetencyList[1].descriptionText,
-                                    selfRating: rawComps[1]?.selfRating || 0,
-                                    managerRating: rawComps[1]?.managerRating || 0,
-                                    weight: isSum100 ? (Number(rawComps[1]?.weight) || 20) : 20
-                                },
-                                {
-                                    ...defaultCompetencyList[2],
-                                    title: rawComps[2]?.title || defaultCompetencyList[2].title,
-                                    descriptions: rawComps[2]?.descriptions || defaultCompetencyList[2].descriptions,
-                                    descriptionText: rawComps[2]?.descriptions ? (Array.isArray(rawComps[2].descriptions) ? rawComps[2].descriptions.join('\n') : rawComps[2].descriptions) : defaultCompetencyList[2].descriptionText,
-                                    selfRating: rawComps[2]?.selfRating || 0,
-                                    managerRating: rawComps[2]?.managerRating || 0,
-                                    weight: isSum100 ? (Number(rawComps[2]?.weight) || 20) : 20
-                                },
-                                {
-                                    ...defaultCompetencyList[3], // Compliance & Quality Standards
-                                    weight: 20
-                                },
-                                {
-                                    ...defaultCompetencyList[4], // Continuous Improvement
-                                    title: rawComps[3]?.title || defaultCompetencyList[4].title,
-                                    descriptions: rawComps[3]?.descriptions || defaultCompetencyList[4].descriptions,
-                                    descriptionText: rawComps[3]?.descriptions ? (Array.isArray(rawComps[3].descriptions) ? rawComps[3].descriptions.join('\n') : rawComps[3].descriptions) : defaultCompetencyList[4].descriptionText,
-                                    selfRating: rawComps[3]?.selfRating || 0,
-                                    managerRating: rawComps[3]?.managerRating || 0,
-                                    weight: isSum100 ? (Number(rawComps[3]?.weight) || 20) : 20
-                                }
-                            ];
-                        } else {
-                            // 5 or more items
-                            performanceCompetencies.value = defaultCompetencyList.map((def, idx) => {
-                                let match = rawComps[idx];
-                                // Prevent duplicate Continuous Improvement in index 3 if index 4 also has it
-                                if (idx === 3 && match?.title && match.title.toLowerCase().includes('continuous') && rawComps[4]?.title?.toLowerCase().includes('continuous')) {
-                                    match = null; // Revert to Compliance & Quality Standards
-                                }
-                                return {
-                                    ...def,
-                                    title: match?.title || def.title,
-                                    descriptions: match?.descriptions || def.descriptions,
-                                    descriptionText: match?.descriptionText || (match?.descriptions ? (Array.isArray(match.descriptions) ? match.descriptions.join('\n') : match.descriptions) : def.descriptionText),
-                                    selfRating: match?.selfRating || 0,
-                                    managerRating: match?.managerRating || 0,
-                                    weight: isSum100 ? (match?.weight !== undefined ? Number(match.weight) : def.weight) : 20
-                                };
-                            });
-                        }
-                    } else {
-                        performanceCompetencies.value = JSON.parse(JSON.stringify(defaultCompetencyList));
-                    }
-                }
+            } else {
+                performanceCompetencies.value = JSON.parse(JSON.stringify(defaultCompetencyList));
             }
         }
     } catch (e) {
@@ -380,6 +388,9 @@ const fetchMasterEmployees = async () => {
         const response = await axios.get('pms/get-employees');
         if (response.data.status === 'success') {
             masterEmployees.value = response.data.data;
+            if (route.query.employee_code && !selectedCandidate.value) {
+                selectedCandidate.value = masterEmployees.value.find(e => e.employee_code === route.query.employee_code) || null;
+            }
         }
     } catch (error) {
         console.error('Error fetching master employees:', error);
@@ -394,10 +405,11 @@ const searchCandidate = (event) => {
     );
 };
 
-const onCandidateSelect = (event) => {
+const onCandidateSelect = async (event) => {
     const candidate = event.value;
-    appraisal.value.candidate_name = candidate.name;
-    // Potentially load existing goal for this user/year if it exists
+    selectedCandidate.value = candidate;
+    goalId.value = null;
+    await fetchAppraisal();
 };
 
 const saveAppraisal = async (submit = false) => {
@@ -447,23 +459,32 @@ const saveAppraisal = async (submit = false) => {
             overallPerformanceRating: overallPerformanceRating.value
         };
 
-        const targetStatus = submit ? (isEmployee.value ? 'submitted' : 'completed') : 'draft';
-        const payload = {
-            appraisal_data: appraisalData,
-            status: targetStatus
-        };
+        // Cache customized template in localStorage if manager
+        if (isManager.value) {
+            localStorage.setItem('pms_custom_competency_template', JSON.stringify(appraisalData.competencies));
+        }
 
-        // Correct usage: appraisals are stored in goals table via appraisal_data column
-        const response = await axios.patch(`pms/goals/${goalId.value}`, payload);
-        if (response.data.status === 'success') {
-            const successMsg = submit 
-                ? (isEmployee.value ? 'Appraisal submitted to Line Manager for review successfully!' : 'Appraisal completed successfully!')
-                : 'Draft saved successfully!';
-            const alertResult = await showAlert('Success', successMsg, 'success');
-            if (submit) {
-                // Use Vue Router instead of hard redirect to prevent connection reset
-                router.push('/pms/goals');
+        if (goalId.value) {
+            const targetStatus = submit ? (isEmployee.value ? 'submitted' : 'completed') : 'draft';
+            const payload = {
+                appraisal_data: appraisalData,
+                status: targetStatus
+            };
+
+            const response = await axios.patch(`pms/goals/${goalId.value}`, payload);
+            if (response.data.status === 'success') {
+                const successMsg = submit 
+                    ? (isEmployee.value ? 'Appraisal submitted to Line Manager for review successfully!' : 'Appraisal completed successfully!')
+                    : 'Appraisal progress saved successfully!';
+                await showAlert('Success', successMsg, 'success');
+                if (submit) {
+                    router.push('/pms/goals');
+                }
             }
+        } else if (isManager.value) {
+            toast.success('Appraisal template and competencies saved successfully!', { autoClose: 3000 });
+        } else {
+            showAlert('Notice', 'No active goal dossier linked to save appraisal against.', 'info');
         }
     } catch (error) {
         console.error('Error saving:', error);
@@ -473,9 +494,10 @@ const saveAppraisal = async (submit = false) => {
     }
 };
 
-onMounted(() => {
-    fetchAppraisal();
-    fetchMasterEmployees();
+onMounted(async () => {
+    if (route.query.step) currentStep.value = parseInt(route.query.step);
+    await fetchMasterEmployees();
+    await fetchAppraisal();
 });
 </script>
 
@@ -484,9 +506,9 @@ onMounted(() => {
         <!-- Page Header with Stepper (Compact) -->
         <div class="prof-header sticky top-0 z-10 mb-4 shadow-sm">
             <div class="px-6 py-3">
-                <div class="flex items-center justify-between">
+                <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
                     <div class="flex items-center gap-3.5">
-                        <div class="w-10 h-10 rounded-xl bg-indigo-50/10 flex items-center justify-center shadow-sm border border-white/20">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-50/10 flex items-center justify-center shadow-sm border border-white/20 shrink-0">
                             <i class="pi pi-file-edit text-lg text-white"></i>
                         </div>
                         <div>
@@ -494,7 +516,34 @@ onMounted(() => {
                             <p class="text-indigo-200 text-[9px] font-bold uppercase tracking-wider">Step {{ currentStep }} of {{ totalSteps }}</p>
                         </div>
                     </div>
-                    <div class="flex items-center gap-4">
+
+                    <!-- Manager Candidate Switcher -->
+                    <div v-if="isManager" class="w-full md:w-80">
+                        <AutoComplete
+                            v-model="selectedCandidate"
+                            :suggestions="filteredMasterEmployees"
+                            @complete="searchCandidate"
+                            @item-select="onCandidateSelect"
+                            optionLabel="full_string"
+                            placeholder="Switch candidate/employee..."
+                            inputClass="!w-full !bg-white/10 !text-white !border !border-white/20 !rounded-xl !py-1.5 !px-3 !text-xs !font-bold placeholder:!text-indigo-200 focus:!bg-white focus:!text-slate-800"
+                            class="w-full"
+                        >
+                            <template #item="slotProps">
+                                <div class="flex items-center gap-2 py-1 px-1">
+                                    <div class="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">
+                                        {{ slotProps.item.name.charAt(0).toUpperCase() }}
+                                    </div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="font-bold text-slate-800 text-xs truncate">{{ slotProps.item.name }}</div>
+                                        <div class="text-[10px] text-slate-400 truncate">ID: {{ slotProps.item.employee_code }} &bull; {{ slotProps.item.department }}</div>
+                                    </div>
+                                </div>
+                            </template>
+                        </AutoComplete>
+                    </div>
+
+                    <div class="flex items-center gap-4 self-end md:self-auto">
                         <!-- Step Indicators -->
                         <div class="hidden md:flex items-center gap-3">
                             <div class="flex items-center gap-2 cursor-pointer" @click="currentStep = 1">
@@ -664,13 +713,19 @@ onMounted(() => {
                                 <tr v-for="(comp, index) in performanceCompetencies" :key="comp.id" class="hover:bg-indigo-50/10 transition-colors">
                                     <td class="px-3 py-3 font-black text-gray-300 text-xs align-top pt-4">0{{ index + 1 }}</td>
                                     <td class="px-3 py-2.5">
-                                        <input v-model="comp.title" class="w-full font-bold text-gray-800 text-xs md:text-sm mb-1 tracking-tight bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 outline-none px-2 py-0.5 rounded transition-all" placeholder="Competency Title" />
-                                        <textarea v-model="comp.descriptionText" 
-                                            @input="comp.descriptions = comp.descriptionText.split('\n')"
-                                            class="w-full text-[11px] text-gray-500 leading-snug font-medium bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-200 outline-none resize-none px-2 py-1 rounded transition-all" 
-                                            rows="2" 
-                                            placeholder="Criteria descriptions (one line per bullet)">
-                                        </textarea>
+                                        <template v-if="isManager && !isReadOnly">
+                                            <input v-model="comp.title" class="w-full font-bold text-gray-800 text-xs md:text-sm mb-1 tracking-tight bg-transparent border-b border-dashed border-slate-300 hover:border-slate-400 focus:border-indigo-400 outline-none px-2 py-0.5 rounded transition-all" placeholder="Competency Title" />
+                                            <textarea v-model="comp.descriptionText" 
+                                                @input="comp.descriptions = comp.descriptionText.split('\n')"
+                                                class="w-full text-[11px] text-gray-500 leading-snug font-medium bg-transparent border border-dashed border-slate-200 hover:border-slate-300 focus:border-indigo-200 outline-none resize-none px-2 py-1 rounded transition-all" 
+                                                rows="2" 
+                                                placeholder="Criteria descriptions (one line per bullet)">
+                                            </textarea>
+                                        </template>
+                                        <template v-else>
+                                            <div class="font-bold text-gray-800 text-xs md:text-sm mb-1 tracking-tight px-2 py-0.5">{{ comp.title }}</div>
+                                            <div class="text-[11px] text-gray-500 leading-snug font-medium px-2 py-0.5 whitespace-pre-line">{{ comp.descriptionText || (comp.descriptions ? comp.descriptions.join('\n') : '') }}</div>
+                                        </template>
                                     </td>
                                     <td class="px-3 py-2.5 text-center align-middle">
                                         <div class="flex items-center justify-center">
@@ -685,7 +740,7 @@ onMounted(() => {
                                         </div>
                                     </td>
                                     <td class="px-3 py-2.5 bg-indigo-50/30 align-middle">
-                                        <select v-model.number="comp.selfRating" class="prof-input !py-1 !px-2 w-full !text-center font-black text-xs !rounded-lg">
+                                        <select v-model.number="comp.selfRating" :disabled="isReadOnly || isManager" class="prof-input !py-1 !px-2 w-full !text-center font-black text-xs !rounded-lg" :class="{ 'opacity-60 cursor-not-allowed': isManager }">
                                             <option :value="0">—</option>
                                             <option v-for="n in 5" :key="n" :value="n">{{ n }}</option>
                                         </select>

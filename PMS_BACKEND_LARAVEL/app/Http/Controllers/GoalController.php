@@ -328,9 +328,13 @@ class GoalController extends Controller
             }
         }
 
-        // For employee, query by employee_code or user_id
+        $employeeCode = $request->get('employee_code');
+
+        // For employee or specific candidate query
         $query = \App\Models\Goal::where('year', $year);
-        if ($user && !$user->admin && !$user->is_manager && $user->position_id !== 1) {
+        if (!empty($employeeCode)) {
+            $query->where('employee_code', $employeeCode);
+        } elseif ($user && !$user->admin && !$user->is_manager && $user->position_id !== 1) {
             $query->where(function ($q) use ($user, $userId) {
                 if (!empty($user->employee_code)) {
                     $q->where('employee_code', $user->employee_code);

@@ -43,6 +43,10 @@ const stepTransition = ref('slide-next');
 
 // Read-only condition for submitted or reviewed goals
 const isFormReadOnly = computed(() => {
+    if (isManager.value) {
+        // Managers can edit assigned, in_progress, and draft goals at will
+        return ['review_completed', 'completed'].includes(newGoal.value.status);
+    }
     return ['submitted', 'review_completed', 'completed'].includes(newGoal.value.status);
 });
 
@@ -371,9 +375,10 @@ const selfAppraisalOverallPercentage = computed(() => {
 // Manager Assign Modal State
 const showAssignModal = ref(false);
 const assigning = ref(false);
+const assignSearchEmployee = ref(null); // AutoComplete search input
 const assignForm = ref({
-    assign_type: 'single', // 'single' or 'all_team'
-    selected_candidate: null,
+    assign_type: 'specific', // 'specific' (single or multiple) or 'all_team'
+    selected_employees: [], // array of selected employee objects
     title: '',
     year: currentYear.value,
     target: 100,
@@ -391,9 +396,10 @@ const competencyNames = [
 ];
 
 const openAssignModal = () => {
+    assignSearchEmployee.value = null;
     assignForm.value = {
-        assign_type: 'single',
-        selected_candidate: null,
+        assign_type: 'specific',
+        selected_employees: [],
         title: `Yearly SMART Goals FY ${currentYear.value}`,
         year: currentYear.value,
         target: 100,
@@ -405,13 +411,55 @@ const openAssignModal = () => {
     showAssignModal.value = true;
 };
 
+const onAssignEmployeeSelect = (event) => {
+    const candidate = event.value;
+    if (!candidate) return;
+    const exists = assignForm.value.selected_employees.some(e => e.employee_code === candidate.employee_code);
+    if (!exists) {
+        assignForm.value.selected_employees.push({
+            employee_code: candidate.employee_code,
+            name: candidate.name,
+            department: candidate.department || finddept(candidate.joining_dept_id) || 'N/A',
+            location: candidate.location || findbranch(candidate.joining_branch_id) || 'N/A',
+            job_title: candidate.position || candidate.department || 'Employee',
+            email: candidate.email || ''
+        });
+    }
+    assignSearchEmployee.value = null; // Clear search input
+};
+
+const removeAssignEmployee = (index) => {
+    assignForm.value.selected_employees.splice(index, 1);
+};
+
+const selectAllMasterEmployeesForAssign = () => {
+    masterEmployees.value.forEach(candidate => {
+        if (!candidate.employee_code) return;
+        const exists = assignForm.value.selected_employees.some(e => e.employee_code === candidate.employee_code);
+        if (!exists) {
+            assignForm.value.selected_employees.push({
+                employee_code: candidate.employee_code,
+                name: candidate.name,
+                department: candidate.department || finddept(candidate.joining_dept_id) || 'N/A',
+                location: candidate.location || findbranch(candidate.joining_branch_id) || 'N/A',
+                job_title: candidate.position || candidate.department || 'Employee',
+                email: candidate.email || ''
+            });
+        }
+    });
+};
+
+const clearAssignSelectedEmployees = () => {
+    assignForm.value.selected_employees = [];
+};
+
 const assignTotalWeight = computed(() => {
     return assignForm.value.weights.reduce((sum, w) => sum + (parseFloat(w) || 0), 0);
 });
 
 const submitAssignGoal = async () => {
-    if (assignForm.value.assign_type === 'single' && !assignForm.value.selected_candidate) {
-        showAlert('Select Employee', 'Please select an employee to assign this goal to.', 'warning');
+    if (assignForm.value.assign_type === 'specific' && (!assignForm.value.selected_employees || assignForm.value.selected_employees.length === 0)) {
+        showAlert('Select Employee(s)', 'Please search and select at least one employee to assign goals and appraisal to.', 'warning');
         return;
     }
     if (assignTotalWeight.value !== 100) {
@@ -419,11 +467,13 @@ const submitAssignGoal = async () => {
         return;
     }
     
+    const count = assignForm.value.assign_type === 'all_team' 
+        ? 'ALL team members' 
+        : `${assignForm.value.selected_employees.length} selected employee(s)`;
+
     const confirm = await showConfirm(
         'Assign Goal & Appraisal',
-        assignForm.value.assign_type === 'all_team'
-            ? `Assign goal & appraisal to ALL team members for FY ${assignForm.value.year}? Portal credentials will be provisioned automatically.`
-            : `Assign goal & appraisal to ${assignForm.value.selected_candidate.name}? Portal credentials will be provisioned automatically.`,
+        `Assign goal & appraisal to ${count} for FY ${assignForm.value.year}? Portal credentials will be provisioned automatically.`,
         'question',
         'Yes, Assign'
     );
@@ -444,14 +494,7 @@ const submitAssignGoal = async () => {
             target: assignForm.value.target,
             due_date: assignForm.value.due_date,
             appraisal_data: customTemplate,
-            employees: assignForm.value.assign_type === 'single' ? [{
-                employee_code: assignForm.value.selected_candidate.employee_code,
-                name: assignForm.value.selected_candidate.name,
-                department: assignForm.value.selected_candidate.department || finddept(assignForm.value.selected_candidate.joining_dept_id),
-                location: assignForm.value.selected_candidate.location || findbranch(assignForm.value.selected_candidate.joining_branch_id),
-                job_title: assignForm.value.selected_candidate.position || assignForm.value.selected_candidate.department,
-                email: assignForm.value.selected_candidate.email
-            }] : []
+            employees: assignForm.value.assign_type === 'specific' ? assignForm.value.selected_employees : []
         };
 
         const res = await axios.post('pms/goals/assign', payload);
@@ -1369,6 +1412,10 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 <i class="pi pi-user-plus font-black text-xs"></i>
                                 <span class="font-black tracking-tight text-xs uppercase">Assign Goal & Appraisal</span>
                             </button>
+                            <button @click="router.push({ path: '/pms/appraisal', query: { step: 1 } })" class="prof-button !bg-indigo-700/80 hover:!bg-indigo-600 border border-indigo-400/40 px-4 py-2.5 flex items-center gap-2 group shadow-lg text-xs text-white font-bold transition-all" title="Edit Appraisal Template & Key Competencies (Step 1)">
+                                <i class="pi pi-file-edit font-black text-xs"></i>
+                                <span class="font-black tracking-tight uppercase">Edit Appraisal Template (Step 1)</span>
+                            </button>
                             <button @click="startCreateGoal" class="prof-button !bg-[#334155] hover:!bg-slate-700 px-5 py-2.5 flex items-center gap-2 group border-none shadow-lg text-sm text-white font-bold transition-all">
                                 <i class="pi pi-plus font-black text-xs"></i>
                                 <span class="font-black tracking-tight text-xs uppercase">NEW SMART GOAL</span>
@@ -1685,9 +1732,17 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 <td class="px-6 py-4 text-right whitespace-nowrap">
                                     <div class="flex items-center justify-end gap-2">
                                         <!-- Fill / Edit Button -->
-                                        <button v-if="goal.status === 'assigned' || goal.status === 'draft'" @click="editGoal(goal)" 
-                                            class="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
-                                            <i class="pi pi-pencil text-[9px]"></i> {{ goal.status === 'assigned' ? 'Fill Goal' : 'Edit' }}
+                                        <button v-if="isManager || goal.status === 'assigned' || goal.status === 'draft'" @click="editGoal(goal)" 
+                                            class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer"
+                                            :title="isManager ? 'Edit SMART Goal' : (goal.status === 'assigned' ? 'Fill Goal' : 'Edit')">
+                                            <i class="pi pi-pencil text-[9px]"></i> {{ isManager ? 'Edit Goal' : (goal.status === 'assigned' ? 'Fill Goal' : 'Edit') }}
+                                        </button>
+
+                                        <!-- Edit Appraisal Step 1 Button (Manager) -->
+                                        <button v-if="isManager" @click="router.push({ path: '/pms/appraisal', query: { goal_id: goal.id, employee_code: goal.candidate_code || goal.employee_code, step: 1 } })" 
+                                            class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white rounded-lg border border-teal-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer"
+                                            title="Edit Appraisal Template & Key Competencies (Step 1)">
+                                            <i class="pi pi-file-edit text-[9px]"></i> Edit Appraisal (Step 1)
                                         </button>
 
                                         <!-- Review Button (for managers) -->
@@ -2406,11 +2461,11 @@ const removeAttachment = (qIndex, fileIndex) => {
         <!-- ASSIGN GOAL & APPRAISAL MODAL (FOR MANAGERS) -->
         <Dialog v-model:visible="showAssignModal" :modal="true" :showHeader="false"
             class="!rounded-3xl !overflow-hidden !border-none !shadow-2xl"
-            :style="{ width: '92vw', maxWidth: '750px' }"
-            :contentStyle="{ padding: '0', borderRadius: '1.5rem', overflow: 'hidden' }">
-            <div class="bg-white rounded-3xl overflow-hidden">
-                <!-- Modal Header -->
-                <div class="bg-[#1A237E] p-6 text-white flex items-center justify-between">
+            :style="{ width: '92vw', maxWidth: '750px', height: '88vh', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }"
+            :contentStyle="{ padding: '0', borderRadius: '1.5rem', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', flex: '1 1 auto', minHeight: '0' }">
+            <div class="bg-white rounded-3xl overflow-hidden flex flex-col h-full w-full flex-1 min-h-0">
+                <!-- Modal Header (Fixed / Shrink 0) -->
+                <div class="bg-[#1A237E] p-5 md:p-6 text-white flex items-center justify-between shrink-0">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white">
                             <i class="pi pi-user-plus text-base"></i>
@@ -2425,18 +2480,18 @@ const removeAttachment = (qIndex, fileIndex) => {
                     </button>
                 </div>
 
-                <!-- Modal Body -->
-                <div class="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                <!-- Modal Body (Scrollable / Flex 1) -->
+                <div class="p-5 md:p-6 space-y-5 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     <!-- Assignment Target Toggle -->
                     <div>
                         <label class="text-xs font-black text-slate-700 uppercase tracking-wide block mb-2">Assignment Scope</label>
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <label class="flex items-center gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition-all"
-                                :class="assignForm.assign_type === 'single' ? 'border-[#1A237E] bg-indigo-50/50 shadow-xs' : 'border-slate-200 hover:border-slate-300'">
-                                <input type="radio" v-model="assignForm.assign_type" value="single" class="accent-[#1A237E] w-4 h-4" />
+                                :class="assignForm.assign_type === 'specific' ? 'border-[#1A237E] bg-indigo-50/50 shadow-xs' : 'border-slate-200 hover:border-slate-300'">
+                                <input type="radio" v-model="assignForm.assign_type" value="specific" class="accent-[#1A237E] w-4 h-4" />
                                 <div>
-                                    <p class="text-xs font-black text-slate-800 uppercase">Single Employee</p>
-                                    <p class="text-[10px] text-slate-500 font-medium">Select a specific team member</p>
+                                    <p class="text-xs font-black text-slate-800 uppercase">Selected Employees</p>
+                                    <p class="text-[10px] text-slate-500 font-medium">Select one or multiple team members</p>
                                 </div>
                             </label>
 
@@ -2451,39 +2506,77 @@ const removeAttachment = (qIndex, fileIndex) => {
                         </div>
                     </div>
 
-                    <!-- Single Employee Selector -->
-                    <div v-if="assignForm.assign_type === 'single'" class="space-y-2">
-                        <label class="text-xs font-black text-slate-700 uppercase tracking-wide block">Select Employee</label>
+                    <!-- Selected Employees (Single or Multiple) -->
+                    <div v-if="assignForm.assign_type === 'specific'" class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <label class="text-xs font-black text-slate-700 uppercase tracking-wide">
+                                Select Employee(s)
+                                <span v-if="assignForm.selected_employees.length > 0" class="ml-1.5 px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-black">
+                                    {{ assignForm.selected_employees.length }} selected
+                                </span>
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <button type="button" @click="selectAllMasterEmployeesForAssign" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer">
+                                    + Add All ({{ masterEmployees.length }})
+                                </button>
+                                <span class="text-slate-300">&bull;</span>
+                                <button type="button" v-if="assignForm.selected_employees.length > 0" @click="clearAssignSelectedEmployees" class="text-[10px] font-black text-red-500 hover:text-red-700 hover:underline cursor-pointer">
+                                    Clear
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- AutoComplete Search to Add -->
                         <AutoComplete
-                            v-model="assignForm.selected_candidate"
+                            v-model="assignSearchEmployee"
                             :suggestions="filteredMasterEmployees"
                             @complete="searchCandidate"
+                            @item-select="onAssignEmployeeSelect"
                             optionLabel="full_string"
-                            placeholder="Type employee name or ID..."
+                            placeholder="Type employee name or ID to add..."
                             inputClass="!w-full !bg-[#F8FAFC] !border !border-gray-200 !rounded-xl !py-2.5 !px-3.5 !text-sm !font-semibold transition-all focus:!bg-white focus:!border-[#1A237E]"
                             class="w-full"
                         >
                             <template #item="slotProps">
-                                <div class="flex items-center gap-3 py-1 px-1">
-                                    <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs">
+                                <div class="flex items-center gap-3 py-1.5 px-1">
+                                    <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">
                                         {{ slotProps.item.name.charAt(0).toUpperCase() }}
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         <div class="font-bold text-slate-800 text-xs truncate">{{ slotProps.item.name }}</div>
-                                        <div class="text-[10px] font-medium text-slate-400">ID: {{ slotProps.item.employee_code }} &bull; {{ slotProps.item.department }}</div>
+                                        <div class="text-[10px] font-medium text-slate-400 truncate">ID: {{ slotProps.item.employee_code }} &bull; {{ slotProps.item.department }}</div>
                                     </div>
+                                    <span v-if="assignForm.selected_employees.some(e => e.employee_code === slotProps.item.employee_code)" class="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                                        Added
+                                    </span>
                                 </div>
                             </template>
                         </AutoComplete>
 
-                        <div v-if="assignForm.selected_candidate" class="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 flex items-center justify-between text-xs">
-                            <div>
-                                <span class="font-black text-indigo-900">{{ assignForm.selected_candidate.name }}</span>
-                                <span class="text-indigo-600 font-semibold ml-2">({{ assignForm.selected_candidate.employee_code }})</span>
+                        <!-- Selected Employees Badges / List -->
+                        <div v-if="assignForm.selected_employees.length > 0" class="space-y-2 max-h-36 overflow-y-auto custom-scrollbar p-1">
+                            <div v-for="(emp, idx) in assignForm.selected_employees" :key="emp.employee_code"
+                                class="p-2.5 bg-indigo-50/70 rounded-xl border border-indigo-100 flex items-center justify-between gap-3 transition-all hover:bg-indigo-50">
+                                <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-black text-[11px] shrink-0">
+                                        {{ emp.name.charAt(0).toUpperCase() }}
+                                    </div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="font-black text-indigo-950 text-xs truncate">{{ emp.name }}</div>
+                                        <div class="text-[10px] font-semibold text-indigo-600 truncate">
+                                            ID: {{ emp.employee_code }} &bull; {{ emp.department }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" @click="removeAssignEmployee(idx)" 
+                                    class="w-6 h-6 rounded-lg bg-red-100/80 hover:bg-red-200 text-red-600 flex items-center justify-center transition-all cursor-pointer shrink-0" title="Remove">
+                                    <i class="pi pi-times text-[10px]"></i>
+                                </button>
                             </div>
-                            <span class="text-[10px] font-black uppercase text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
-                                {{ assignForm.selected_candidate.department }}
-                            </span>
+                        </div>
+
+                        <div v-else class="p-3.5 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center">
+                            <p class="text-xs text-slate-400 font-medium">Search and select one or multiple employees above to assign.</p>
                         </div>
                     </div>
 
@@ -2520,14 +2613,21 @@ const removeAttachment = (qIndex, fileIndex) => {
 
                     <!-- Competency Weights Customization -->
                     <div class="space-y-3 pt-2 border-t border-slate-100">
-                        <div class="flex items-center justify-between">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                             <div>
-                                <label class="text-xs font-black text-slate-800 uppercase tracking-wide">Key Competency Weights</label>
+                                <label class="text-xs font-black text-slate-800 uppercase tracking-wide">Key Competency Weights &amp; Template</label>
                                 <p class="text-[10px] text-slate-400 font-medium">Customize percentage weights (Total must equal 100%)</p>
                             </div>
-                            <div class="px-2.5 py-1 rounded-xl text-xs font-black border"
-                                :class="assignTotalWeight === 100 ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse'">
-                                Total: {{ assignTotalWeight }}%
+                            <div class="flex items-center gap-2 self-start sm:self-auto">
+                                <button type="button" @click="showAssignModal = false; router.push('/pms/appraisal')"
+                                    class="px-2.5 py-1 rounded-xl text-[10px] font-black uppercase text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs">
+                                    <i class="pi pi-file-edit text-[9px]"></i>
+                                    <span>Edit Appraisal Template (Step 1)</span>
+                                </button>
+                                <div class="px-2.5 py-1 rounded-xl text-xs font-black border"
+                                    :class="assignTotalWeight === 100 ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse'">
+                                    Total: {{ assignTotalWeight }}%
+                                </div>
                             </div>
                         </div>
 
@@ -2558,8 +2658,8 @@ const removeAttachment = (qIndex, fileIndex) => {
                     </div>
                 </div>
 
-                <!-- Modal Footer -->
-                <div class="p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                <!-- Modal Footer (Fixed / Sticky / Never Hidden) -->
+                <div class="p-4 md:p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
                     <button @click="showAssignModal = false"
                         class="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-500 hover:bg-slate-100 transition-all uppercase tracking-wider cursor-pointer">
                         Cancel

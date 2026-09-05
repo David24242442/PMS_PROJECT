@@ -4,57 +4,57 @@ const log = (text) => {
     console.log(text)
 }
 
-var rH = function (a) {
-    if (a < 10) return '0' + a;
-    else return a;
+var rH = function(a){
+	if(a < 10) return '0'+a;
+	else return a;
 }
 
-var afDate = function (a) {
-
-    var monthLetter = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    if (a !== null) {
+var afDate = function(a){
+       		
+    var monthLetter = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    if(a !== null){
         var b = new Date(a)
-
-        return rH(b.getDate()) + ' ' + monthLetter[b.getMonth()] + ' ' + b.getFullYear() + ', ' + rH(b.getHours()) + ':' + rH(b.getMinutes());
-    } else {
+        
+        return rH(b.getDate())+' '+ monthLetter[b.getMonth()]+' '+ b.getFullYear()+', '+rH(b.getHours())+':'+rH(b.getMinutes());
+    }else{
         return '';
     }
-
+    
 }
 
-var aDate = function (a) {
-    var monthLetter = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    if (a !== null) {
+var aDate = function(a){	
+    var monthLetter = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    if(a !== null){
         var b = new Date(a)
-        return rH(b.getDate()) + ' ' + monthLetter[b.getMonth()] + ' ' + b.getFullYear();
-    } else {
+        return rH(b.getDate())+' '+ monthLetter[b.getMonth()]+' '+ b.getFullYear();
+    }else{
         return '';
     }
 }
-var aToday = function (a) {
-    if (a !== null) {
+var aToday = function(a){	
+    if(a !== null){
         var b = new Date(a)
-        return b.getFullYear() + '-' + rH(b.getMonth() + 1) + '-' + rH(b.getDate());
-    } else {
+        return b.getFullYear()+'-'+rH(b.getMonth()+1)+'-'+rH(b.getDate());
+    }else{
         return '';
     }
-
+    
 }
-var aTime = function (a) {
-    if (a !== null) {
+var aTime = function(a){	
+    if(a !== null){
         var b = new Date(a)
-        return rH(b.getHours()) + ':' + rH(b.getMinutes());
-    } else {
+        return rH(b.getHours())+':'+rH(b.getMinutes());
+    }else{
         return '';
     }
-
+    
 }
 
 function numberToWords(num) {
     if (num === 0) return 'zero';
 
     const belowTwenty = [
-        'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+        'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 
         'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'
     ];
     const tens = [
@@ -108,11 +108,11 @@ function convertHTMLtoPDF(target) {
     const { jsPDF } = window.jspdf;
 
     let doc = new jsPDF('p', 'pt', 'a4');
+    
 
+    let pdfjs = document.querySelector('#'+target);
 
-    let pdfjs = document.querySelector('#' + target);
-
-    let pWidth = 595.28
+    let pWidth = 595.28 
     let srcWidth = document.getElementById(target).scrollWidth;
     let scale = (pWidth - 12 * 2) / srcWidth;
 
@@ -121,21 +121,21 @@ function convertHTMLtoPDF(target) {
         html2canvas: {
             scale: scale,
         },
-        callback: function (doc) {
+        callback: function(doc) {
             window.open(doc.output('bloburl'));
         },
         x: 12,
         y: 12,
-    });
+    });                
+}     
+
+const gmonths = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+const getMonths = (a) =>{
+    return gmonths[a-1];
 }
 
-const gmonths = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-
-const getMonths = (a) => {
-    return gmonths[a - 1];
-}
-
-const toastt = (text, type = 'success') => {
+const toastt = (text, type = 'success') =>{
     toast(text, {
         "type": type,
         "dangerouslyHTMLString": true,
@@ -164,14 +164,18 @@ const calculateAge = (birthDateString) => {
 
 import Swal from 'sweetalert2';
 
-const imgburl = '/storage/';
+const apiBase = import.meta.env.VITE_API_BASE_URL;
+const imgburl = (apiBase && apiBase.startsWith('http')) 
+    ? apiBase + '/file/' 
+    : window.location.origin + '/pms_backend/api/file/';
+// console.log('Final imgburl:', imgburl);
 
 const showAlert = (title, text, icon = 'success') => {
     return Swal.fire({
         title: title,
         text: text,
         icon: icon,
-        confirmButtonColor: '#7c3aed', // Primary purple
+        confirmButtonColor: '#7c3aed',
         confirmButtonText: 'OK'
     });
 }
@@ -188,4 +192,40 @@ const showConfirm = (title, text, icon = 'warning', confirmButtonText = 'Yes, pr
     });
 }
 
-export { log, afDate, aDate, aTime, aToday, numberToWords, convertHTMLtoPDF, getMonths, formatMoney, toastt, calculateAge, imgburl, showAlert, showConfirm }
+const calculateAverageRating = (goal) => {
+    if (!goal) return 0;
+    const data = parseSmart(goal.appraisal_data);
+    if (data.line_manager_rating || data.manager_rating) {
+        return parseFloat(data.line_manager_rating || data.manager_rating);
+    }
+    const comps = data.competencies || [];
+    if (!comps.length) return 0;
+    const total = comps.reduce((sum, c) => sum + (parseFloat(c.managerRating) || 0), 0);
+    return parseFloat((total / comps.length).toFixed(1));
+};
+
+const parseList = (data) => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    try {
+        return typeof data === 'string' ? JSON.parse(data) : data;
+    } catch (e) {
+        return [data];
+    }
+};
+
+const parseSmart = (data) => {
+    if (!data) return {};
+    if (typeof data === 'object' && !Array.isArray(data)) return data;
+    try {
+        return typeof data === 'string' ? JSON.parse(data) : data;
+    } catch (e) {
+        return {};
+    }
+};
+
+export { 
+    log, afDate, aDate, aTime, aToday, numberToWords, convertHTMLtoPDF, 
+    getMonths, formatMoney, toastt, calculateAge, imgburl, showAlert, 
+    showConfirm, calculateAverageRating, parseList, parseSmart
+}
