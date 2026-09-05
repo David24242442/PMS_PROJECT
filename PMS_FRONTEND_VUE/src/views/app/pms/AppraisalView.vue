@@ -347,27 +347,48 @@ const fetchAppraisal = async () => {
                 appraisal.value.manager_signature_name = loguser.name || '';
             }
             
-            // Check for saved template in localStorage
-            const savedTpl = localStorage.getItem('pms_custom_competency_template');
-            if (savedTpl) {
-                try {
-                    const parsed = JSON.parse(savedTpl);
+            // Fetch saved template from server tied to this Line Manager (or employee's Line Manager)
+            try {
+                let params = {};
+                if (selectedCandidate.value?.employee_code) {
+                    params.employee_code = selectedCandidate.value.employee_code;
+                }
+                const tplRes = await axios.get('pms/manager-template', { params });
+                if (tplRes.data.status === 'success' && tplRes.data.template && Array.isArray(tplRes.data.template) && tplRes.data.template.length > 0) {
+                    const rawComps = tplRes.data.template;
                     performanceCompetencies.value = defaultCompetencyList.map((def, idx) => {
-                        const m = parsed[idx] || def;
+                        const m = rawComps.find(c => c.id === def.id) || rawComps[idx] || def;
                         return {
                             ...def,
                             title: m.title || def.title,
                             weight: m.weight !== undefined ? Number(m.weight) : def.weight,
                             descriptions: m.descriptions || def.descriptions,
-                            descriptionText: m.descriptions ? (Array.isArray(m.descriptions) ? m.descriptions.join('\n') : m.descriptions) : def.descriptionText,
+                            descriptionText: m.descriptions ? (Array.isArray(m.descriptions) ? m.descriptions.join('\n') : m.descriptions) : (m.descriptionText || def.descriptionText),
                             selfRating: 0,
                             managerRating: 0
                         };
                     });
-                } catch(e) {
-                    performanceCompetencies.value = JSON.parse(JSON.stringify(defaultCompetencyList));
+                } else {
+                    const savedTpl = localStorage.getItem('pms_custom_competency_template');
+                    if (savedTpl) {
+                        const parsed = JSON.parse(savedTpl);
+                        performanceCompetencies.value = defaultCompetencyList.map((def, idx) => {
+                            const m = parsed.find(c => c.id === def.id) || parsed[idx] || def;
+                            return {
+                                ...def,
+                                title: m.title || def.title,
+                                weight: m.weight !== undefined ? Number(m.weight) : def.weight,
+                                descriptions: m.descriptions || def.descriptions,
+                                descriptionText: m.descriptions ? (Array.isArray(m.descriptions) ? m.descriptions.join('\n') : m.descriptions) : (m.descriptionText || def.descriptionText),
+                                selfRating: 0,
+                                managerRating: 0
+                            };
+                        });
+                    } else {
+                        performanceCompetencies.value = JSON.parse(JSON.stringify(defaultCompetencyList));
+                    }
                 }
-            } else {
+            } catch (err) {
                 performanceCompetencies.value = JSON.parse(JSON.stringify(defaultCompetencyList));
             }
         }
@@ -454,9 +475,16 @@ const saveAppraisal = async (submit = false) => {
             overallPerformanceRating: overallPerformanceRating.value
         };
 
-        // Cache customized template in localStorage if manager
+        // Cache customized template in localStorage AND backend server tied to this line manager
         if (isManager.value) {
             localStorage.setItem('pms_custom_competency_template', JSON.stringify(appraisalData.competencies));
+            try {
+                await axios.post('pms/manager-template', {
+                    template: appraisalData.competencies
+                });
+            } catch (tplErr) {
+                console.error('Error persisting manager template to server:', tplErr);
+            }
         }
 
         if (goalId.value) {
@@ -477,13 +505,50 @@ const saveAppraisal = async (submit = false) => {
                 }
             }
         } else if (isManager.value) {
-            toast.success('Appraisal template and competencies saved successfully!', { autoClose: 3000 });
+            toast.success('Appraisal template and competencies saved for your team successfully!', { autoClose: 3000 });
         } else {
             showAlert('Notice', 'No active goal dossier linked to save appraisal against.', 'info');
         }
     } catch (error) {
         console.error('Error saving:', error);
         showAlert('Error', 'Failed to save appraisal assessments. Please try again.', 'error');
+    } finally {
+        saving.value = false;
+    }
+};
+
+const saveManagerTeamTemplate = async () => {
+    if (totalWeight.value !== 100) {
+        toast.warning(`Total weight must equal exactly 100%. Current: ${totalWeight.value}%.`, { autoClose: 3500 });
+        showAlert('Weight Validation', `The total weight must equal 100% before saving template. Current: ${totalWeight.value}%.`, 'warning');
+        return;
+    }
+
+    saving.value = true;
+    try {
+        const compsToSave = performanceCompetencies.value.map(c => ({
+            id: c.id,
+            title: c.title,
+            weight: c.weight,
+            descriptions: c.descriptions || (c.descriptionText ? c.descriptionText.split('\n') : []),
+            descriptionText: c.descriptionText || (Array.isArray(c.descriptions) ? c.descriptions.join('\n') : c.descriptions)
+        }));
+
+        localStorage.setItem('pms_custom_competency_template', JSON.stringify(compsToSave));
+
+        await axios.post('pms/manager-template', {
+            template: compsToSave
+        });
+
+        if (goalId.value) {
+            await saveAppraisal(false);
+        }
+
+        toast.success('Appraisal template and competencies saved for your team!', { autoClose: 4000 });
+        await showAlert('Template Saved!', 'Your appraisal template and competency criteria have been saved for your team. All assigned employees will see this template when filling their appraisal.', 'success');
+    } catch (err) {
+        console.error('Error saving manager template:', err);
+        toast.error('Failed to save template: ' + (err.response?.data?.message || err.message), { autoClose: 4000 });
     } finally {
         saving.value = false;
     }
@@ -553,7 +618,7 @@ onMounted(async () => {
                                 <span class="text-gray-200 font-bold text-[9px] uppercase tracking-wider">Competencies</span>
                             </div>
                             <div class="w-6 h-px bg-white/20"></div>
-                            <div class="flex items-center gap-2 cursor-pointer" @click="nextStep">
+                            <div class="flex items-center gap-2 cursor-pointer" @click="currentStep = 2">
                                 <div :class="currentStep >= 2 ? 'step-active' : 'step-inactive'"
                                     class="w-7 h-7 rounded-lg flex items-center justify-center font-black text-[11px] shadow-sm border transition-all">2</div>
                                 <span class="text-gray-200 font-bold text-[9px] uppercase tracking-wider">Ratings</span>
@@ -677,6 +742,18 @@ onMounted(async () => {
                                 >
                                     <i class="pi pi-refresh text-[9px]"></i>
                                     <span>Reset 20%</span>
+                                </button>
+                                <button 
+                                    v-if="isManager && !isReadOnly" 
+                                    type="button"
+                                    @click="saveManagerTeamTemplate" 
+                                    :disabled="saving"
+                                    class="px-2.5 py-1 rounded-lg text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-600 flex items-center gap-1 transition-all cursor-pointer shadow-xs ml-1"
+                                    title="Save edited competencies and weights as your team template"
+                                >
+                                    <i v-if="saving" class="pi pi-spin pi-spinner text-[9px]"></i>
+                                    <i v-else class="pi pi-check-circle text-[9px]"></i>
+                                    <span>Save Template for My Team</span>
                                 </button>
                             </div>
                         </div>

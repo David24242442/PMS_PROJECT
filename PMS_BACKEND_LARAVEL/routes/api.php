@@ -221,6 +221,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/appraisals', [\App\Http\Controllers\GoalController::class, 'appraisals']);
         Route::get('/appraisals/all', [\App\Http\Controllers\GoalController::class, 'allAppraisals']);
         Route::patch('/appraisals/{id}/review', [\App\Http\Controllers\GoalController::class, 'reviewAppraisal']);
+        Route::get('/manager-template', [\App\Http\Controllers\GoalController::class, 'getManagerTemplate']);
+        Route::post('/manager-template', [\App\Http\Controllers\GoalController::class, 'saveManagerTemplate']);
 
         // Reports Routes
         Route::get('/reports', [\App\Http\Controllers\ReportsController::class, 'index']);

@@ -176,7 +176,11 @@ const showAlert = (title, text, icon = 'success') => {
         text: text,
         icon: icon,
         confirmButtonColor: '#7c3aed',
-        confirmButtonText: 'OK'
+        confirmButtonText: 'OK',
+        target: document.body,
+        customClass: {
+            container: 'swal2-topmost'
+        }
     });
 }
 
@@ -188,7 +192,11 @@ const showConfirm = (title, text, icon = 'warning', confirmButtonText = 'Yes, pr
         showCancelButton: true,
         confirmButtonColor: '#7c3aed',
         cancelButtonColor: '#d33',
-        confirmButtonText: confirmButtonText
+        confirmButtonText: confirmButtonText,
+        target: document.body,
+        customClass: {
+            container: 'swal2-topmost'
+        }
     });
 }
 

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import axios from '@/helpers/pms_axios';
 import { useUsersStore } from '@/stores/user';
 import { showAlert, showConfirm } from '@/helpers/essential';
+import { toast } from 'vue3-toastify';
 import AutoComplete from 'primevue/autocomplete';
 import { finddept, findbranch } from '@/data/masterdata';
 import melcomLogo from '@/assets/img/melcom_logo.png';
@@ -387,15 +388,21 @@ const assignForm = ref({
     weights: [20, 20, 20, 20, 20]
 });
 
-const competencyNames = [
-    'Performance & Teamwork',
-    'Customer Service / Relationship Building',
-    'Execution / Sales Results Driven',
-    'Compliance & Quality Standards',
-    'Continuous Improvement in workflows/processes'
+const defaultAssignCompetencies = [
+    { id: 1, title: 'Performance & Teamwork', weight: 20, descriptions: ['Overall performance based on feedback from Line or Operations Managers', 'Teamwork and people management issues'] },
+    { id: 2, title: 'Customer Service / Relationship Building', weight: 20, descriptions: ['Super saver cards and service quality', 'Google rating improvement and satisfaction'] },
+    { id: 3, title: 'Execution / Sales Results Driven', weight: 20, descriptions: ['Business driven metric set by department', 'Loss to company % mitigation and delivery'] },
+    { id: 4, title: 'Compliance & Quality Standards', weight: 20, descriptions: ['Adherence to company policies, SOPs, safety, and regulatory compliance', 'Wooqer checklist and department standards implementation'] },
+    { id: 5, title: 'Continuous Improvement in workflows/processes', weight: 20, descriptions: ['Culture of adaptability and operational innovation', 'Flexibility and problem solving'] }
 ];
 
-const openAssignModal = () => {
+const managerCompetencies = ref([...defaultAssignCompetencies]);
+
+const competencyNames = computed(() => {
+    return managerCompetencies.value.map(c => c.title);
+});
+
+const openAssignModal = async () => {
     assignSearchEmployee.value = null;
     assignForm.value = {
         assign_type: 'specific',
@@ -405,9 +412,47 @@ const openAssignModal = () => {
         target: 100,
         category: 'Operational',
         due_date: `${currentYear.value}-12-31`,
-        weights: [20, 20, 20, 20, 20]
+        weights: managerCompetencies.value.map(c => c.weight || 20)
     };
     fetchMasterEmployees();
+
+    // Fetch Line Manager's saved custom template from server or local storage
+    try {
+        const tplRes = await axios.get('pms/manager-template');
+        if (tplRes.data.status === 'success' && tplRes.data.template && Array.isArray(tplRes.data.template) && tplRes.data.template.length > 0) {
+            const raw = tplRes.data.template;
+            managerCompetencies.value = defaultAssignCompetencies.map((def, idx) => {
+                const m = raw.find(c => c.id === def.id) || raw[idx] || def;
+                return {
+                    ...def,
+                    title: m.title || def.title,
+                    weight: m.weight !== undefined ? Number(m.weight) : def.weight,
+                    descriptions: m.descriptions || def.descriptions
+                };
+            });
+            assignForm.value.weights = managerCompetencies.value.map(c => c.weight || 20);
+        } else {
+            const savedTpl = localStorage.getItem('pms_custom_competency_template');
+            if (savedTpl) {
+                const parsed = JSON.parse(savedTpl);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    managerCompetencies.value = defaultAssignCompetencies.map((def, idx) => {
+                        const m = parsed.find(c => c.id === def.id) || parsed[idx] || def;
+                        return {
+                            ...def,
+                            title: m.title || def.title,
+                            weight: m.weight !== undefined ? Number(m.weight) : def.weight,
+                            descriptions: m.descriptions || def.descriptions
+                        };
+                    });
+                    assignForm.value.weights = managerCompetencies.value.map(c => c.weight || 20);
+                }
+            }
+        }
+    } catch (e) {
+        console.log('Error loading manager template, using current competencies:', e);
+    }
+
     showAssignModal.value = true;
 };
 
@@ -459,32 +504,42 @@ const assignTotalWeight = computed(() => {
 
 const submitAssignGoal = async () => {
     if (assignForm.value.assign_type === 'specific' && (!assignForm.value.selected_employees || assignForm.value.selected_employees.length === 0)) {
+        toast.warning('Please search and select at least one employee to assign goals and appraisal.', { autoClose: 3500 });
         showAlert('Select Employee(s)', 'Please search and select at least one employee to assign goals and appraisal to.', 'warning');
         return;
     }
     if (assignTotalWeight.value !== 100) {
+        toast.warning(`Total weight must equal exactly 100%. Current sum: ${assignTotalWeight.value}%.`, { autoClose: 3500 });
         showAlert('Invalid Weights', `The total weight must equal exactly 100%. Current sum: ${assignTotalWeight.value}%.`, 'warning');
         return;
     }
-    
-    const count = assignForm.value.assign_type === 'all_team' 
-        ? 'ALL team members' 
-        : `${assignForm.value.selected_employees.length} selected employee(s)`;
-
-    const confirm = await showConfirm(
-        'Assign Goal & Appraisal',
-        `Assign goal & appraisal to ${count} for FY ${assignForm.value.year}? Portal credentials will be provisioned automatically.`,
-        'question',
-        'Yes, Assign'
-    );
-    if (!confirm.isConfirmed) return;
 
     assigning.value = true;
     try {
-        const customTemplate = defaultAppraisalData();
-        customTemplate.competencies.forEach((comp, idx) => {
-            comp.weight = assignForm.value.weights[idx] || 20;
-        });
+        // Build template from line manager's custom competencies and weights
+        const templateComps = managerCompetencies.value.map((comp, idx) => ({
+            id: comp.id || (idx + 1),
+            title: comp.title,
+            descriptions: comp.descriptions || (comp.descriptionText ? comp.descriptionText.split('\n') : []),
+            descriptionText: comp.descriptionText || (Array.isArray(comp.descriptions) ? comp.descriptions.join('\n') : comp.descriptions),
+            weight: assignForm.value.weights[idx] !== undefined ? Number(assignForm.value.weights[idx]) : (Number(comp.weight) || 20),
+            selfRating: 0,
+            managerRating: 0
+        }));
+
+        const customTemplate = {
+            ...defaultAppraisalData(),
+            competencies: templateComps,
+            manager_name: loguser.name || '',
+            manager_signature_name: loguser.name || ''
+        };
+
+        // Also persist this customized template to line manager's template in DB
+        try {
+            await axios.post('pms/manager-template', { template: templateComps });
+        } catch (tErr) {
+            console.warn('Could not auto-save manager template:', tErr);
+        }
 
         const payload = {
             assign_type: assignForm.value.assign_type,
@@ -500,16 +555,18 @@ const submitAssignGoal = async () => {
         const res = await axios.post('pms/goals/assign', payload);
         if (res.data.status === 'success') {
             showAssignModal.value = false;
+            toast.success(res.data.message || 'Goals & appraisal templates assigned successfully!', { autoClose: 5000 });
             await showAlert(
                 'Assignment Successful!',
                 res.data.message || 'Goals & appraisal templates assigned successfully. Employee credentials format: Username = Firstname EmployeeCode, Password = Password.',
                 'success'
             );
-            fetchGoals();
+            await fetchGoals();
         }
     } catch (err) {
         console.error('Error assigning goals:', err);
-        const msg = err.response?.data?.message || 'Failed to assign goals.';
+        const msg = err.response?.data?.message || err.message || 'Failed to assign goals.';
+        toast.error(msg, { autoClose: 5000 });
         showAlert('Error', msg, 'error');
     } finally {
         assigning.value = false;
@@ -1813,14 +1870,14 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 <span class="text-xs font-bold uppercase tracking-wider hidden sm:inline">Definition</span>
                             </div>
                             <div class="w-5 h-[2px] rounded-full" :class="currentStep >= 2 ? 'bg-white/50' : 'bg-white/10'"></div>
-                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="nextStep" :class="currentStep === 2 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
+                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="currentStep = 2" :class="currentStep === 2 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
                                 <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" :class="currentStep >= 2 ? (currentStep === 2 ? 'bg-[#1A237E] text-white' : 'bg-green-500 text-white') : 'bg-white/20'">
                                     <span v-if="currentStep > 2">✓</span><span v-else>2</span>
                                 </div>
                                 <span class="text-xs font-bold uppercase tracking-wider hidden sm:inline">Tracking</span>
                             </div>
                             <div class="w-5 h-[2px] rounded-full" :class="currentStep >= 3 ? 'bg-white/50' : 'bg-white/10'"></div>
-                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="currentStep === 2 ? nextStep() : null" :class="currentStep === 3 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
+                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="currentStep = 3" :class="currentStep === 3 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
                                 <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" :class="currentStep === 3 ? 'bg-[#1A237E] text-white' : 'bg-white/20'">
                                     3
                                 </div>
@@ -2664,11 +2721,11 @@ const removeAttachment = (qIndex, fileIndex) => {
                         class="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-500 hover:bg-slate-100 transition-all uppercase tracking-wider cursor-pointer">
                         Cancel
                     </button>
-                    <button @click="submitAssignGoal" :disabled="assigning || assignTotalWeight !== 100"
+                    <button @click="submitAssignGoal" :disabled="assigning"
                         class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2 cursor-pointer">
                         <i v-if="assigning" class="pi pi-spin pi-spinner"></i>
                         <i v-else class="pi pi-check"></i>
-                        <span>{{ assigning ? 'Assigning...' : 'Assign & Provision Access' }}</span>
+                        <span>{{ assigning ? 'Assigning & Provisioning...' : 'Assign & Provide Access' }}</span>
                     </button>
                 </div>
             </div>

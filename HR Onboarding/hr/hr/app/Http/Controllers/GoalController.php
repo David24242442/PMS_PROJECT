@@ -400,6 +400,26 @@ class GoalController extends Controller
         $quarterlyTracking = $request->input('quarterly_tracking', null);
         $appraisalTemplate = $request->input('appraisal_data', null);
 
+        // If no explicit appraisal_data provided, fallback to line manager's saved custom template
+        if (empty($appraisalTemplate) || empty($appraisalTemplate['competencies'])) {
+            if (!empty($user->appraisal_template)) {
+                $rawComps = is_array($user->appraisal_template) ? $user->appraisal_template : json_decode($user->appraisal_template, true);
+                if (!empty($rawComps)) {
+                    $appraisalTemplate = [
+                        'competencies' => $rawComps,
+                        'comments' => '',
+                        'impressedMost' => '',
+                        'impressedLeast' => '',
+                        'performanceRating' => 0,
+                        'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
+                        'candidate_signature_name' => '',
+                        'manager_signature_name' => $user->name,
+                        'signature_date' => date('Y-m-d')
+                    ];
+                }
+            }
+        }
+
         // Resolve target employee list
         $targetList = [];
         if ($assignType === 'all_team') {
@@ -478,12 +498,19 @@ class GoalController extends Controller
                     \Log::warning("Could not auto-create user for {$candName}: " . $e->getMessage());
                 }
             } else {
-                if (empty($empUser->line_manager_id)) {
-                    $empUser->update([
-                        'line_manager_id' => $user->id,
-                        'report_to' => $user->name
-                    ]);
-                }
+                $empUser->update([
+                    'line_manager_id' => $user->id,
+                    'report_to' => $user->name
+                ]);
+            }
+
+            // Sync reporting line in employees table as well
+            try {
+                \App\Models\Employee::where('employeeid', $empCode)->update([
+                    'line_manager_id' => $user->id
+                ]);
+            } catch (\Exception $e) {
+                // Table might not have column in some envs
             }
 
             // Prepare Appraisal Data snapshot for this employee
@@ -558,6 +585,145 @@ class GoalController extends Controller
             'message' => "Successfully assigned goals and appraisal to {$assignedCount} employee(s).",
             'count' => $assignedCount,
             'data' => $createdGoals
+        ]);
+    }
+
+    /**
+     * Get the appraisal template for the line manager (or current user's line manager).
+     */
+    public function getManagerTemplate(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
+        }
+
+        $manager = null;
+
+        // 1. If specific manager_id requested
+        if ($request->has('manager_id')) {
+            $manager = \App\Models\User::find($request->manager_id);
+        }
+        
+        // 2. If employee_code requested
+        if (!$manager && $request->has('employee_code')) {
+            $emp = \App\Models\Employee::where('employeeid', $request->employee_code)->first();
+            if ($emp && !empty($emp->line_manager_id)) {
+                $manager = \App\Models\User::find($emp->line_manager_id);
+            }
+            if (!$manager) {
+                $u = \App\Models\User::where('employee_code', $request->employee_code)->first();
+                if ($u && !empty($u->line_manager_id)) {
+                    $manager = \App\Models\User::find($u->line_manager_id);
+                }
+            }
+        }
+
+        // 3. If current user is a manager or admin and no specific employee_code requested, return their own template
+        if (!$manager && ($user->admin || $user->is_manager || $user->position_id === 1)) {
+            $manager = $user;
+        }
+
+        // 4. If user is an employee, look up their line manager
+        if (!$manager) {
+            if (!empty($user->line_manager_id)) {
+                $manager = \App\Models\User::find($user->line_manager_id);
+            }
+            if (!$manager && !empty($user->employee_code)) {
+                $emp = \App\Models\Employee::where('employeeid', $user->employee_code)->first();
+                if ($emp && !empty($emp->line_manager_id)) {
+                    $manager = \App\Models\User::find($emp->line_manager_id);
+                }
+            }
+            // 5. Look up via their active assigned Goal
+            if (!$manager) {
+                $goal = \App\Models\Goal::where(function ($q) use ($user) {
+                    if (!empty($user->employee_code)) $q->where('employee_code', $user->employee_code);
+                    $q->orWhere('user_id', $user->id);
+                })->whereNotNull('manager_name')->latest()->first();
+                if ($goal && !empty($goal->manager_name)) {
+                    $manager = \App\Models\User::where('name', $goal->manager_name)->first();
+                }
+            }
+        }
+
+        $template = null;
+        if ($manager && !empty($manager->appraisal_template)) {
+            $raw = $manager->appraisal_template;
+            $template = is_array($raw) ? $raw : json_decode($raw, true);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'manager_id' => $manager ? $manager->id : null,
+            'manager_name' => $manager ? $manager->name : null,
+            'template' => $template
+        ]);
+    }
+
+    /**
+     * Save the appraisal template for the authenticated line manager.
+     */
+    public function saveManagerTemplate(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
+        }
+
+        $template = $request->input('template') ?: $request->input('competencies');
+        if (!$template) {
+            return response()->json(['status' => 'error', 'message' => 'Template data is required'], 422);
+        }
+
+        // Check if users table has appraisal_template column; if not create it dynamically
+        if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'appraisal_template')) {
+            \Illuminate\Support\Facades\Schema::table('users', function (\Illuminate\Database\Schema\Blueprint $table) {
+                $table->longText('appraisal_template')->nullable();
+            });
+        }
+
+        $parsedTemplate = is_array($template) ? $template : json_decode($template, true);
+        $user->appraisal_template = $parsedTemplate;
+        $user->save();
+
+        // Also propagate updated template to any active unsubmitted assigned/draft goals for this manager
+        try {
+            $activeGoals = \App\Models\Goal::where('manager_name', $user->name)
+                ->whereIn('status', ['assigned', 'draft'])
+                ->get();
+
+            foreach ($activeGoals as $ag) {
+                $ad = is_array($ag->appraisal_data) ? $ag->appraisal_data : json_decode($ag->appraisal_data, true);
+                if (!empty($ad)) {
+                    $currentComps = $ad['competencies'] ?? [];
+                    $updatedComps = [];
+                    foreach ($parsedTemplate as $idx => $nc) {
+                        $match = null;
+                        foreach ($currentComps as $cc) {
+                            if (($cc['id'] ?? null) == ($nc['id'] ?? null)) {
+                                $match = $cc;
+                                break;
+                            }
+                        }
+                        $updatedComps[] = array_merge($nc, [
+                            'selfRating' => $match['selfRating'] ?? 0,
+                            'managerRating' => $match['managerRating'] ?? 0,
+                        ]);
+                    }
+                    $ad['competencies'] = $updatedComps;
+                    $ag->appraisal_data = $ad;
+                    $ag->save();
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::warning("Could not propagate template to active goals: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Appraisal template saved successfully for line manager ' . $user->name,
+            'template' => $user->appraisal_template
         ]);
     }
 }

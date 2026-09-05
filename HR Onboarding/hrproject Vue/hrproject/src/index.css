@@ -29,3 +29,9 @@
 .animate-spin-reverse {
     animation: spin-reverse 1.5s linear infinite;
 }
+
+/* Ensure SweetAlert2 confirmation & alert modals always render above PrimeVue Dialogs */
+.swal2-container,
+.swal2-topmost {
+    z-index: 9999999 !important;
+}
