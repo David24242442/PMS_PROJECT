@@ -3,44 +3,63 @@
 namespace App\Http\Controllers;
 
 use App\Models\Goal;
-use App\Models\Appraisal;
+use App\Models\User;
+use App\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class PMSDashboardController extends Controller
 {
-    /**
-     * Get statistics for the PMS Dashboard.
-     */
-    public function index()
+    public function index(Request $request)
     {
-        $totalEmployees = \App\Models\User::count();
-        $totalGoals = Goal::count();
-        $completedGoals = Goal::where('status', 'completed')->count();
-        $pendingAppraisals = Appraisal::where('status', 'pending')->count();
-        $approvedAppraisals = Appraisal::where('status', 'approved')->count();
+        $user = $request->user();
+        $isAdmin = $user && $user->admin;
 
-        // Weekly progress — count goals created per day for the last 7 days
-        $weekLabels = [];
-        $weekData = [];
-        for ($i = 6; $i >= 0; $i--) {
-            $date = now()->subDays($i);
-            $weekLabels[] = $date->format('D');
-            $weekData[] = Goal::whereDate('created_at', $date->toDateString())->count();
+        if ($isAdmin) {
+            // Admin sees global stats
+            try {
+                $totalEmployees = \App\Models\CentralEmployee::count();
+            } catch (\Exception $e) {
+                \Log::error('Central DB Fallback Error: ' . $e->getMessage());
+                $totalEmployees = User::count();
+            }
+            $goalQuery = Goal::query();
+        } else {
+            // Regular user sees only their own data
+            $totalEmployees = 1;
+            $goalQuery = Goal::where('user_id', $user->id);
         }
-        $weeklyProgress = [
-            'labels' => $weekLabels,
-            'data' => $weekData
-        ];
 
-        // Recent goals
-        $recentGoals = Goal::with('user:id,name')
-            ->orderBy('created_at', 'desc')
-            ->limit(10)
+        $totalGoals = (clone $goalQuery)->count();
+        $completedGoals = (clone $goalQuery)->where('status', 'completed')->count();
+        $pendingAppraisals = (clone $goalQuery)->where('status', 'submitted')->count();
+        $approvedAppraisals = (clone $goalQuery)->where('status', 'approved')->count();
+
+        if ($isAdmin) {
+            $usersWithGoals = Goal::distinct('user_id')->count('user_id');
+            $completionRate = $totalEmployees > 0 ? round(($usersWithGoals / $totalEmployees) * 100, 1) : 0;
+        } else {
+            $completionRate = $totalGoals > 0 ? round(($completedGoals / $totalGoals) * 100, 1) : 0;
+        }
+
+        // Recent Goals
+        $recentGoals = (clone $goalQuery)->with('user')
+            ->orderBy('updated_at', 'desc')
+            ->take(5)
             ->get();
 
-        // Top employees — aggregate goals per user
-        $topEmployees = $this->buildLeaderboard(5);
+        // Weekly Progress (Goals created in the last 7 days)
+        $days = [];
+        $counts = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $date = Carbon::now()->subDays($i);
+            $days[] = $date->format('D');
+            $counts[] = (clone $goalQuery)->whereDate('created_at', $date->toDateString())->count();
+        }
+
+        // Top Employees — admin sees leaderboard, regular user sees own summary
+        $topEmployees = $isAdmin ? $this->buildLeaderboard(5) : $this->buildLeaderboard(5, $user->id);
 
         return response()->json([
             'status' => 'success',
@@ -51,9 +70,12 @@ class PMSDashboardController extends Controller
                     'completed_goals' => $completedGoals,
                     'pending_appraisals' => $pendingAppraisals,
                     'approved_appraisals' => $approvedAppraisals,
-                    'completion_rate' => $totalGoals > 0 ? round(($completedGoals / $totalGoals) * 100, 2) : 0
+                    'completion_rate' => $completionRate
                 ],
-                'weekly_progress' => $weeklyProgress,
+                'weekly_progress' => [
+                    'labels' => $days,
+                    'data' => $counts
+                ],
                 'recent_goals' => $recentGoals,
                 'top_employees' => $topEmployees
             ]
@@ -61,85 +83,109 @@ class PMSDashboardController extends Controller
     }
 
     /**
-     * Get the full employee leaderboard.
+     * Leaderboard endpoint — returns all employees ranked by rating and goal completion.
      */
-    public function leaderboard()
+    public function leaderboard(Request $request)
     {
-        $employees = $this->buildLeaderboard();
-
         return response()->json([
             'status' => 'success',
-            'data' => $employees
+            'data' => $this->buildLeaderboard()
         ]);
     }
 
     /**
-     * Build leaderboard data from goals and appraisals.
+     * Shared helper to build leaderboard from all goals.
+     * Groups by candidate_name (trimmed, lowercased) to avoid duplicates.
      */
-    private function buildLeaderboard($limit = null)
+    private function buildLeaderboard($limit = null, $userId = null)
     {
-        // Get all users who have goals
-        $users = \App\Models\User::whereHas('goals')->get();
+        $query = Goal::with('user');
+        if ($userId) {
+            $query->where('user_id', $userId);
+        }
+        $goals = $query->get();
 
-        $leaderboard = [];
+        $employeeMap = [];
 
-        foreach ($users as $user) {
-            $goals = Goal::where('user_id', $user->id)->get();
-            $totalGoals = $goals->count();
-            $completedGoals = $goals->where('status', 'completed')->count();
-            $completionPct = $totalGoals > 0 ? round(($completedGoals / $totalGoals) * 100) : 0;
+        foreach ($goals as $goal) {
+            // Use candidate_name if available, otherwise user name
+            $name = trim($goal->candidate_name ?: ($goal->user->name ?? 'Unknown'));
+            $key = strtolower($name); // deduplicate by normalized name
 
-            // Get latest appraisal rating
-            $appraisal = Appraisal::where('user_id', $user->id)
-                ->orderBy('created_at', 'desc')
-                ->first();
+            if (!isset($employeeMap[$key])) {
+                $employeeMap[$key] = [
+                    'user_id' => $goal->user_id,
+                    'name' => $name,
+                    'department' => $goal->department ?: ($goal->user->department ?? ''),
+                    'job_title' => $goal->job_title ?: ($goal->user->position_id ?? 'Staff'),
+                    'total_goals' => 0,
+                    'completed_goals' => 0,
+                    'total_rating' => 0,
+                    'rated_count' => 0,
+                    'goals' => [],
+                ];
+            }
 
-            $avgRating = 0;
-            if ($appraisal && $appraisal->overall_rating) {
-                $avgRating = round($appraisal->overall_rating, 1);
-            } elseif ($appraisal && $appraisal->competencies_data) {
-                $comps = is_string($appraisal->competencies_data) ? json_decode($appraisal->competencies_data, true) : $appraisal->competencies_data;
-                if (is_array($comps) && count($comps) > 0) {
-                    $sum = 0;
-                    $count = 0;
-                    foreach ($comps as $c) {
-                        $r = floatval($c['managerRating'] ?? $c['rating'] ?? 0);
-                        if ($r > 0) { $sum += $r; $count++; }
-                    }
-                    $avgRating = $count > 0 ? round($sum / $count, 1) : 0;
+            $emp = &$employeeMap[$key];
+            $emp['total_goals']++;
+
+            if (in_array($goal->status, ['completed', 'approved', 'review_completed'])) {
+                $emp['completed_goals']++;
+            }
+
+            // Extract rating from appraisal_data competencies
+            $rating = 0;
+            $appraisalData = is_array($goal->appraisal_data) ? $goal->appraisal_data : json_decode($goal->appraisal_data ?? '{}', true);
+            $competencies = $appraisalData['competencies'] ?? [];
+            if (count($competencies) > 0) {
+                $ratedComps = array_filter($competencies, fn($c) => floatval($c['managerRating'] ?? 0) > 0);
+                if (count($ratedComps) > 0) {
+                    $sum = array_sum(array_map(fn($c) => floatval($c['managerRating']), $ratedComps));
+                    $rating = $sum / count($ratedComps);
                 }
             }
 
-            // Build goals list for modal
-            $goalsList = $goals->map(function ($g) {
-                return [
-                    'id' => $g->id,
-                    'title' => $g->title,
-                    'status' => $g->status,
-                    'category' => $g->category,
-                    'target' => $g->target,
-                    'actual' => $g->actual,
-                    'rating' => $g->rating,
-                    'due_date' => $g->due_date ? $g->due_date->format('Y-m-d') : null,
-                ];
-            });
+            if ($rating > 0) {
+                $emp['total_rating'] += $rating;
+                $emp['rated_count']++;
+            }
 
-            $leaderboard[] = [
-                'user_id' => $user->id,
-                'name' => $user->name,
-                'department' => $user->department ?? null,
-                'job_title' => $user->job_title ?? null,
-                'total_goals' => $totalGoals,
-                'completed_goals' => $completedGoals,
-                'completion_pct' => $completionPct,
-                'avg_rating' => $avgRating,
-                'goals' => $goalsList,
+            $emp['goals'][] = [
+                'id' => $goal->id,
+                'title' => $goal->title,
+                'status' => $goal->status,
+                'target' => $goal->target,
+                'actual' => $goal->actual,
+                'due_date' => $goal->due_date ? $goal->due_date->format('Y-m-d') : null,
+                'completion_date' => $goal->completion_date ? $goal->completion_date->format('Y-m-d') : null,
+                'rating' => $rating > 0 ? round($rating, 1) : null,
+                'category' => $goal->category,
             ];
         }
 
-        // Sort by rating descending
+        // Compute averages and sort by rating desc
+        $leaderboard = [];
+        foreach ($employeeMap as $emp) {
+            $avgRating = $emp['rated_count'] > 0 ? round($emp['total_rating'] / $emp['rated_count'], 1) : 0;
+            $completionPct = $emp['total_goals'] > 0 ? round(($emp['completed_goals'] / $emp['total_goals']) * 100, 1) : 0;
+
+            $leaderboard[] = [
+                'user_id' => $emp['user_id'],
+                'name' => $emp['name'],
+                'department' => $emp['department'],
+                'job_title' => $emp['job_title'],
+                'avg_rating' => $avgRating,
+                'completion_pct' => $completionPct,
+                'total_goals' => $emp['total_goals'],
+                'completed_goals' => $emp['completed_goals'],
+                'goals' => $emp['goals'],
+            ];
+        }
+
+        // Sort: highest rating first, then by completion %
         usort($leaderboard, function ($a, $b) {
-            return $b['avg_rating'] <=> $a['avg_rating'];
+            if ($b['avg_rating'] != $a['avg_rating']) return $b['avg_rating'] <=> $a['avg_rating'];
+            return $b['completion_pct'] <=> $a['completion_pct'];
         });
 
         if ($limit) {

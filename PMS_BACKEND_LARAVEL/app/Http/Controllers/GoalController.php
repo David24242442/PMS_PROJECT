@@ -517,9 +517,9 @@ class GoalController extends Controller
 
             $goalData = [
                 'title' => $goalTitle,
-                'description' => is_array($description) ? $description : json_decode($description, true) ?: [$description],
-                'purposes' => is_array($purposes) ? $purposes : json_decode($purposes, true) ?: [$purposes],
-                'challenges' => is_array($challenges) ? $challenges : json_decode($challenges, true) ?: [$challenges],
+                'description' => is_array($description) ? $description : (json_decode($description, true) ?: [$description]),
+                'purposes' => is_array($purposes) ? $purposes : (json_decode($purposes, true) ?: [$purposes]),
+                'challenges' => is_array($challenges) ? $challenges : (json_decode($challenges, true) ?: [$challenges]),
                 'category' => $category,
                 'target' => $target,
                 'due_date' => $dueDate,

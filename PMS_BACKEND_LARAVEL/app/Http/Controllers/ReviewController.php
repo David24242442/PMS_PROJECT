@@ -4,14 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Review;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class ReviewController extends Controller
 {
-    public function show(Request $request)
+    public function index(Request $request)
     {
-        $userId = $request->query('user_id', Auth::id());
-        $year = $request->query('year', date('Y'));
+        $year = $request->get('year', date('Y'));
+        $userId = $request->get('user_id', $request->user()->id);
 
         $review = Review::where('user_id', $userId)
             ->where('year', $year)
@@ -19,9 +18,9 @@ class ReviewController extends Controller
 
         if (!$review) {
             return response()->json([
-                'status' => 'not_found',
+                'status' => 'empty',
                 'message' => 'No review found'
-            ]);
+            ], 200);
         }
 
         return response()->json([
@@ -32,27 +31,12 @@ class ReviewController extends Controller
 
     public function store(Request $request)
     {
-        $validatedData = $request->validate([
-            'year' => 'required|integer',
-            'status' => 'required|string',
-            'emp_code' => 'nullable|string',
-            'name' => 'nullable|string',
-            'division' => 'nullable|string',
-            'position' => 'nullable|string',
-            'date' => 'nullable|date',
-            'goal_achievement' => 'nullable|array',
-            'initiatives' => 'nullable|array',
-            'next_steps' => 'nullable|array',
-            'improvements' => 'nullable|array',
-            'manager_feedback' => 'nullable|array',
-        ]);
-
         $review = Review::updateOrCreate(
             [
-                'user_id' => Auth::id(),
-                'year' => $validatedData['year']
+                'user_id' => $request->user()->id,
+                'year' => $request->input('year', date('Y')),
             ],
-            $validatedData
+            $request->except(['user_id', 'year'])
         );
 
         return response()->json([

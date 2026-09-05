@@ -10,22 +10,17 @@ import AutoComplete from 'primevue/autocomplete';
 const userstore = useUsersStore();
 const { loguser } = userstore;
 
+const route = useRoute();
+const router = useRouter();
+
 const currentYear = ref(new Date().getFullYear());
 const years = range(currentYear.value, currentYear.value - 5);
 const loading = ref(true);
 const saving = ref(false);
 const currentStep = ref(route.query.step ? parseInt(route.query.step) : 1);
 const totalSteps = 2;
-const route = useRoute();
-const router = useRouter();
 const goalId = ref(route.query.goal_id || null);
 const goalStatus = ref('');
-
-watch(() => route.query, (newQ) => {
-    if (newQ.step) currentStep.value = parseInt(newQ.step);
-    if (newQ.goal_id) goalId.value = newQ.goal_id;
-    fetchAppraisal();
-});
 
 const isManager = computed(() => {
     return !!(loguser?.admin || loguser?.is_manager || loguser?.position_id === 1 || loguser?.designation === 'Manager');
@@ -493,6 +488,12 @@ const saveAppraisal = async (submit = false) => {
         saving.value = false;
     }
 };
+
+watch(() => route.query, (newQ) => {
+    if (newQ.step) currentStep.value = parseInt(newQ.step);
+    if (newQ.goal_id) goalId.value = newQ.goal_id;
+    fetchAppraisal();
+});
 
 onMounted(async () => {
     if (route.query.step) currentStep.value = parseInt(route.query.step);
