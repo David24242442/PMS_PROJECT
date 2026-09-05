@@ -107,9 +107,27 @@ const router = createRouter({
           component: () => import('@/views/app/hr/SubmissionsView.vue')
         }
       ]
+    },
+    {
+      path: '/:catchAll(.*)*',
+      redirect: '/pms/goals'
     }
   ]
 })
+
+const parsePermissions = (perms) => {
+  if (!perms) return [];
+  if (Array.isArray(perms)) return perms;
+  if (typeof perms === 'string') {
+    try {
+      const parsed = JSON.parse(perms);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+};
 
 router.beforeEach((to, from, next) => {
   const user = JSON.parse(localStorage.getItem('hrproject_user'))
@@ -117,15 +135,19 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth === false && user) {
     // Dynamic Redirect Logic for already logged-in users visiting login
     const userRole = user.attributes ? user.attributes.position_id : user.position_id;
-    const permissions = user.permissions || [];
+    const permissions = parsePermissions(user.permissions);
     
-    let redirectUrl = '/profile';
-    if (userRole === 4) {
+    let redirectUrl = '/pms/goals';
+    if (user.admin || userRole === 4 || user.is_manager) {
         redirectUrl = '/pms/goals';
     } else if (permissions.includes('/pms/goals')) {
         redirectUrl = '/pms/goals';
-    } else if (permissions.length > 0) {
+    } else if (permissions.includes('/pms/dashboard')) {
+        redirectUrl = '/pms/dashboard';
+    } else if (permissions.length > 0 && typeof permissions[0] === 'string' && permissions[0].startsWith('/') && permissions[0].length > 1) {
         redirectUrl = permissions[0];
+    } else {
+        redirectUrl = '/pms/goals';
     }
     
     next(redirectUrl);
@@ -141,29 +163,49 @@ router.beforeEach((to, from, next) => {
   // Dynamic Permissions Validation Guard
   if (user) {
     const userRole = user.attributes ? user.attributes.position_id : user.position_id; 
-    const permissions = user.permissions || [];
+    const permissions = parsePermissions(user.permissions);
+    const isManager = !!(user.admin || user.is_manager || userRole === 4 || user.position_id === 1);
     
-    // HR Head (4) has access to everything
-    if (userRole === 4) {
+    // HR Head (4) or Admin has full access to everything
+    if (userRole === 4 || user.admin) {
        next()
        if (to.meta.fullname) document.title = to.meta.fullname;
        return;
     }
 
-    const restrictedPaths = [
+    // Core PMS routes accessible to all authenticated staff / employees
+    const staffPmsRoutes = ['/pms/goals', '/pms/appraisal', '/profile'];
+    if (staffPmsRoutes.includes(to.path)) {
+       next()
+       if (to.meta.fullname) document.title = to.meta.fullname;
+       return;
+    }
+
+    // Manager PMS routes
+    const managerPmsRoutes = ['/pms/dashboard', '/pms/review', '/pms/leaderboard'];
+    if (managerPmsRoutes.includes(to.path)) {
+       if (isManager || permissions.includes(to.path)) {
+          next()
+          if (to.meta.fullname) document.title = to.meta.fullname;
+          return;
+       } else {
+          next('/pms/goals')
+          return;
+       }
+    }
+
+    // Restricted Administrative / HR routes
+    const adminRoutes = [
       '/dashboard', '/onboarding', '/employees', 
-      '/users', '/pms/dashboard', '/pms/goals', '/pms/review', '/pms/appraisal',
-      '/pms/leaderboard', '/pms/employee-master', '/hr/submissions'
+      '/users', '/pms/employee-master', '/hr/submissions'
     ];
 
-    if (restrictedPaths.includes(to.path) || to.path.startsWith('/employee/')) {
+    if (adminRoutes.includes(to.path) || to.path.startsWith('/employee/')) {
        let checkPath = to.path;
        if (to.path.startsWith('/employee/')) checkPath = '/employees';
-       else if (to.path === '/pms/leaderboard') checkPath = '/pms/goals'; // leaderboard shares access with goals
 
        if (!permissions.includes(checkPath)) {
-          next('/profile')
-          document.title = 'Profile';
+          next('/pms/goals')
           return;
        }
     }
