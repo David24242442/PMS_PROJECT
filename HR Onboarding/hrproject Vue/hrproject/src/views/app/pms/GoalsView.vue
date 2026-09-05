@@ -29,11 +29,28 @@ const currentYear = ref(new Date().getFullYear());
 const years = range(currentYear.value, currentYear.value - 5);
 watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
 
-// Multi-step form state
+// Role definitions
+const isManager = computed(() => {
+    return !!(loguser?.admin || loguser?.is_manager || loguser?.position_id === 1 || loguser?.designation === 'Manager');
+});
+const isEmployee = computed(() => !isManager.value);
+
+// Multi-step form state (3 Steps: 1. Definition, 2. Tracking, 3. Appraisal)
 const viewMode = ref('list'); // 'list' or 'create'
 const currentStep = ref(1);
-const totalSteps = 2;
+const totalSteps = 3;
 const stepTransition = ref('slide-next');
+
+// Read-only condition for submitted or reviewed goals
+const isFormReadOnly = computed(() => {
+    return ['submitted', 'review_completed', 'completed'].includes(newGoal.value.status);
+});
+
+// Single employee assigned goal computed
+const employeeGoal = computed(() => {
+    if (!goals.value || !goals.value.length) return null;
+    return goals.value.find(g => g.year === currentYear.value) || goals.value[0] || null;
+});
 
 // Master Employee Data for Dropdown
 const masterEmployees = ref([]);
@@ -308,11 +325,184 @@ const startCreateGoal = () => {
     loadDraft(); // Restore any saved draft
 };
 
+const openEmployeeGoal = (goal) => {
+    if (!goal) return;
+    resumeDraft(goal);
+    draftId.value = goal.id;
+    newGoal.value.status = goal.status;
+    newGoal.value.candidate_name = goal.candidate_name || loguser.name;
+    newGoal.value.employee_code = goal.employee_code || loguser.employee_code;
+    newGoal.value.job_title = goal.job_title || loguser.job_title || loguser.department || '';
+    newGoal.value.department = goal.department || loguser.department || '';
+    newGoal.value.location = goal.location || loguser.location || '';
+    newGoal.value.manager_name = goal.manager_name || 'Line Manager';
+    if (!newGoal.value.appraisal_data.candidate_signature_name) {
+        newGoal.value.appraisal_data.candidate_signature_name = newGoal.value.candidate_name;
+    }
+    currentStep.value = 1;
+    viewMode.value = 'create';
+};
+
 const cancelCreate = () => {
     clearDraft();
     viewMode.value = 'list';
     currentStep.value = 1;
     resetForm();
+};
+
+// Appraisal Step 3 Self-Rating Calculations
+const selfAppraisalOverallRating = computed(() => {
+    const comps = newGoal.value.appraisal_data?.competencies || [];
+    if (!comps.length) return '0.00';
+    const total = comps.reduce((sum, c) => {
+        const r = parseFloat(c.selfRating) || 0;
+        const w = parseFloat(c.weight) || 20;
+        return sum + ((r * w) / 100);
+    }, 0);
+    return total.toFixed(2);
+});
+
+const selfAppraisalOverallPercentage = computed(() => {
+    const score = parseFloat(selfAppraisalOverallRating.value) || 0;
+    const pct = (score / 5) * 100;
+    return pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1);
+});
+
+// Manager Assign Modal State
+const showAssignModal = ref(false);
+const assigning = ref(false);
+const assignForm = ref({
+    assign_type: 'single', // 'single' or 'all_team'
+    selected_candidate: null,
+    title: '',
+    year: currentYear.value,
+    target: 100,
+    category: 'Operational',
+    due_date: '',
+    weights: [20, 20, 20, 20, 20]
+});
+
+const competencyNames = [
+    'Performance & Teamwork',
+    'Customer Service / Relationship Building',
+    'Execution / Sales Results Driven',
+    'Compliance & Quality Standards',
+    'Continuous Improvement in workflows/processes'
+];
+
+const openAssignModal = () => {
+    assignForm.value = {
+        assign_type: 'single',
+        selected_candidate: null,
+        title: `Yearly SMART Goals FY ${currentYear.value}`,
+        year: currentYear.value,
+        target: 100,
+        category: 'Operational',
+        due_date: `${currentYear.value}-12-31`,
+        weights: [20, 20, 20, 20, 20]
+    };
+    fetchMasterEmployees();
+    showAssignModal.value = true;
+};
+
+const assignTotalWeight = computed(() => {
+    return assignForm.value.weights.reduce((sum, w) => sum + (parseFloat(w) || 0), 0);
+});
+
+const submitAssignGoal = async () => {
+    if (assignForm.value.assign_type === 'single' && !assignForm.value.selected_candidate) {
+        showAlert('Select Employee', 'Please select an employee to assign this goal to.', 'warning');
+        return;
+    }
+    if (assignTotalWeight.value !== 100) {
+        showAlert('Invalid Weights', `The total weight must equal exactly 100%. Current sum: ${assignTotalWeight.value}%.`, 'warning');
+        return;
+    }
+    
+    const confirm = await showConfirm(
+        'Assign Goal & Appraisal',
+        assignForm.value.assign_type === 'all_team'
+            ? `Assign goal & appraisal to ALL team members for FY ${assignForm.value.year}? Portal credentials will be provisioned automatically.`
+            : `Assign goal & appraisal to ${assignForm.value.selected_candidate.name}? Portal credentials will be provisioned automatically.`,
+        'question',
+        'Yes, Assign'
+    );
+    if (!confirm.isConfirmed) return;
+
+    assigning.value = true;
+    try {
+        const customTemplate = defaultAppraisalData();
+        customTemplate.competencies.forEach((comp, idx) => {
+            comp.weight = assignForm.value.weights[idx] || 20;
+        });
+
+        const payload = {
+            assign_type: assignForm.value.assign_type,
+            year: assignForm.value.year,
+            title: assignForm.value.title,
+            category: assignForm.value.category,
+            target: assignForm.value.target,
+            due_date: assignForm.value.due_date,
+            appraisal_data: customTemplate,
+            employees: assignForm.value.assign_type === 'single' ? [{
+                employee_code: assignForm.value.selected_candidate.employee_code,
+                name: assignForm.value.selected_candidate.name,
+                department: assignForm.value.selected_candidate.department || finddept(assignForm.value.selected_candidate.joining_dept_id),
+                location: assignForm.value.selected_candidate.location || findbranch(assignForm.value.selected_candidate.joining_branch_id),
+                job_title: assignForm.value.selected_candidate.position || assignForm.value.selected_candidate.department,
+                email: assignForm.value.selected_candidate.email
+            }] : []
+        };
+
+        const res = await axios.post('pms/goals/assign', payload);
+        if (res.data.status === 'success') {
+            showAssignModal.value = false;
+            await showAlert(
+                'Assignment Successful!',
+                res.data.message || 'Goals & appraisal templates assigned successfully. Employee credentials format: Username = Firstname EmployeeCode, Password = Password.',
+                'success'
+            );
+            fetchGoals();
+        }
+    } catch (err) {
+        console.error('Error assigning goals:', err);
+        const msg = err.response?.data?.message || 'Failed to assign goals.';
+        showAlert('Error', msg, 'error');
+    } finally {
+        assigning.value = false;
+    }
+};
+
+const submitGoalForReview = async () => {
+    if (!newGoal.value.title || !newGoal.value.title.trim()) {
+        showAlert('Title Required', 'Please provide a title for your goal in Step 1.', 'warning');
+        currentStep.value = 1;
+        return;
+    }
+
+    const comps = newGoal.value.appraisal_data?.competencies || [];
+    const unrated = comps.filter(c => !c.selfRating || c.selfRating === 0);
+    if (unrated.length > 0) {
+        showAlert('Self Rating Required', `Please complete your Self Rating (1-5) for all ${comps.length} competencies in Step 3 before submitting.`, 'warning');
+        return;
+    }
+
+    const confirm = await showConfirm(
+        'Submit to Line Manager',
+        'Are you sure you want to sign off and submit your Goals & Self-Appraisal to your Line Manager? Once submitted, your submission will be locked for review.',
+        'question',
+        'Yes, Sign Off & Submit'
+    );
+    if (!confirm.isConfirmed) return;
+
+    if (!newGoal.value.appraisal_data.candidate_signature_name) {
+        newGoal.value.appraisal_data.candidate_signature_name = newGoal.value.candidate_name || loguser.name;
+    }
+    if (!newGoal.value.appraisal_data.signature_date) {
+        newGoal.value.appraisal_data.signature_date = new Date().toISOString().split('T')[0];
+    }
+
+    await addGoal('submitted');
 };
 
 const nextStep = async () => {
@@ -326,7 +516,6 @@ const nextStep = async () => {
             return;
         }
     } else if (currentStep.value === 2) {
-        // Check if any quarterly measures are empty
         const emptyMeasures = newGoal.value.quarterly_tracking.some(q => 
             !q.target_measures || q.target_measures.every(m => !m || !m.trim())
         );
@@ -397,13 +586,13 @@ const addGoal = async (status = 'in_progress') => {
             due_date: newGoal.value.due_date || null,
             completion_date: newGoal.value.completion_date || null,
             year: parseInt(newGoal.value.year) || new Date().getFullYear(),
-            user_id: parseInt(loguser.id),
+            user_id: parseInt(newGoal.value.user_id || loguser.id),
             candidate_name: newGoal.value.candidate_name,
             employee_code: newGoal.value.employee_code,
             location: newGoal.value.location,
             department: newGoal.value.department,
             job_title: newGoal.value.job_title || '',
-            manager_name: loguser.name || '',
+            manager_name: newGoal.value.manager_name || loguser.name || '',
             smart_criteria: newGoal.value.smart_criteria,
             quarterly_tracking: newGoal.value.quarterly_tracking,
             appraisal_data: newGoal.value.appraisal_data,
@@ -439,6 +628,8 @@ const addGoal = async (status = 'in_progress') => {
             
             if (status === 'completed') {
                 showAlert('Success', 'Goal Appraisal Completed successfully!', 'success');
+            } else if (status === 'submitted') {
+                showAlert('Submitted for Review', 'Your SMART goals and self-appraisal have been successfully submitted to your Line Manager for review.', 'success');
             } else {
                 showAlert('Success', 'Goal saved successfully!', 'success');
             }
@@ -927,6 +1118,15 @@ const resumeDraft = (goal) => {
     if (typeof data.challenges === 'string') {
         try { data.challenges = JSON.parse(data.challenges); } catch { data.challenges = [data.challenges]; }
     }
+    if (typeof data.smart_criteria === 'string') {
+        try { data.smart_criteria = JSON.parse(data.smart_criteria); } catch {}
+    }
+    if (typeof data.quarterly_tracking === 'string') {
+        try { data.quarterly_tracking = JSON.parse(data.quarterly_tracking); } catch {}
+    }
+    if (typeof data.appraisal_data === 'string') {
+        try { data.appraisal_data = JSON.parse(data.appraisal_data); } catch {}
+    }
     if (!data.smart_criteria) data.smart_criteria = defaultSmartCriteria();
     if (!data.quarterly_tracking) data.quarterly_tracking = defaultQuarterlyTracking();
     if (!data.appraisal_data) {
@@ -1011,6 +1211,8 @@ const searchQuery = ref('');
 const stats = computed(() => {
     return {
         total: goals.value.length,
+        assigned: goals.value.filter(g => g.display_status === 'assigned').length,
+        submitted: goals.value.filter(g => g.display_status === 'submitted').length,
         goalCreated: goals.value.filter(g => g.display_status === 'goal_created').length,
         appraisalCompleted: goals.value.filter(g => g.display_status === 'appraisal_completed').length,
         reviewCompleted: goals.value.filter(g => g.display_status === 'review_completed').length,
@@ -1023,6 +1225,8 @@ const filteredGoals = computed(() => {
     return goals.value.filter(g => {
         // Status Filter by display_status
         if (filterStatus.value !== 'all') {
+            if (filterStatus.value === 'assigned' && g.display_status !== 'assigned') return false;
+            if (filterStatus.value === 'submitted' && g.display_status !== 'submitted') return false;
             if (filterStatus.value === 'goal_created' && g.display_status !== 'goal_created') return false;
             if (filterStatus.value === 'appraisal_completed' && g.display_status !== 'appraisal_completed') return false;
             if (filterStatus.value === 'review_completed' && g.display_status !== 'review_completed') return false;
@@ -1160,21 +1364,90 @@ const removeAttachment = (qIndex, fileIndex) => {
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
-                        <!-- <div class="px-4 py-1.5 bg-white rounded-xl border border-gray-100 text-[10px] font-black text-gray-500 uppercase tracking-widest shadow-sm">
-                            FY {{ currentYear }} <i class="pi pi-chevron-down ml-2 text-[8px]"></i>
-                        </div> -->
-                        <button @click="startCreateGoal" class="prof-button !bg-[#334155] px-6 py-2.5 flex items-center gap-2 group border-none shadow-lg text-sm">
-                            <i class="pi pi-plus font-black text-xs"></i>
-                            <span class="font-black tracking-tight text-xs">NEW SMART GOAL</span>
-                        </button>
+                        <template v-if="isManager">
+                            <button @click="openAssignModal" class="prof-button !bg-emerald-600 hover:!bg-emerald-700 px-5 py-2.5 flex items-center gap-2 group border-none shadow-lg text-sm text-white font-bold transition-all">
+                                <i class="pi pi-user-plus font-black text-xs"></i>
+                                <span class="font-black tracking-tight text-xs uppercase">Assign Goal & Appraisal</span>
+                            </button>
+                            <button @click="startCreateGoal" class="prof-button !bg-[#334155] hover:!bg-slate-700 px-5 py-2.5 flex items-center gap-2 group border-none shadow-lg text-sm text-white font-bold transition-all">
+                                <i class="pi pi-plus font-black text-xs"></i>
+                                <span class="font-black tracking-tight text-xs uppercase">NEW SMART GOAL</span>
+                            </button>
+                        </template>
+                        <template v-else>
+                            <div class="px-4 py-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 text-xs font-black text-white flex items-center gap-2">
+                                <i class="pi pi-id-card text-blue-200"></i>
+                                <span>{{ loguser.name }} ({{ loguser.employee_code || 'Employee' }})</span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EMPLOYEE PORTAL VIEW: Assigned Goal Card or Waiting State -->
+            <div v-if="isEmployee" class="mb-6">
+                <!-- Awaiting Assignment State -->
+                <div v-if="!employeeGoal" class="prof-card p-12 text-center bg-white rounded-3xl border border-slate-200 shadow-xl">
+                    <div class="w-20 h-20 mx-auto mb-5 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center text-3xl border-2 border-amber-200 shadow-inner">
+                        <i class="pi pi-clock"></i>
+                    </div>
+                    <h3 class="text-xl font-black text-slate-800 mb-2">Awaiting Goal & Appraisal Assignment</h3>
+                    <p class="text-sm text-slate-500 max-w-lg mx-auto font-medium mb-6">
+                        Your Line Manager has not yet assigned a SMART Goal & Performance Appraisal template for FY {{ currentYear }}. 
+                        Once assigned, your goal template will appear here automatically for you to define objectives, track quarterly milestones, and complete your self-appraisal.
+                    </p>
+                    <div class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold border border-slate-200">
+                        <i class="pi pi-info-circle text-xs"></i>
+                        <span>Please contact your Line Manager if you need this assigned urgently.</span>
+                    </div>
+                </div>
+
+                <!-- Assigned Goal Hub Card -->
+                <div v-else class="prof-card p-6 bg-white rounded-3xl border border-indigo-100 shadow-xl overflow-hidden relative">
+                    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                        <div class="space-y-3 flex-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span v-if="employeeGoal.display_status === 'assigned'" class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                    <i class="pi pi-bell mr-1"></i> Assigned — Action Required: Fill & Submit
+                                </span>
+                                <span v-else-if="employeeGoal.display_status === 'submitted'" class="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                    <i class="pi pi-clock mr-1"></i> Submitted — Under Line Manager Review
+                                </span>
+                                <span v-else-if="employeeGoal.display_status === 'review_completed'" class="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                    <i class="pi pi-check-circle mr-1"></i> Review Completed (Finalized)
+                                </span>
+                                <span v-else class="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                    {{ employeeGoal.display_status }}
+                                </span>
+                                <span class="text-xs font-bold text-slate-400">FY {{ employeeGoal.year }}</span>
+                            </div>
+                            <h2 class="text-2xl font-black text-slate-800 tracking-tight">{{ employeeGoal.title }}</h2>
+                            <div class="flex flex-wrap gap-4 text-xs font-semibold text-slate-500">
+                                <span class="flex items-center gap-1.5"><i class="pi pi-user text-indigo-500"></i> Candidate: <strong>{{ employeeGoal.candidate_name }}</strong></span>
+                                <span class="flex items-center gap-1.5"><i class="pi pi-shield text-blue-500"></i> Line Manager: <strong>{{ employeeGoal.manager_name }}</strong></span>
+                                <span class="flex items-center gap-1.5"><i class="pi pi-building text-slate-400"></i> {{ employeeGoal.department || 'N/A' }} ({{ employeeGoal.location || 'N/A' }})</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button @click="openEmployeeGoal(employeeGoal)" 
+                                class="prof-button !bg-indigo-600 hover:!bg-indigo-700 !text-white px-6 py-3 rounded-2xl shadow-lg shadow-indigo-600/30 flex items-center gap-2 font-black text-xs uppercase tracking-wider transition-all">
+                                <i :class="employeeGoal.display_status === 'assigned' ? 'pi pi-pencil' : 'pi pi-eye'"></i>
+                                <span>{{ employeeGoal.display_status === 'assigned' ? 'Fill Goals & Self-Appraisal' : 'View Submission & Status' }}</span>
+                            </button>
+                            <button @click="viewGoalDetail(employeeGoal)" 
+                                class="prof-button !bg-slate-100 hover:!bg-slate-200 !text-slate-700 px-5 py-3 rounded-2xl border border-slate-200 flex items-center gap-2 font-black text-xs uppercase tracking-wider transition-all">
+                                <i class="pi pi-file"></i>
+                                <span>View Dossier</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Dashboard Stats & Table -->
-             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 <!-- Total Goals -->
-                <div class="prof-card p-4 !bg-[#5830E0] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden">
+                <div class="prof-card p-4 !bg-[#5830E0] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'all'">
                     <div class="absolute -top-10 -right-10 w-24 h-24 bg-white/10 rounded-full"></div>
                     <div class="relative z-10">
                         <div class="flex items-center gap-2 mb-2">
@@ -1186,16 +1459,29 @@ const removeAttachment = (qIndex, fileIndex) => {
                     </div>
                 </div>
 
-                <!-- Goal Created -->
-                <div class="prof-card p-4 !bg-[#1E40AF] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'goal_created'">
+                <!-- Assigned -->
+                <div class="prof-card p-4 !bg-[#3949AB] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'assigned'">
                     <div class="absolute -top-10 -right-10 w-24 h-24 bg-white/10 rounded-full"></div>
                     <div class="relative z-10">
                         <div class="flex items-center gap-2 mb-2">
-                            <i class="pi pi-file-plus text-xs"></i>
-                            <span class="text-[9px] font-black uppercase tracking-normal text-blue-100">Goal Created</span>
+                            <i class="pi pi-bell text-xs"></i>
+                            <span class="text-[9px] font-black uppercase tracking-normal text-indigo-200">Assigned</span>
                         </div>
-                        <div class="text-2xl font-black text-white mb-0.5">{{ stats.goalCreated }}</div>
-                        <div class="text-[9px] font-bold text-blue-200 uppercase tracking-normal">Awaiting Appraisal</div>
+                        <div class="text-2xl font-black text-white mb-0.5">{{ stats.assigned }}</div>
+                        <div class="text-[9px] font-bold text-indigo-200 uppercase tracking-normal">Awaiting Employee</div>
+                    </div>
+                </div>
+
+                <!-- Submitted -->
+                <div class="prof-card p-4 !bg-[#D97706] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'submitted'">
+                    <div class="absolute -top-10 -right-10 w-24 h-24 bg-white/10 rounded-full"></div>
+                    <div class="relative z-10">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i class="pi pi-clock text-xs"></i>
+                            <span class="text-[9px] font-black uppercase tracking-normal text-amber-200">Submitted</span>
+                        </div>
+                        <div class="text-2xl font-black text-white mb-0.5">{{ stats.submitted }}</div>
+                        <div class="text-[9px] font-bold text-amber-200 uppercase tracking-normal">Awaiting Review</div>
                     </div>
                 </div>
 
@@ -1208,7 +1494,7 @@ const removeAttachment = (qIndex, fileIndex) => {
                             <span class="text-[9px] font-black uppercase tracking-normal text-teal-200">Appraisal Done</span>
                         </div>
                         <div class="text-2xl font-black text-white mb-0.5">{{ stats.appraisalCompleted }}</div>
-                        <div class="text-[9px] font-bold text-teal-200 uppercase tracking-normal">Awaiting Review</div>
+                        <div class="text-[9px] font-bold text-teal-200 uppercase tracking-normal">Meeting Done</div>
                     </div>
                 </div>
 
@@ -1248,10 +1534,20 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
                                 All
                             </button>
+                            <button @click="filterStatus = 'assigned'" 
+                                :class="filterStatus === 'assigned' ? 'bg-indigo-700 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-indigo-700'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                Assigned
+                            </button>
+                            <button @click="filterStatus = 'submitted'" 
+                                :class="filterStatus === 'submitted' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-amber-600'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                Submitted
+                            </button>
                             <button @click="filterStatus = 'goal_created'" 
                                 :class="filterStatus === 'goal_created' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-blue-600'" 
                                 class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
-                                Goal Created
+                                In Progress
                             </button>
                             <button @click="filterStatus = 'appraisal_completed'" 
                                 :class="filterStatus === 'appraisal_completed' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-teal-600'" 
@@ -1358,20 +1654,26 @@ const removeAttachment = (qIndex, fileIndex) => {
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
-                                    <span v-if="goal.display_status === 'draft'" class="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-600 text-[10px] font-black uppercase tracking-widest border border-amber-100 shadow-sm">
+                                    <span v-if="goal.display_status === 'draft'" class="px-3 py-1.5 rounded-xl bg-slate-50 text-slate-600 text-[10px] font-black uppercase tracking-widest border border-slate-200 shadow-sm">
                                         <i class="pi pi-file-edit mr-1.5"></i> Draft
                                     </span>
+                                    <span v-else-if="goal.display_status === 'assigned'" class="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-widest border border-indigo-200 shadow-sm">
+                                        <i class="pi pi-bell mr-1.5 text-xs"></i> Assigned
+                                    </span>
+                                    <span v-else-if="goal.display_status === 'submitted'" class="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 text-[10px] font-black uppercase tracking-widest border border-amber-200 shadow-sm">
+                                        <i class="pi pi-clock mr-1.5 text-xs"></i> Submitted (Awaiting Review)
+                                    </span>
                                     <span v-else-if="goal.display_status === 'goal_created'" class="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 text-[10px] font-black uppercase tracking-widest border border-blue-200 shadow-sm">
-                                        <i class="pi pi-file-plus mr-1.5 text-xs"></i> Goal Created
+                                        <i class="pi pi-file-plus mr-1.5 text-xs"></i> In Progress
                                     </span>
                                     <span v-else-if="goal.display_status === 'appraisal_completed'" class="px-3 py-1.5 rounded-xl bg-teal-50 text-teal-700 text-[10px] font-black uppercase tracking-widest border border-teal-200 shadow-sm">
-                                        <i class="pi pi-check-circle mr-1.5 text-xs"></i> Appraisal Meeting Completed
+                                        <i class="pi pi-check-circle mr-1.5 text-xs"></i> Appraisal Done
                                     </span>
                                     <span v-else-if="goal.display_status === 'review_completed'" class="px-3 py-1.5 rounded-xl bg-green-50 text-green-700 text-[10px] font-black uppercase tracking-widest border border-green-200 shadow-sm">
                                         <i class="pi pi-verified mr-1.5 text-xs"></i> Review Completed
                                     </span>
                                     <span v-else class="px-3 py-1.5 rounded-xl bg-gray-50 text-gray-500 text-[10px] font-black uppercase tracking-widest border border-gray-100 shadow-sm">
-                                        <i class="pi pi-minus mr-1.5 text-xs"></i> Unknown
+                                        <i class="pi pi-minus mr-1.5 text-xs"></i> {{ goal.display_status }}
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 text-center font-black text-[11px]">
@@ -1382,15 +1684,21 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 </td>
                                 <td class="px-6 py-4 text-right whitespace-nowrap">
                                     <div class="flex items-center justify-end gap-2">
-                                        <!-- Edit Button (for drafts) -->
-                                        <button v-if="goal.status === 'draft'" @click="editGoal(goal)" 
-                                            class="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white rounded-lg border border-blue-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
-                                            <i class="pi pi-pencil text-[9px]"></i> Edit
+                                        <!-- Fill / Edit Button -->
+                                        <button v-if="goal.status === 'assigned' || goal.status === 'draft'" @click="editGoal(goal)" 
+                                            class="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
+                                            <i class="pi pi-pencil text-[9px]"></i> {{ goal.status === 'assigned' ? 'Fill Goal' : 'Edit' }}
+                                        </button>
+
+                                        <!-- Review Button (for managers) -->
+                                        <button v-if="goal.status === 'submitted' && isManager" @click="router.push({ path: '/pms/review' })" 
+                                            class="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white rounded-lg border border-amber-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
+                                            <i class="pi pi-verified text-[9px]"></i> Review
                                         </button>
                                         
                                         <!-- Appraise Button (for in-progress) -->
                                         <button v-if="goal.status === 'in_progress'" @click="router.push({ name: 'pms-appraisal', query: { goal_id: goal.id } })" 
-                                            class="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
+                                            class="flex items-center gap-2 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white rounded-lg border border-teal-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
                                             <i class="pi pi-star-fill text-[9px]"></i> Appraise
                                         </button>
                                         
@@ -1400,8 +1708,8 @@ const removeAttachment = (qIndex, fileIndex) => {
                                             <i class="pi pi-eye text-[9px]"></i> View
                                         </button>
 
-                                        <!-- Delete Button -->
-                                        <button @click="deleteGoal(goal.id)" 
+                                        <!-- Delete Button (Manager only) -->
+                                        <button v-if="isManager" @click="deleteGoal(goal.id)" 
                                             class="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-600 hover:text-white rounded-lg border border-red-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
                                             <i class="pi pi-trash text-[9px]"></i> Delete
                                         </button>
@@ -1426,38 +1734,67 @@ const removeAttachment = (qIndex, fileIndex) => {
                             </button>
                             <div>
                                 <h1 class="text-2xl font-black text-white tracking-normal uppercase flex items-center gap-3">
-                                    <span>{{ currentStep === 1 ? 'YEARLY SMART GOALS SETTING' : 'GOAL START DATE - KEY STEPS' }}</span>
-                                    <div v-if="currentStep === 2" class="flex items-center gap-2 px-3 py-1 bg-white/10 rounded-xl border border-white/20 backdrop-blur-sm">
+                                    <span>{{ currentStep === 1 ? 'YEARLY SMART GOALS SETTING' : currentStep === 2 ? 'QUARTERLY TARGET TRACKING & EVIDENCE' : 'ANNUAL PERFORMANCE APPRAISAL (SELF-EVALUATION)' }}</span>
+                                    <div v-if="currentStep >= 2" class="flex items-center gap-2 px-3 py-1 bg-white/10 rounded-xl border border-white/20 backdrop-blur-sm">
                                         <i class="pi pi-user text-indigo-200 text-xs"></i>
                                         <span class="text-sm font-bold tracking-normal normal-case text-indigo-100">{{ newGoal.candidate_name || 'Pending Candidate' }}</span>
                                     </div>
                                 </h1>
                                 <p class="text-indigo-200 text-[10px] font-black mt-1 tracking-normal uppercase opacity-80">
-                                    <template v-if="currentStep === 1">Step 1: GOAL DEFINITION</template>
-                                    <template v-else>MEASURE (Growth Over Last Year & Quarters) — Keep a log of your progress.</template>
+                                    <template v-if="currentStep === 1">Step 1 of 3: GOAL DEFINITION & STRATEGIC OBJECTIVES</template>
+                                    <template v-else-if="currentStep === 2">Step 2 of 3: MEASURE (Growth Over Last Year & Quarters) — Keep a log of your progress.</template>
+                                    <template v-else>Step 3 of 3: PERFORMANCE KEY COMPETENCIES & SIGN-OFF</template>
                                     <span class="ml-2 px-2 py-0.5 rounded bg-white/15 text-white text-[10px] font-bold border border-white/10">FY {{ currentYear }}</span>
                                 </p>
                             </div>
                         </div>
 
-                        <!-- Stepper Pills -->
+                        <!-- Stepper Pills (3 Steps) -->
                         <div class="flex items-center gap-1 bg-white/10 p-1 rounded-xl backdrop-blur-sm border border-white/10">
-                            <div class="flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-500" :class="currentStep === 1 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
+                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="currentStep = 1" :class="currentStep === 1 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
                                 <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" :class="currentStep >= 1 ? (currentStep === 1 ? 'bg-[#1A237E] text-white' : 'bg-green-500 text-white') : 'bg-white/20'">
-                                    <span v-if="currentStep > 1">âœ“</span><span v-else>1</span>
+                                    <span v-if="currentStep > 1">✓</span><span v-else>1</span>
                                 </div>
                                 <span class="text-xs font-bold uppercase tracking-wider hidden sm:inline">Definition</span>
                             </div>
-                            <div class="w-6 h-[2px] rounded-full" :class="currentStep >= 2 ? 'bg-white/50' : 'bg-white/10'"></div>
-                            <div class="flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-500" :class="currentStep === 2 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
+                            <div class="w-5 h-[2px] rounded-full" :class="currentStep >= 2 ? 'bg-white/50' : 'bg-white/10'"></div>
+                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="nextStep" :class="currentStep === 2 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
                                 <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" :class="currentStep >= 2 ? (currentStep === 2 ? 'bg-[#1A237E] text-white' : 'bg-green-500 text-white') : 'bg-white/20'">
-                                    2
+                                    <span v-if="currentStep > 2">✓</span><span v-else>2</span>
                                 </div>
                                 <span class="text-xs font-bold uppercase tracking-wider hidden sm:inline">Tracking</span>
+                            </div>
+                            <div class="w-5 h-[2px] rounded-full" :class="currentStep >= 3 ? 'bg-white/50' : 'bg-white/10'"></div>
+                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="currentStep === 2 ? nextStep() : null" :class="currentStep === 3 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
+                                <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" :class="currentStep === 3 ? 'bg-[#1A237E] text-white' : 'bg-white/20'">
+                                    3
+                                </div>
+                                <span class="text-xs font-bold uppercase tracking-wider hidden sm:inline">Appraisal</span>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Read-Only Banner when Submitted or Reviewed -->
+            <div v-if="isFormReadOnly" class="mb-5 p-4 rounded-2xl border flex items-center justify-between gap-4"
+                :class="newGoal.status === 'review_completed' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'">
+                <div class="flex items-center gap-3">
+                    <i :class="newGoal.status === 'review_completed' ? 'pi pi-check-circle text-emerald-600' : 'pi pi-lock text-amber-600'" class="text-xl"></i>
+                    <div>
+                        <h4 class="font-black text-sm uppercase tracking-wide">
+                            {{ newGoal.status === 'review_completed' ? 'Review Completed & Finalized' : 'Submission Locked Under Manager Review' }}
+                        </h4>
+                        <p class="text-xs font-semibold opacity-90">
+                            {{ newGoal.status === 'review_completed' 
+                                ? 'Your Line Manager has completed and approved this performance appraisal.' 
+                                : 'Your goals and self-appraisal have been signed off and submitted. Editing is locked while awaiting review.' }}
+                        </p>
+                    </div>
+                </div>
+                <span class="px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-white border shadow-xs">
+                    Status: {{ newGoal.status }}
+                </span>
             </div>
 
             <Transition :name="stepTransition" mode="out-in">
@@ -1474,12 +1811,28 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 </div>
                                 <div>
                                     <h3 class="font-bold text-sm text-[#1A237E]">Candidate Name</h3>
-                                    <p class="text-[9px] text-[#3949AB] font-black uppercase tracking-normal opacity-70">Job Title & Signature</p>
+                                    <p class="text-[9px] text-[#3949AB] font-black uppercase tracking-normal opacity-70">Job Title & Identification</p>
                                 </div>
                             </div>
                         </div>
                         <div class="p-5 space-y-3">
+                            <!-- Locked for Employee: Pre-filled with Candidate Name & ID (NO search bar) -->
+                            <div v-if="isEmployee" class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-base shadow-sm">
+                                    {{ (newGoal.candidate_name || loguser.name || 'E').charAt(0).toUpperCase() }}
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-base font-black text-slate-800 leading-tight uppercase">{{ newGoal.candidate_name || loguser.name }}</p>
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                        <span class="text-[10px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded uppercase">ID: {{ newGoal.employee_code || loguser.employee_code || 'N/A' }}</span>
+                                        <span class="text-[10px] font-bold text-slate-500"><i class="pi pi-lock text-[8px] mr-1"></i>Pre-filled & Locked</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Searchable AutoComplete for Manager -->
                             <AutoComplete
+                                v-else
                                 v-model="selectedCandidate"
                                 :suggestions="filteredMasterEmployees"
                                 @complete="searchCandidate"
@@ -1563,8 +1916,8 @@ const removeAttachment = (qIndex, fileIndex) => {
                             <div class="p-5 space-y-4">
                                 <div class="relative">
                                     <label class="block text-xs font-bold text-[#1A237E] uppercase tracking-wide mb-2">Goals Title</label>
-                                    <input v-model="newGoal.title" type="text" 
-                                        class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-3 px-4 text-sm font-semibold text-gray-800 focus:bg-white focus:border-[#1A237E] focus:ring-2 focus:ring-[#1A237E]/10 outline-none transition-all" 
+                                    <input v-model="newGoal.title" :disabled="isFormReadOnly" type="text" 
+                                        class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-3 px-4 text-sm font-semibold text-gray-800 focus:bg-white focus:border-[#1A237E] focus:ring-2 focus:ring-[#1A237E]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" 
                                         placeholder="E.g. Maximize operational efficiencies..." />
                                 </div>
                                 
@@ -1572,15 +1925,15 @@ const removeAttachment = (qIndex, fileIndex) => {
                                     <label class="block text-xs font-bold text-[#3949AB] uppercase tracking-wide">Goals Description</label>
                                     <div v-for="(desc, index) in newGoal.description" :key="index" class="flex gap-3 group/item">
                                         <div class="w-8 h-8 rounded-lg bg-[#E8EAF6] flex items-center justify-center text-[#1A237E] font-bold text-xs border border-[#C5CAE9] shrink-0 mt-1">{{ index + 1 }}</div>
-                                        <textarea v-model="newGoal.description[index]" rows="2" 
-                                            class="flex-1 bg-white border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-medium text-gray-700 focus:border-[#1A237E] focus:ring-2 focus:ring-[#1A237E]/10 outline-none resize-none transition-all" 
+                                        <textarea v-model="newGoal.description[index]" :disabled="isFormReadOnly" rows="2" 
+                                            class="flex-1 bg-white border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-medium text-gray-700 focus:border-[#1A237E] focus:ring-2 focus:ring-[#1A237E]/10 outline-none resize-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" 
                                             placeholder="Define a measurable performance indicator..."></textarea>
-                                        <button @click="removeDescription(index)" v-if="newGoal.description.length > 1" 
+                                        <button @click="removeDescription(index)" v-if="!isFormReadOnly && newGoal.description.length > 1" 
                                             class="w-8 h-8 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-all opacity-0 group-hover/item:opacity-100 shrink-0 mt-1" title="Remove">
                                             <i class="pi pi-times text-xs"></i>
                                         </button>
                                     </div>
-                                    <button @click="addDescription" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#1A237E] bg-[#E8EAF6] hover:bg-[#C5CAE9] rounded-lg transition-all active:scale-95 border border-[#C5CAE9]">
+                                    <button v-if="!isFormReadOnly" @click="addDescription" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#1A237E] bg-[#E8EAF6] hover:bg-[#C5CAE9] rounded-lg transition-all active:scale-95 border border-[#C5CAE9]">
                                         <i class="pi pi-plus text-[10px]"></i> Add Goals Description
                                     </button>
                                 </div>
@@ -1598,15 +1951,15 @@ const removeAttachment = (qIndex, fileIndex) => {
                                     <div class="w-8 h-8 rounded-lg bg-[#E0F2F1] text-[#00695C] flex items-center justify-center font-bold text-xs border border-[#B2DFDB] shrink-0 mt-1">
                                         <i class="pi pi-check text-[10px]"></i>
                                     </div>
-                                    <textarea v-model="newGoal.purposes[index]" rows="2" 
-                                        class="flex-1 bg-white border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-medium text-gray-700 focus:border-[#00695C] focus:ring-2 focus:ring-[#00695C]/10 outline-none resize-none transition-all" 
+                                    <textarea v-model="newGoal.purposes[index]" :disabled="isFormReadOnly" rows="2" 
+                                        class="flex-1 bg-white border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-medium text-gray-700 focus:border-[#00695C] focus:ring-2 focus:ring-[#00695C]/10 outline-none resize-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" 
                                         placeholder="Establish the business relevance..."></textarea>
-                                    <button @click="removePurpose(index)" v-if="newGoal.purposes.length > 1" 
+                                    <button @click="removePurpose(index)" v-if="!isFormReadOnly && newGoal.purposes.length > 1" 
                                         class="w-8 h-8 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-all opacity-0 group-hover/item:opacity-100 shrink-0 mt-1" title="Remove">
                                         <i class="pi pi-times text-xs"></i>
                                     </button>
                                 </div>
-                                <button @click="addPurpose" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#004D40] bg-[#E0F2F1] hover:bg-[#B2DFDB] rounded-lg transition-all active:scale-95 border border-[#B2DFDB]">
+                                <button v-if="!isFormReadOnly" @click="addPurpose" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#004D40] bg-[#E0F2F1] hover:bg-[#B2DFDB] rounded-lg transition-all active:scale-95 border border-[#B2DFDB]">
                                     <i class="pi pi-plus text-[10px]"></i> Add Purpose
                                 </button>
                             </div>
@@ -1623,15 +1976,15 @@ const removeAttachment = (qIndex, fileIndex) => {
                                     <div class="w-8 h-8 rounded-lg bg-[#FFF3E0] text-[#E65100] flex items-center justify-center font-bold text-xs border border-[#FFE0B2] shrink-0 mt-1">
                                         <i class="pi pi-exclamation-triangle text-[10px]"></i>
                                     </div>
-                                    <textarea v-model="newGoal.challenges[index]" rows="2" 
-                                        class="flex-1 bg-white border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-medium text-gray-700 focus:border-[#E65100] focus:ring-2 focus:ring-[#E65100]/10 outline-none resize-none transition-all" 
+                                    <textarea v-model="newGoal.challenges[index]" :disabled="isFormReadOnly" rows="2" 
+                                        class="flex-1 bg-white border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-medium text-gray-700 focus:border-[#E65100] focus:ring-2 focus:ring-[#E65100]/10 outline-none resize-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" 
                                         placeholder="Anticipate potential roadblocks..."></textarea>
-                                    <button @click="removeChallenge(index)" v-if="newGoal.challenges.length > 1" 
+                                    <button @click="removeChallenge(index)" v-if="!isFormReadOnly && newGoal.challenges.length > 1" 
                                         class="w-8 h-8 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-all opacity-0 group-hover/item:opacity-100 shrink-0 mt-1" title="Remove">
                                         <i class="pi pi-times text-xs"></i>
                                     </button>
                                 </div>
-                                <button @click="addChallenge" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#E65100] bg-[#FFF3E0] hover:bg-[#FFE0B2] rounded-lg transition-all active:scale-95 border border-[#FFE0B2]">
+                                <button v-if="!isFormReadOnly" @click="addChallenge" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#E65100] bg-[#FFF3E0] hover:bg-[#FFE0B2] rounded-lg transition-all active:scale-95 border border-[#FFE0B2]">
                                     <i class="pi pi-plus text-[10px]"></i> Add Challenge
                                 </button>
                             </div>
@@ -1648,7 +2001,7 @@ const removeAttachment = (qIndex, fileIndex) => {
                                     <!-- Category -->
                                     <div class="space-y-2">
                                         <label class="block text-xs font-bold text-[#37474F] uppercase tracking-wide">Category</label>
-                                        <select v-model="newGoal.category" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-semibold text-gray-700 focus:border-[#37474F] focus:ring-2 focus:ring-[#37474F]/10 outline-none transition-all">
+                                        <select v-model="newGoal.category" :disabled="isFormReadOnly" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-semibold text-gray-700 focus:border-[#37474F] focus:ring-2 focus:ring-[#37474F]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed">
                                             <option>General</option>
                                             <option>Technical</option>
                                             <option>Development</option>
@@ -1659,12 +2012,12 @@ const removeAttachment = (qIndex, fileIndex) => {
                                     <!-- Target Value -->
                                     <div class="space-y-2">
                                         <label class="block text-xs font-bold text-[#37474F] uppercase tracking-wide">Target Performance</label>
-                                        <input v-model="newGoal.target" type="number" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-semibold text-gray-700 focus:border-[#37474F] focus:ring-2 focus:ring-[#37474F]/10 outline-none transition-all" />
+                                        <input v-model="newGoal.target" :disabled="isFormReadOnly" type="number" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-semibold text-gray-700 focus:border-[#37474F] focus:ring-2 focus:ring-[#37474F]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" />
                                     </div>
                                     <!-- Completion Date -->
                                     <div class="space-y-2">
                                         <label class="block text-xs font-bold text-[#37474F] uppercase tracking-wide">Date To be Completed</label>
-                                        <input v-model="newGoal.completion_date" type="date" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-semibold text-gray-700 focus:border-[#37474F] focus:ring-2 focus:ring-[#37474F]/10 outline-none transition-all" />
+                                        <input v-model="newGoal.completion_date" :disabled="isFormReadOnly" type="date" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-semibold text-gray-700 focus:border-[#37474F] focus:ring-2 focus:ring-[#37474F]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" />
                                     </div>
                                 </div>
                             </div>
@@ -1678,7 +2031,7 @@ const removeAttachment = (qIndex, fileIndex) => {
                             <div class="bg-[#1A237E] px-4 py-3">
                                 <div class="flex items-center justify-between">
                                     <h4 class="font-bold text-sm text-white uppercase tracking-wide">MY GOAL IS...</h4>
-                                    <span class="text-[10px] font-bold text-indigo-200 uppercase tracking-wider">Check (âœ“)</span>
+                                    <span class="text-[10px] font-bold text-indigo-200 uppercase tracking-wider">Check (✓)</span>
                                 </div>
                             </div>
 
@@ -1698,8 +2051,8 @@ const removeAttachment = (qIndex, fileIndex) => {
                                             {{ criteria.short }}
                                         </div>
                                         <label class="relative cursor-pointer">
-                                            <input type="checkbox" v-model="newGoal.smart_criteria[criteria.key]" 
-                                                class="w-5 h-5 rounded-2xl border-2 border-gray-100 text-[#1A237E] focus:ring-[#1A237E] focus:ring-2 cursor-pointer accent-[#1A237E]" />
+                                            <input type="checkbox" v-model="newGoal.smart_criteria[criteria.key]" :disabled="isFormReadOnly" 
+                                                class="w-5 h-5 rounded-2xl border-2 border-gray-100 text-[#1A237E] focus:ring-[#1A237E] focus:ring-2 cursor-pointer accent-[#1A237E] disabled:cursor-not-allowed" />
                                         </label>
                                     </div>
                                 </div>
@@ -1764,14 +2117,15 @@ const removeAttachment = (qIndex, fileIndex) => {
                         </div>
                         <div class="p-4 space-y-3 flex-1 flex flex-col">
                             <!-- Date Fields (Editable but Auto-populated) -->
+                            <!-- Date Fields (Editable but Auto-populated) -->
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9px] font-bold text-[#1A237E] uppercase tracking-wider mb-1 block">Start Date</label>
-                                    <input type="date" v-model="quarter.start_date" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2 px-2 text-[11px] font-semibold text-gray-700 focus:border-[#1A237E] focus:ring-1 focus:ring-[#1A237E]/10 outline-none transition-all" />
+                                    <input type="date" v-model="quarter.start_date" :disabled="isFormReadOnly" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2 px-2 text-[11px] font-semibold text-gray-700 focus:border-[#1A237E] focus:ring-1 focus:ring-[#1A237E]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" />
                                 </div>
                                 <div>
                                     <label class="text-[9px] font-bold text-[#E65100] uppercase tracking-wider mb-1 block">End Date</label>
-                                    <input type="date" v-model="quarter.end_date" class="w-full bg-[#FFF3E0] border border-[#FFE0B2] rounded-lg py-2 px-2 text-[11px] font-semibold text-gray-700 focus:border-[#E65100] focus:ring-1 focus:ring-[#E65100]/10 outline-none transition-all" />
+                                    <input type="date" v-model="quarter.end_date" :disabled="isFormReadOnly" class="w-full bg-[#FFF3E0] border border-[#FFE0B2] rounded-lg py-2 px-2 text-[11px] font-semibold text-gray-700 focus:border-[#E65100] focus:ring-1 focus:ring-[#E65100]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" />
                                 </div>
                             </div>
                             
@@ -1779,15 +2133,15 @@ const removeAttachment = (qIndex, fileIndex) => {
                             <div class="relative flex-1 flex flex-col">
                                 <div class="flex items-center justify-between mb-2">
                                     <label class="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Target Measure</label>
-                                    <button @click="addExecutionTarget(index)" class="flex items-center gap-1 px-2 py-1 bg-[#E8EAF6] hover:bg-[#1A237E] hover:text-white rounded-lg transition-colors text-[#1A237E]">
+                                    <button v-if="!isFormReadOnly" @click="addExecutionTarget(index)" class="flex items-center gap-1 px-2 py-1 bg-[#E8EAF6] hover:bg-[#1A237E] hover:text-white rounded-lg transition-colors text-[#1A237E]">
                                         <i class="pi pi-plus text-[8px]"></i>
                                         <span class="text-[8px] font-bold uppercase tracking-wider">Add</span>
                                     </button>
                                 </div>
                                 <div class="space-y-2 mb-3">
                                     <div v-for="(measure, mIndex) in quarter.target_measures" :key="'m'+mIndex" class="flex items-start gap-2 group/measure">
-                                        <textarea v-model="quarter.target_measures[mIndex]" rows="2" class="flex-1 bg-[#F8FAFC] border border-gray-200 rounded-lg py-2 px-3 text-sm font-medium text-gray-700 focus:border-[#1A237E] focus:ring-1 focus:ring-[#1A237E]/10 outline-none resize-none transition-all" placeholder="Target measure..."></textarea>
-                                        <button @click="removeExecutionTarget(index, mIndex)" v-if="quarter.target_measures.length > 1" class="w-7 h-7 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-all opacity-0 group-hover/measure:opacity-100 shrink-0 mt-1"><i class="pi pi-times text-[10px]"></i></button>
+                                        <textarea v-model="quarter.target_measures[mIndex]" :disabled="isFormReadOnly" rows="2" class="flex-1 bg-[#F8FAFC] border border-gray-200 rounded-lg py-2 px-3 text-sm font-medium text-gray-700 focus:border-[#1A237E] focus:ring-1 focus:ring-[#1A237E]/10 outline-none resize-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" placeholder="Target measure..."></textarea>
+                                        <button @click="removeExecutionTarget(index, mIndex)" v-if="!isFormReadOnly && quarter.target_measures.length > 1" class="w-7 h-7 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-all opacity-0 group-hover/measure:opacity-100 shrink-0 mt-1"><i class="pi pi-times text-[10px]"></i></button>
                                     </div>
                                 </div>
                             </div>
@@ -1809,7 +2163,7 @@ const removeAttachment = (qIndex, fileIndex) => {
                                                 <p class="truncate max-w-[80px] text-[10px] font-bold text-gray-700">{{ file.file_name || file.name }}</p>
                                             </div>
                                         </div>
-                                        <button @click="removeAttachment(index, fIndex)" class="w-5 h-5 rounded-full flex items-center justify-center text-gray-300 hover:text-white hover:bg-red-500 transition-all">
+                                        <button v-if="!isFormReadOnly" @click="removeAttachment(index, fIndex)" class="w-5 h-5 rounded-full flex items-center justify-center text-gray-300 hover:text-white hover:bg-red-500 transition-all">
                                             <i class="pi pi-times text-[7px]"></i>
                                         </button>
                                     </div>
@@ -1831,76 +2185,166 @@ const removeAttachment = (qIndex, fileIndex) => {
                                     </div>
                                 </div>
  
-                                <input type="file" multiple @change="handleFileUpload($event, index)" class="hidden" :id="'file-upload-'+index">
-                                <label :for="'file-upload-'+index" class="w-full flex items-center justify-center gap-2 py-2 bg-[#E8EAF6] hover:bg-[#1A237E] hover:text-white rounded-lg cursor-pointer transition-all text-black text-xs font-bold uppercase tracking-wider">
-                                    <i class="pi pi-plus text-[10px]"></i>
-                                    Add Evidence
-                                </label>
+                                <template v-if="!isFormReadOnly">
+                                    <input type="file" multiple @change="handleFileUpload($event, index)" class="hidden" :id="'file-upload-'+index">
+                                    <label :for="'file-upload-'+index" class="w-full flex items-center justify-center gap-2 py-2 bg-[#E8EAF6] hover:bg-[#1A237E] hover:text-white rounded-lg cursor-pointer transition-all text-black text-xs font-bold uppercase tracking-wider">
+                                        <i class="pi pi-plus text-[10px]"></i>
+                                        Add Evidence
+                                    </label>
+                                </template>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- NEW: HOD & Director Review Section -->
-                <div class="mt-8 space-y-6">
-                    <!-- HOD Section -->
-                    <div class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-                        <div class="bg-[#F1F5F9] px-6 py-4 border-b border-gray-200">
-                            <h4 class="font-black text-sm text-[#1A237E] uppercase tracking-wider">HOD / Functional Head Review</h4>
+            </div>
+
+            <!-- STEP 3: Performance Key Competencies (Self-Rating ONLY) -->
+            <div v-else-if="currentStep === 3" :key="3" class="space-y-6">
+                <!-- Competencies Table Card -->
+                <div class="bg-white rounded-3xl border border-gray-200 shadow-md overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-100 bg-slate-50/80 flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-black text-slate-800 text-base flex items-center gap-2">
+                                <i class="pi pi-chart-bar text-[#1A237E]"></i> Performance Key Competencies &amp; Self-Rating
+                            </h3>
+                            <p class="text-gray-400 text-[10px] uppercase tracking-normal font-bold">
+                                Annual performance evaluation (5 Key Areas &bull; Self-Evaluation Mode)
+                            </p>
                         </div>
-                        <div class="p-0 divide-y divide-gray-100">
-                            <!-- Comments Row -->
-                            <div class="grid grid-cols-1 md:grid-cols-4 items-stretch">
-                                <div class="bg-[#F8FAFC] p-4 flex items-center border-r border-gray-100">
-                                    <label class="text-[10px] font-black text-[#64748B] uppercase tracking-widest leading-tight">HOD/Functional Head's<br>comments:</label>
-                                </div>
-                                <div class="md:col-span-3 p-4">
-                                    <textarea v-model="newGoal.appraisal_data.hod_comments" rows="3" class="w-full bg-transparent border-none focus:ring-0 text-sm font-semibold text-gray-700 placeholder:text-gray-300 resize-none" placeholder="Provide HOD feedback here..."></textarea>
-                                </div>
+                        <div class="flex items-center gap-3">
+                            <div class="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white shadow-xs flex items-center gap-2">
+                                <span class="text-[10px] font-black uppercase text-slate-400">Total Weight:</span>
+                                <span class="text-xs font-black text-emerald-700">100%</span>
                             </div>
-                            <!-- Signature Row -->
-                            <div class="grid grid-cols-1 md:grid-cols-4 items-stretch">
-                                <div class="bg-[#F8FAFC] p-4 flex items-center border-r border-gray-100">
-                                    <label class="text-[10px] font-black text-[#64748B] uppercase tracking-widest leading-tight">HOD/Functional Head's<br>Name, Designation & Signature:</label>
-                                </div>
-                                <div class="md:col-span-2 p-4 border-r border-gray-100">
-                                    <input v-model="newGoal.appraisal_data.hod_signature_name" type="text" class="w-full bg-transparent border-none focus:ring-0 text-sm font-bold text-gray-800" placeholder="Enter Full Name & Designation" />
-                                </div>
-                                <div class="p-4 flex items-center gap-4">
-                                    <label class="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Date:</label>
-                                    <input v-model="newGoal.appraisal_data.hod_signature_date" type="date" class="bg-transparent border-none focus:ring-0 text-sm font-bold text-gray-700" />
-                                </div>
+                            <div class="px-3.5 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 shadow-xs flex items-center gap-2">
+                                <span class="text-[10px] font-black uppercase text-indigo-700">Self Score:</span>
+                                <span class="text-base font-black text-indigo-700">{{ selfAppraisalOverallRating }}</span>
+                                <span class="text-[10px] font-bold text-indigo-300">/ 5.00</span>
+                                <span class="text-xs font-black text-indigo-800 bg-white border border-indigo-200 px-2 py-0.5 rounded-md">
+                                    {{ selfAppraisalOverallPercentage }}%
+                                </span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Director Section -->
-                    <div class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden tracking-normal">
-                        <div class="bg-[#F1F5F9] px-6 py-4 border-b border-gray-200">
-                            <h4 class="font-black text-sm text-[#1A237E] uppercase tracking-wider">Director Review</h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50/90 border-b border-gray-100">
+                                    <th class="px-4 py-3 text-left text-[9px] font-black text-gray-400 uppercase tracking-normal w-12">#</th>
+                                    <th class="px-4 py-3 text-left text-[9px] font-black text-gray-400 uppercase tracking-normal">Competency &amp; Specific Criteria</th>
+                                    <th class="px-4 py-3 text-center text-[9px] font-black text-gray-400 uppercase tracking-normal w-24">Weight (%)</th>
+                                    <th class="px-4 py-3 text-center text-[9px] font-black text-indigo-600 uppercase tracking-normal w-32 bg-indigo-50/50">Self Rating</th>
+                                    <th class="px-4 py-3 text-center text-[9px] font-black text-slate-400 uppercase tracking-normal w-32 bg-slate-50/60">Manager Rating</th>
+                                    <th class="px-4 py-3 text-center text-[9px] font-black text-gray-400 uppercase tracking-normal w-24">W. Score</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-for="(comp, index) in newGoal.appraisal_data.competencies" :key="comp.id || index" class="hover:bg-indigo-50/10 transition-colors">
+                                    <td class="px-4 py-3.5 font-black text-gray-300 text-xs align-top pt-4">0{{ index + 1 }}</td>
+                                    <td class="px-4 py-3">
+                                        <div class="font-black text-slate-800 text-sm mb-1 tracking-tight">{{ comp.title }}</div>
+                                        <div v-if="comp.descriptions && comp.descriptions.length" class="space-y-0.5">
+                                            <p v-for="(desc, dIdx) in comp.descriptions" :key="dIdx" class="text-[11px] text-gray-500 leading-snug font-medium">{{ desc }}</p>
+                                        </div>
+                                        <p v-else-if="comp.descriptionText" class="text-[11px] text-gray-500 leading-snug font-medium whitespace-pre-line">{{ comp.descriptionText }}</p>
+                                    </td>
+                                    <td class="px-4 py-3 text-center align-middle">
+                                        <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-black text-gray-700 bg-slate-100 border border-slate-200">
+                                            {{ comp.weight || 20 }}%
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 bg-indigo-50/30 align-middle">
+                                        <!-- SELF RATING: Enabled for employee -->
+                                        <select v-model.number="comp.selfRating" :disabled="isFormReadOnly" class="prof-input !py-1.5 !px-2 w-full !text-center font-black text-xs !rounded-lg border-indigo-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600/20">
+                                            <option :value="0">— Select —</option>
+                                            <option :value="1">1 - Unsatisfactory</option>
+                                            <option :value="2">2 - Partly Meeting</option>
+                                            <option :value="3">3 - Meeting Expectations</option>
+                                            <option :value="4">4 - Exceeding Expectations</option>
+                                            <option :value="5">5 - Outstanding</option>
+                                        </select>
+                                    </td>
+                                    <td class="px-4 py-3 bg-slate-50/60 align-middle text-center">
+                                        <!-- MANAGER RATING: Locked showing '--' (as requested) -->
+                                        <div class="flex items-center justify-center">
+                                            <div class="py-1.5 px-4 bg-slate-100/90 rounded-lg border border-slate-200 text-slate-400 font-black text-xs tracking-widest cursor-not-allowed select-none" title="Manager Rating is provided by your Line Manager during review">
+                                                <span v-if="comp.managerRating && comp.managerRating > 0">{{ comp.managerRating }}</span>
+                                                <span v-else>--</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-center font-black text-indigo-700 text-sm align-middle">
+                                        {{ ((parseFloat(comp.selfRating || 0) * parseFloat(comp.weight || 20)) / 100).toFixed(2) }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="bg-gray-50/90 border-t border-gray-100">
+                                <tr>
+                                    <td colspan="2" class="px-6 py-4 font-black text-gray-600 tracking-normal text-xs uppercase">
+                                        Self-Assessment Evaluation Summary
+                                    </td>
+                                    <td class="px-4 py-4 text-center font-black text-xs text-emerald-700">100%</td>
+                                    <td colspan="2" class="px-4 py-4 text-center font-black text-gray-400 uppercase tracking-wider text-[9px]">
+                                        TOTAL WEIGHTED SELF SCORE
+                                    </td>
+                                    <td class="px-4 py-4 text-center">
+                                        <div class="flex items-center justify-center gap-1.5">
+                                            <span class="font-black text-indigo-700 text-xl">{{ selfAppraisalOverallRating }}</span>
+                                            <span class="text-xs font-bold text-indigo-300">/ 5.00</span>
+                                            <span class="text-[11px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                                                {{ selfAppraisalOverallPercentage }}%
+                                            </span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Self Feedback & Comments Row -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div class="p-5 bg-white rounded-3xl border border-gray-200 shadow-sm space-y-2">
+                        <label class="text-[10px] font-black text-[#1A237E] uppercase tracking-wider block">What Impressed Most / Key Achievements</label>
+                        <textarea v-model="newGoal.appraisal_data.impressedMost" :disabled="isFormReadOnly" rows="3"
+                            class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl p-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-[#1A237E] outline-none resize-none transition-all"
+                            placeholder="Detail projects, initiatives or milestones achieved successfully..."></textarea>
+                    </div>
+                    <div class="p-5 bg-white rounded-3xl border border-gray-200 shadow-sm space-y-2">
+                        <label class="text-[10px] font-black text-[#1A237E] uppercase tracking-wider block">What Impressed Least / Challenges Overcome</label>
+                        <textarea v-model="newGoal.appraisal_data.impressedLeast" :disabled="isFormReadOnly" rows="3"
+                            class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl p-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-[#1A237E] outline-none resize-none transition-all"
+                            placeholder="Detail obstacles encountered and lessons learned..."></textarea>
+                    </div>
+                </div>
+
+                <!-- General Comments & Sign-off Box -->
+                <div class="p-6 bg-white rounded-3xl border border-gray-200 shadow-sm space-y-4">
+                    <div>
+                        <label class="text-[10px] font-black text-[#1A237E] uppercase tracking-wider block mb-1">Employee Self-Comments &amp; Development Goals</label>
+                        <textarea v-model="newGoal.appraisal_data.comments" :disabled="isFormReadOnly" rows="3"
+                            class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl p-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-[#1A237E] outline-none resize-none transition-all"
+                            placeholder="Any personal comments, skill areas for growth, or requests for training..."></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-gray-100">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Candidate Sign-Off</label>
+                            <input v-model="newGoal.appraisal_data.candidate_signature_name" :disabled="isFormReadOnly" type="text"
+                                class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-bold text-gray-800 focus:bg-white focus:border-[#1A237E] outline-none"
+                                placeholder="Enter Full Name" />
                         </div>
-                        <div class="p-0 divide-y divide-gray-100">
-                            <!-- Remarks Row -->
-                            <div class="grid grid-cols-1 md:grid-cols-4 items-stretch">
-                                <div class="bg-[#F8FAFC] p-4 flex items-center border-r border-gray-100">
-                                    <label class="text-[10px] font-black text-[#64748B] uppercase tracking-widest leading-tight">Director's Remarks:</label>
-                                </div>
-                                <div class="md:col-span-3 p-4">
-                                    <textarea v-model="newGoal.appraisal_data.director_remarks" rows="3" class="w-full bg-transparent border-none focus:ring-0 text-sm font-semibold text-gray-700 placeholder:text-gray-300 resize-none" placeholder="Provide director remarks here..."></textarea>
-                                </div>
-                            </div>
-                            <!-- Signature Row -->
-                            <div class="grid grid-cols-1 md:grid-cols-4 items-stretch">
-                                <div class="bg-[#F8FAFC] p-4 flex items-center border-r border-gray-100">
-                                    <label class="text-[10px] font-black text-[#64748B] uppercase tracking-widest leading-tight">Director's Signature:</label>
-                                </div>
-                                <div class="md:col-span-2 p-4 border-r border-gray-100">
-                                    <input v-model="newGoal.appraisal_data.director_signature_name" type="text" class="w-full bg-transparent border-none focus:ring-0 text-sm font-bold text-gray-800" placeholder="Enter Full Name & Designation" />
-                                </div>
-                                <div class="p-4 flex items-center gap-4">
-                                    <label class="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Date:</label>
-                                    <input v-model="newGoal.appraisal_data.director_signature_date" type="date" class="bg-transparent border-none focus:ring-0 text-sm font-bold text-gray-700" />
-                                </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Date</label>
+                            <input v-model="newGoal.appraisal_data.signature_date" :disabled="isFormReadOnly" type="date"
+                                class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-bold text-gray-700 focus:bg-white focus:border-[#1A237E] outline-none" />
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Assigned Line Manager</label>
+                            <div class="py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-700">
+                                {{ newGoal.manager_name || 'Line Manager' }}
                             </div>
                         </div>
                     </div>
@@ -1909,41 +2353,227 @@ const removeAttachment = (qIndex, fileIndex) => {
             </Transition>
 
             <!-- Navigation Footer -->
-            <div class="mt-8 flex justify-between items-center bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-indigo-900/5">
-                <div class="flex items-center gap-4">
+            <div class="mt-8 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-indigo-900/5">
+                <div class="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
                     <button v-if="currentStep > 1" @click="prevStep" 
-                        class="prof-button !bg-white !text-gray-600 !border !border-gray-200 !rounded-3xl !py-4 px-10 hover:shadow-md transition-all">
+                        class="prof-button !bg-white !text-gray-600 !border !border-gray-200 !rounded-3xl !py-3.5 px-8 hover:shadow-md transition-all">
                         <i class="pi pi-arrow-left mr-2 font-bold text-xs"></i> 
                         Previous Step
                     </button>
                     <button v-else @click="cancelCreate" 
-                        class="prof-button !bg-white !text-gray-400 !border !border-gray-100 !rounded-3xl !py-4 px-10 hover:text-red-500 hover:shadow-sm transition-all text-xs font-black uppercase tracking-widest leading-none">
-                        Cancel
+                        class="prof-button !bg-white !text-gray-400 !border !border-gray-100 !rounded-3xl !py-3.5 px-8 hover:text-red-500 hover:shadow-sm transition-all text-xs font-black uppercase tracking-widest leading-none">
+                        Back to List
                     </button>
 
-                    <button @click="addGoal('draft')" :disabled="savingDraft"
-                        class="prof-button !bg-white !text-indigo-600 !border !border-indigo-200/50 !rounded-3xl !py-4 px-10 shadow-sm hover:shadow-md transition-all">
+                    <button v-if="!isFormReadOnly" @click="addGoal('draft')" :disabled="savingDraft"
+                        class="prof-button !bg-white !text-indigo-600 !border !border-indigo-200/50 !rounded-3xl !py-3.5 px-8 shadow-sm hover:shadow-md transition-all">
                         <i class="pi pi-save mr-2 font-bold text-xs"></i> 
-                        {{ savingDraft ? 'Saving...' : 'Save Progress' }}
+                        {{ savingDraft ? 'Saving...' : 'Save Draft' }}
                     </button>
                 </div>
 
-                <div class="flex items-center gap-4">
+                <div class="flex items-center gap-4 w-full sm:w-auto justify-end">
                     <button v-if="currentStep < totalSteps" @click="nextStep" 
-                        class="prof-button !bg-indigo-600 !text-white !rounded-3xl !py-4 px-10 shadow-xl shadow-indigo-600/30 hover:scale-[1.02] active:scale-95">
+                        class="prof-button !bg-indigo-600 !text-white !rounded-3xl !py-3.5 px-8 shadow-xl shadow-indigo-600/30 hover:scale-[1.02] active:scale-95">
                         Next Stage
                         <i class="pi pi-arrow-right ml-3 text-xs font-bold"></i>
                     </button>
                     
-                    <button v-else @click="addGoal('in_progress')" :disabled="saving"
-                        class="prof-button !bg-teal-600 !text-white !rounded-3xl !py-4 px-10 shadow-xl shadow-teal-600/30 hover:scale-[1.02] active:scale-95">
+                    <!-- Employee Final Submission Button in Step 3 -->
+                    <template v-else-if="isEmployee">
+                        <button v-if="!isFormReadOnly" @click="submitGoalForReview" :disabled="saving"
+                            class="prof-button !bg-emerald-600 hover:!bg-emerald-700 !text-white !rounded-3xl !py-3.5 px-8 shadow-xl shadow-emerald-600/30 hover:scale-[1.02] active:scale-95">
+                            <i v-if="saving" class="pi pi-spin pi-spinner mr-3"></i>
+                            <i v-else class="pi pi-send mr-3 font-bold text-xs"></i>
+                            {{ saving ? 'Submitting...' : 'Sign Off & Submit to Line Manager' }}
+                        </button>
+                        <div v-else class="px-6 py-3 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase tracking-wider border border-slate-200">
+                            <i class="pi pi-lock mr-2"></i> Submission Locked
+                        </div>
+                    </template>
+
+                    <!-- Manager Submission Button -->
+                    <button v-else-if="!isFormReadOnly" @click="addGoal('in_progress')" :disabled="saving"
+                        class="prof-button !bg-teal-600 !text-white !rounded-3xl !py-3.5 px-8 shadow-xl shadow-teal-600/30 hover:scale-[1.02] active:scale-95">
                         <i v-if="saving" class="pi pi-spin pi-spinner mr-3"></i>
                         <i v-else class="pi pi-check-circle mr-3 font-bold text-xs"></i>
-                        {{ saving ? 'Submitting...' : 'Submit for Appraisal' }}
+                        {{ saving ? 'Submitting...' : 'Save & Publish Goal' }}
                     </button>
                 </div>
             </div>
         </template>
+
+        <!-- ASSIGN GOAL & APPRAISAL MODAL (FOR MANAGERS) -->
+        <Dialog v-model:visible="showAssignModal" :modal="true" :showHeader="false"
+            class="!rounded-3xl !overflow-hidden !border-none !shadow-2xl"
+            :style="{ width: '92vw', maxWidth: '750px' }"
+            :contentStyle="{ padding: '0', borderRadius: '1.5rem', overflow: 'hidden' }">
+            <div class="bg-white rounded-3xl overflow-hidden">
+                <!-- Modal Header -->
+                <div class="bg-[#1A237E] p-6 text-white flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white">
+                            <i class="pi pi-user-plus text-base"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-black tracking-tight">Assign Goals &amp; Appraisal Template</h3>
+                            <p class="text-xs text-indigo-200 font-medium">Provision portal access and set competency evaluation weights.</p>
+                        </div>
+                    </div>
+                    <button @click="showAssignModal = false" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all cursor-pointer">
+                        <i class="pi pi-times text-xs"></i>
+                    </button>
+                </div>
+
+                <!-- Modal Body -->
+                <div class="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                    <!-- Assignment Target Toggle -->
+                    <div>
+                        <label class="text-xs font-black text-slate-700 uppercase tracking-wide block mb-2">Assignment Scope</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <label class="flex items-center gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition-all"
+                                :class="assignForm.assign_type === 'single' ? 'border-[#1A237E] bg-indigo-50/50 shadow-xs' : 'border-slate-200 hover:border-slate-300'">
+                                <input type="radio" v-model="assignForm.assign_type" value="single" class="accent-[#1A237E] w-4 h-4" />
+                                <div>
+                                    <p class="text-xs font-black text-slate-800 uppercase">Single Employee</p>
+                                    <p class="text-[10px] text-slate-500 font-medium">Select a specific team member</p>
+                                </div>
+                            </label>
+
+                            <label class="flex items-center gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition-all"
+                                :class="assignForm.assign_type === 'all_team' ? 'border-[#1A237E] bg-indigo-50/50 shadow-xs' : 'border-slate-200 hover:border-slate-300'">
+                                <input type="radio" v-model="assignForm.assign_type" value="all_team" class="accent-[#1A237E] w-4 h-4" />
+                                <div>
+                                    <p class="text-xs font-black text-slate-800 uppercase">All Team Members</p>
+                                    <p class="text-[10px] text-slate-500 font-medium">Bulk assign to entire team</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Single Employee Selector -->
+                    <div v-if="assignForm.assign_type === 'single'" class="space-y-2">
+                        <label class="text-xs font-black text-slate-700 uppercase tracking-wide block">Select Employee</label>
+                        <AutoComplete
+                            v-model="assignForm.selected_candidate"
+                            :suggestions="filteredMasterEmployees"
+                            @complete="searchCandidate"
+                            optionLabel="full_string"
+                            placeholder="Type employee name or ID..."
+                            inputClass="!w-full !bg-[#F8FAFC] !border !border-gray-200 !rounded-xl !py-2.5 !px-3.5 !text-sm !font-semibold transition-all focus:!bg-white focus:!border-[#1A237E]"
+                            class="w-full"
+                        >
+                            <template #item="slotProps">
+                                <div class="flex items-center gap-3 py-1 px-1">
+                                    <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs">
+                                        {{ slotProps.item.name.charAt(0).toUpperCase() }}
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="font-bold text-slate-800 text-xs truncate">{{ slotProps.item.name }}</div>
+                                        <div class="text-[10px] font-medium text-slate-400">ID: {{ slotProps.item.employee_code }} &bull; {{ slotProps.item.department }}</div>
+                                    </div>
+                                </div>
+                            </template>
+                        </AutoComplete>
+
+                        <div v-if="assignForm.selected_candidate" class="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 flex items-center justify-between text-xs">
+                            <div>
+                                <span class="font-black text-indigo-900">{{ assignForm.selected_candidate.name }}</span>
+                                <span class="text-indigo-600 font-semibold ml-2">({{ assignForm.selected_candidate.employee_code }})</span>
+                            </div>
+                            <span class="text-[10px] font-black uppercase text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
+                                {{ assignForm.selected_candidate.department }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- All Team Notice -->
+                    <div v-else class="p-4 bg-blue-50/80 rounded-2xl border border-blue-200 flex items-start gap-3">
+                        <i class="pi pi-users text-blue-600 mt-0.5"></i>
+                        <div class="text-xs text-blue-800">
+                            <p class="font-bold">Team-wide Bulk Assignment:</p>
+                            <p class="text-[11px] text-blue-600 mt-0.5">
+                                A goal and appraisal dossier will be created for all active personnel reporting to you.
+                                User accounts will be automatically provisioned with: <strong>Username: Firstname EmployeeCode</strong>, <strong>Password: Password</strong>.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Goal Meta Row -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-600 uppercase tracking-wider block mb-1">Goal Title</label>
+                            <input v-model="assignForm.title" type="text"
+                                class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-[#1A237E] outline-none" />
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-600 uppercase tracking-wider block mb-1">Fiscal Year &amp; Target</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <select v-model="assignForm.year" class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl py-2 px-2 text-xs font-bold text-slate-800 focus:bg-white outline-none">
+                                    <option v-for="y in years" :key="y" :value="y">FY {{ y }}</option>
+                                </select>
+                                <input v-model="assignForm.target" type="number" placeholder="Target %"
+                                    class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl py-2 px-2 text-xs font-bold text-slate-800 focus:bg-white outline-none" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Competency Weights Customization -->
+                    <div class="space-y-3 pt-2 border-t border-slate-100">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="text-xs font-black text-slate-800 uppercase tracking-wide">Key Competency Weights</label>
+                                <p class="text-[10px] text-slate-400 font-medium">Customize percentage weights (Total must equal 100%)</p>
+                            </div>
+                            <div class="px-2.5 py-1 rounded-xl text-xs font-black border"
+                                :class="assignTotalWeight === 100 ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse'">
+                                Total: {{ assignTotalWeight }}%
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div v-for="(name, idx) in competencyNames" :key="idx"
+                                class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                                <div class="flex items-center gap-2 flex-1 pr-3">
+                                    <span class="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">{{ idx + 1 }}</span>
+                                    <span class="text-xs font-bold text-slate-700 truncate">{{ name }}</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <select v-model.number="assignForm.weights[idx]"
+                                        class="bg-white border border-slate-200 rounded-lg py-1 px-2 text-xs font-black text-slate-800 outline-none">
+                                        <option v-for="w in [5, 10, 15, 20, 25, 30, 35, 40, 50, 60]" :key="w" :value="w">{{ w }}%</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Credential Instructions Note -->
+                    <div class="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-[11px] text-amber-800 flex items-center gap-2">
+                        <i class="pi pi-key text-amber-600"></i>
+                        <span>
+                            <strong>Employee Credentials:</strong> Assigned employees can log into the portal using 
+                            <code>[FirstName] [EmployeeCode]</code> (e.g. <code>David H123</code>) with default password <code>Password</code>.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                    <button @click="showAssignModal = false"
+                        class="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-500 hover:bg-slate-100 transition-all uppercase tracking-wider cursor-pointer">
+                        Cancel
+                    </button>
+                    <button @click="submitAssignGoal" :disabled="assigning || assignTotalWeight !== 100"
+                        class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2 cursor-pointer">
+                        <i v-if="assigning" class="pi pi-spin pi-spinner"></i>
+                        <i v-else class="pi pi-check"></i>
+                        <span>{{ assigning ? 'Assigning...' : 'Assign & Provision Access' }}</span>
+                    </button>
+                </div>
+            </div>
+        </Dialog>
+
         <Dialog v-model:visible="showDetailModal" :modal="true" :showHeader="false" 
             class="!p-0 overflow-hidden shadow-2xl border-none" 
             :style="{ width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh', margin: '0' }"

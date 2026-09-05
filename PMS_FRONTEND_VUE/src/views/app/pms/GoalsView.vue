@@ -1,30 +1,98 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
-import axios from 'axios';
+import { ref, onMounted, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import axios from '@/helpers/pms_axios';
 import { useUsersStore } from '@/stores/user';
 import { showAlert, showConfirm } from '@/helpers/essential';
+import AutoComplete from 'primevue/autocomplete';
+import { finddept, findbranch } from '@/data/masterdata';
+import melcomLogo from '@/assets/img/melcom_logo.png';
+import PrintableHardCopyDossier from '@/components/pms/PrintableHardCopyDossier.vue';
 
 const userstore = useUsersStore();
 const { loguser } = userstore;
+const router = useRouter();
+
+const isDark = ref(document.body.classList.contains('dark-mode'));
+const _darkObserver = new MutationObserver(() => { isDark.value = document.body.classList.contains('dark-mode'); });
+_darkObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
 const goals = ref([]);
 const loading = ref(true);
 const saving = ref(false);
+const savingDraft = ref(false);
+const draftId = ref(null); // Track if editing an existing draft
+const lastDraftSave = ref(null); // Timestamp of last auto-save
 const showDetailModal = ref(false);
 const selectedGoal = ref(null);
 const currentYear = ref(new Date().getFullYear());
 const years = range(currentYear.value, currentYear.value - 5);
+watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
 
-// Multi-step form state
+// Role definitions
+const isManager = computed(() => {
+    return !!(loguser?.admin || loguser?.is_manager || loguser?.position_id === 1 || loguser?.designation === 'Manager');
+});
+const isEmployee = computed(() => !isManager.value);
+
+// Multi-step form state (3 Steps: 1. Definition, 2. Tracking, 3. Appraisal)
 const viewMode = ref('list'); // 'list' or 'create'
 const currentStep = ref(1);
-const totalSteps = 2;
+const totalSteps = 3;
+const stepTransition = ref('slide-next');
+
+// Read-only condition for submitted or reviewed goals
+const isFormReadOnly = computed(() => {
+    return ['submitted', 'review_completed', 'completed'].includes(newGoal.value.status);
+});
+
+// Single employee assigned goal computed
+const employeeGoal = computed(() => {
+    if (!goals.value || !goals.value.length) return null;
+    return goals.value.find(g => g.year === currentYear.value) || goals.value[0] || null;
+});
+
+// Master Employee Data for Dropdown
+const masterEmployees = ref([]);
+const filteredMasterEmployees = ref([]);
+const selectedCandidate = ref(null); // For AutoComplete v-model
 
 function range(start, end) {
     const arr = [];
     for (let i = start; i >= end; i--) arr.push(i);
     return arr;
 }
+
+const getRecordId = (goal) => {
+    if (!goal) return 'N/A';
+    const dept = goal.department || goal.user?.department || 'NA';
+    const code = goal.employee_code || goal.user?.employee_code || goal.id || '---';
+    const abbr = dept.includes(' ') 
+        ? dept.split(' ').map(w => w[0]).join('').toUpperCase() 
+        : (dept.length >= 3 ? dept.substring(0, 3).toUpperCase() : dept.toUpperCase());
+    return `${abbr}-${code}`;
+};
+
+const getTimeProgress = (goal) => {
+    if (!goal.completion_date) return 0;
+    const start = new Date(goal.submitted_at || goal.created_at || `${currentYear.value}-01-01`);
+    const end = new Date(goal.completion_date);
+    const today = new Date();
+    if (today >= end) return 100;
+    if (today <= start) return 0;
+    return Math.min(100, Math.max(0, Math.round(((today - start) / (end - start)) * 100)));
+};
+
+const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString; // Fallback if invalid date
+    return date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+    });
+};
 
 const defaultSmartCriteria = () => ({
     specific: false,
@@ -34,36 +102,145 @@ const defaultSmartCriteria = () => ({
     time_bound: false
 });
 
-const defaultQuarterlyTracking = () => ([
-    { quarter: 'q1', date: '', target_measure: '', evidence: '', attachment: null },
-    { quarter: 'q2', date: '', target_measure: '', evidence: '', attachment: null },
-    { quarter: 'q3', date: '', target_measure: '', evidence: '', attachment: null },
-    { quarter: 'q4', date: '', target_measure: '', evidence: '', attachment: null }
-]);
+const defaultQuarterlyTracking = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const year = currentYear.value || new Date().getFullYear();
+    return [
+        { quarter: 'q1', start_date: today, end_date: `${year}-03-31`, target_measures: [''], evidence: '', attachments: [] },
+        { quarter: 'q2', start_date: `${year}-04-01`, end_date: `${year}-06-30`, target_measures: [''], evidence: '', attachments: [] },
+        { quarter: 'q3', start_date: `${year}-07-01`, end_date: `${year}-09-30`, target_measures: [''], evidence: '', attachments: [] },
+        { quarter: 'q4', start_date: `${year}-10-01`, end_date: `${year}-12-31`, target_measures: [''], evidence: '', attachments: [] }
+    ];
+};
+
+const defaultAppraisalData = () => ({
+    competencies: [
+        { 
+            id: 1, 
+            title: 'Performance & Teamwork', 
+            descriptions: [
+                'a) Overall performance - based on feedback from Line or Operations Managers', 
+                'b) Teamwork, People issues - how it has been managed, number of queries tracked as compared to last year and compared to your peers.'
+            ], 
+            weight: 20, 
+            selfRating: 0, 
+            managerRating: 0 
+        },
+        { 
+            id: 2, 
+            title: 'Customer Service / Relationship Building', 
+            descriptions: [
+                'a) Number of super saver cards sold vs number of invoices made without the use of super saver card on the invoices', 
+                "b) Google review 4.6 / Improvement query in the weekly Shop Google vs overall Melcom Google score."
+            ], 
+            weight: 20, 
+            selfRating: 0, 
+            managerRating: 0 
+        },
+        { 
+            id: 3, 
+            title: 'Execution / Sales Results Driven', 
+            descriptions: [
+                'a) Business Driven Metric (Set by Department with Management input)', 
+                'b) Loss to company % (Factors and calculations must be provided), where applicable and relevant'
+            ], 
+            weight: 20, 
+            selfRating: 0, 
+            managerRating: 0 
+        },
+        { 
+            id: 4, 
+            title: 'Compliance & Quality Standards', 
+            descriptions: [
+                'a) Adherence to company policies, SOPs, safety, and regulatory compliance', 
+                'b) % implementation of Wooqer checklist and shop/department standards'
+            ], 
+            weight: 20, 
+            selfRating: 0, 
+            managerRating: 0 
+        },
+        { 
+            id: 5, 
+            title: 'Continuous Improvement in workflows/processes', 
+            descriptions: [
+                'a) Culture of adaptability and innovation among staff, such as inventory management, employee training', 
+                'b) Adaptability / Flexibility and operational problem solving'
+            ], 
+            weight: 20, 
+            selfRating: 0, 
+            managerRating: 0 
+        }
+    ],
+    comments: '',
+    impressedMost: '',
+    impressedLeast: '',
+    performanceRating: 0,
+    performanceComments: '', // Kept for legacy compatibility if needed, but primary is rating_comments
+    rating_comments: { 1: '', 2: '', 3: '', 4: '', 5: '' },
+    potentialRating: '',
+    candidate_signature_name: '',
+    manager_signature_name: '',
+    signature_date: new Date().toISOString().split('T')[0],
+    hod_comments: '',
+    hod_signature_name: '',
+    hod_signature_date: '',
+    director_remarks: '',
+    director_signature_name: '',
+    director_signature_date: ''
+});
+
+// Performance Rating Scale (for Step 3)
+const performanceRatings = [
+    { value: 5, label: '5-Out Standing / Exceptional', potential: 'High Potential', potentialComment: 'Ready for the next position' },
+    { value: 4, label: '4-Exceeding Expectations', potential: 'High Potential', potentialComment: 'Ready in 2 years' },
+    { value: 3, label: '3-Meeting Expectations', potential: 'Good Potential', potentialComment: '' },
+    { value: 2, label: '2-Partly Meeting Expectations', potential: 'Low Potential', potentialComment: 'Need to keep under observation' },
+    { value: 1, label: '1-Below Expectations/ Unsatisfactory', potential: 'Below Potential', potentialComment: 'PIP' }
+];
 
 const newGoal = ref({
     title: '',
-    description: '',
-    purposes: '',
-    challenges: '',
+    description: [''],
+    purposes: [''],
+    challenges: [''],
     category: 'General',
     target: 100,
     due_date: '',
     completion_date: '',
     year: currentYear.value,
     user_id: loguser.id,
-    candidate_name: '',
-    manager_name: loguser.username,
+    candidate_name: '', // Display name
+    employee_code: '',
+    location: '',
+    department: '',
+    job_title: '',
+    manager_name: loguser.name,
     smart_criteria: defaultSmartCriteria(),
-    quarterly_tracking: defaultQuarterlyTracking()
+    quarterly_tracking: defaultQuarterlyTracking(),
+    appraisal_data: defaultAppraisalData()
 });
 
+// Auto-populate quarter dates if they are empty
+watch(() => newGoal.value.completion_date, (newDate) => {
+    if (newGoal.value.quarterly_tracking) {
+        const today = new Date().toISOString().split('T')[0];
+        newGoal.value.quarterly_tracking.forEach(q => {
+            if (!q.start_date) {
+                q.start_date = today;
+            }
+            if (!q.end_date && newDate) {
+                q.end_date = newDate;
+            }
+        });
+    }
+}, { immediate: true });
+
 const smartLabels = [
-    { key: 'specific', label: 'Specific', short: 'S', color: 'bg-purple-100 text-purple-700 border-purple-300' },
-    { key: 'measurable', label: 'Measurable', short: 'M', color: 'bg-blue-100 text-blue-700 border-blue-300' },
-    { key: 'attainable', label: 'Attainable', short: 'A', color: 'bg-green-100 text-green-700 border-green-300' },
-    { key: 'relevant', label: 'Relevant', short: 'R', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
-    { key: 'time_bound', label: 'Time-bound', short: 'T', color: 'bg-red-100 text-red-700 border-red-300' }
+    { key: 'specific', label: 'Specific', short: 'S', color: 'bg-[#2E7D32] text-white border-[#2E7D32]', badgeColor: 'bg-[#2E7D32]' },
+    { key: 'measurable', label: 'Measurable', short: 'M', color: 'bg-[#1565C0] text-white border-[#1565C0]', badgeColor: 'bg-[#1565C0]' },
+    { key: 'attainable', label: 'Attainable', short: 'A', color: 'bg-[#7B1FA2] text-white border-[#7B1FA2]', badgeColor: 'bg-[#7B1FA2]' },
+    { key: 'relevant', label: 'Relevant', short: 'R', color: 'bg-[#C62828] text-white border-[#C62828]', badgeColor: 'bg-[#C62828]' },
+    { key: 'time_bound', label: 'Time-bound', short: 'T', color: 'bg-[#1A237E] text-white border-[#1A237E]', badgeColor: 'bg-[#1A237E]' }
 ];
 
 const quarterColors = {
@@ -73,8 +250,11 @@ const quarterColors = {
     q4: { header: 'bg-amber-600 text-white', cell: 'bg-amber-50' }
 };
 
+
+
 const fetchGoals = async () => {
     loading.value = true;
+    userstore.setIsLoading(true);
     try {
         const response = await axios.get('pms/goals', {
             params: { year: currentYear.value }
@@ -86,52 +266,378 @@ const fetchGoals = async () => {
         console.error('Error fetching goals:', error);
     } finally {
         loading.value = false;
+        userstore.setIsLoading(false);
     }
 };
+
+const fetchMasterEmployees = async () => {
+    try {
+        const response = await axios.get('pms/get-employees');
+        if (response.data.status === 'success') {
+            masterEmployees.value = response.data.data;
+        }
+    } catch (error) {
+        console.error('Error fetching master employees:', error);
+    }
+};
+
+const searchCandidate = (event) => {
+    const query = event.query.toLowerCase();
+    filteredMasterEmployees.value = masterEmployees.value.filter(emp => 
+        (emp.employee_code && emp.employee_code.toLowerCase().includes(query)) || 
+        emp.name.toLowerCase().includes(query)
+    );
+};
+
+const onCandidateSelect = (event) => {
+    const candidate = event.value;
+    // Keep user_id as loguser.id (the creator/manager) to avoid foreign key violations 
+    // since candidates are employees from onboarding and may not have user accounts.
+    newGoal.value.user_id = loguser.id; 
+    
+    newGoal.value.candidate_name = candidate.name;
+    newGoal.value.employee_code = candidate.employee_code;
+    
+    // Resolve Department & Location from master data if flat strings are missing/N/A
+    newGoal.value.location = (candidate.location && candidate.location !== 'N/A') 
+        ? candidate.location 
+        : (findbranch(candidate.joining_branch_id) || 'N/A');
+        
+    newGoal.value.department = (candidate.department && candidate.department !== 'N/A') 
+        ? candidate.department 
+        : (finddept(candidate.joining_dept_id) || 'N/A');
+        
+    // Job Title fallback logic
+    newGoal.value.job_title = (candidate.position && candidate.position !== 'N/A')
+        ? candidate.position
+        : newGoal.value.department;
+        
+    // Manager stays as logged in user (the creator)
+    newGoal.value.manager_name = loguser.name;
+};
+
 
 const startCreateGoal = () => {
     resetForm();
     currentStep.value = 1;
     viewMode.value = 'create';
+    fetchMasterEmployees();
+    loadDraft(); // Restore any saved draft
+};
+
+const openEmployeeGoal = (goal) => {
+    if (!goal) return;
+    resumeDraft(goal);
+    draftId.value = goal.id;
+    newGoal.value.status = goal.status;
+    newGoal.value.candidate_name = goal.candidate_name || loguser.name;
+    newGoal.value.employee_code = goal.employee_code || loguser.employee_code;
+    newGoal.value.job_title = goal.job_title || loguser.job_title || loguser.department || '';
+    newGoal.value.department = goal.department || loguser.department || '';
+    newGoal.value.location = goal.location || loguser.location || '';
+    newGoal.value.manager_name = goal.manager_name || 'Line Manager';
+    if (!newGoal.value.appraisal_data.candidate_signature_name) {
+        newGoal.value.appraisal_data.candidate_signature_name = newGoal.value.candidate_name;
+    }
+    currentStep.value = 1;
+    viewMode.value = 'create';
 };
 
 const cancelCreate = () => {
+    clearDraft();
     viewMode.value = 'list';
     currentStep.value = 1;
     resetForm();
 };
 
-const nextStep = () => {
+// Appraisal Step 3 Self-Rating Calculations
+const selfAppraisalOverallRating = computed(() => {
+    const comps = newGoal.value.appraisal_data?.competencies || [];
+    if (!comps.length) return '0.00';
+    const total = comps.reduce((sum, c) => {
+        const r = parseFloat(c.selfRating) || 0;
+        const w = parseFloat(c.weight) || 20;
+        return sum + ((r * w) / 100);
+    }, 0);
+    return total.toFixed(2);
+});
+
+const selfAppraisalOverallPercentage = computed(() => {
+    const score = parseFloat(selfAppraisalOverallRating.value) || 0;
+    const pct = (score / 5) * 100;
+    return pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1);
+});
+
+// Manager Assign Modal State
+const showAssignModal = ref(false);
+const assigning = ref(false);
+const assignForm = ref({
+    assign_type: 'single', // 'single' or 'all_team'
+    selected_candidate: null,
+    title: '',
+    year: currentYear.value,
+    target: 100,
+    category: 'Operational',
+    due_date: '',
+    weights: [20, 20, 20, 20, 20]
+});
+
+const competencyNames = [
+    'Performance & Teamwork',
+    'Customer Service / Relationship Building',
+    'Execution / Sales Results Driven',
+    'Compliance & Quality Standards',
+    'Continuous Improvement in workflows/processes'
+];
+
+const openAssignModal = () => {
+    assignForm.value = {
+        assign_type: 'single',
+        selected_candidate: null,
+        title: `Yearly SMART Goals FY ${currentYear.value}`,
+        year: currentYear.value,
+        target: 100,
+        category: 'Operational',
+        due_date: `${currentYear.value}-12-31`,
+        weights: [20, 20, 20, 20, 20]
+    };
+    fetchMasterEmployees();
+    showAssignModal.value = true;
+};
+
+const assignTotalWeight = computed(() => {
+    return assignForm.value.weights.reduce((sum, w) => sum + (parseFloat(w) || 0), 0);
+});
+
+const submitAssignGoal = async () => {
+    if (assignForm.value.assign_type === 'single' && !assignForm.value.selected_candidate) {
+        showAlert('Select Employee', 'Please select an employee to assign this goal to.', 'warning');
+        return;
+    }
+    if (assignTotalWeight.value !== 100) {
+        showAlert('Invalid Weights', `The total weight must equal exactly 100%. Current sum: ${assignTotalWeight.value}%.`, 'warning');
+        return;
+    }
+    
+    const confirm = await showConfirm(
+        'Assign Goal & Appraisal',
+        assignForm.value.assign_type === 'all_team'
+            ? `Assign goal & appraisal to ALL team members for FY ${assignForm.value.year}? Portal credentials will be provisioned automatically.`
+            : `Assign goal & appraisal to ${assignForm.value.selected_candidate.name}? Portal credentials will be provisioned automatically.`,
+        'question',
+        'Yes, Assign'
+    );
+    if (!confirm.isConfirmed) return;
+
+    assigning.value = true;
+    try {
+        const customTemplate = defaultAppraisalData();
+        customTemplate.competencies.forEach((comp, idx) => {
+            comp.weight = assignForm.value.weights[idx] || 20;
+        });
+
+        const payload = {
+            assign_type: assignForm.value.assign_type,
+            year: assignForm.value.year,
+            title: assignForm.value.title,
+            category: assignForm.value.category,
+            target: assignForm.value.target,
+            due_date: assignForm.value.due_date,
+            appraisal_data: customTemplate,
+            employees: assignForm.value.assign_type === 'single' ? [{
+                employee_code: assignForm.value.selected_candidate.employee_code,
+                name: assignForm.value.selected_candidate.name,
+                department: assignForm.value.selected_candidate.department || finddept(assignForm.value.selected_candidate.joining_dept_id),
+                location: assignForm.value.selected_candidate.location || findbranch(assignForm.value.selected_candidate.joining_branch_id),
+                job_title: assignForm.value.selected_candidate.position || assignForm.value.selected_candidate.department,
+                email: assignForm.value.selected_candidate.email
+            }] : []
+        };
+
+        const res = await axios.post('pms/goals/assign', payload);
+        if (res.data.status === 'success') {
+            showAssignModal.value = false;
+            await showAlert(
+                'Assignment Successful!',
+                res.data.message || 'Goals & appraisal templates assigned successfully. Employee credentials format: Username = Firstname EmployeeCode, Password = Password.',
+                'success'
+            );
+            fetchGoals();
+        }
+    } catch (err) {
+        console.error('Error assigning goals:', err);
+        const msg = err.response?.data?.message || 'Failed to assign goals.';
+        showAlert('Error', msg, 'error');
+    } finally {
+        assigning.value = false;
+    }
+};
+
+const submitGoalForReview = async () => {
+    if (!newGoal.value.title || !newGoal.value.title.trim()) {
+        showAlert('Title Required', 'Please provide a title for your goal in Step 1.', 'warning');
+        currentStep.value = 1;
+        return;
+    }
+
+    const comps = newGoal.value.appraisal_data?.competencies || [];
+    const unrated = comps.filter(c => !c.selfRating || c.selfRating === 0);
+    if (unrated.length > 0) {
+        showAlert('Self Rating Required', `Please complete your Self Rating (1-5) for all ${comps.length} competencies in Step 3 before submitting.`, 'warning');
+        return;
+    }
+
+    const confirm = await showConfirm(
+        'Submit to Line Manager',
+        'Are you sure you want to sign off and submit your Goals & Self-Appraisal to your Line Manager? Once submitted, your submission will be locked for review.',
+        'question',
+        'Yes, Sign Off & Submit'
+    );
+    if (!confirm.isConfirmed) return;
+
+    if (!newGoal.value.appraisal_data.candidate_signature_name) {
+        newGoal.value.appraisal_data.candidate_signature_name = newGoal.value.candidate_name || loguser.name;
+    }
+    if (!newGoal.value.appraisal_data.signature_date) {
+        newGoal.value.appraisal_data.signature_date = new Date().toISOString().split('T')[0];
+    }
+
+    await addGoal('submitted');
+};
+
+const nextStep = async () => {
+    if (currentStep.value === 1) {
+        const missing = [];
+        if (!newGoal.value.title || !newGoal.value.title.trim()) missing.push('Goal Title');
+        if (!newGoal.value.candidate_name) missing.push('Candidate selection');
+
+        if (missing.length > 0) {
+            showAlert('Required Fields', `Please provide the following: ${missing.join(', ')}`, 'warning');
+            return;
+        }
+    } else if (currentStep.value === 2) {
+        const emptyMeasures = newGoal.value.quarterly_tracking.some(q => 
+            !q.target_measures || q.target_measures.every(m => !m || !m.trim())
+        );
+
+        if (emptyMeasures) {
+            const result = await showConfirm(
+                'Incomplete Tracking',
+                'Some quarterly target measures are empty. Proceed to appraisal anyway?',
+                'warning',
+                'Yes, Continue'
+            );
+            if (!result.isConfirmed) return;
+        }
+    }
+
     if (currentStep.value < totalSteps) {
+        stepTransition.value = 'slide-next';
         currentStep.value++;
     }
 };
 
 const prevStep = () => {
     if (currentStep.value > 1) {
+        stepTransition.value = 'slide-prev';
         currentStep.value--;
     }
 };
 
-const addGoal = async () => {
+
+
+const addGoal = async (status = 'in_progress') => {
+    // Validation for completion
+    if (status === 'completed') {
+        const rating = newGoal.value.appraisal_data.performanceRating;
+        if (!rating) {
+            showAlert('Rating Required', 'Please select a performance rating (1-5) before completing the appraisal.', 'warning');
+            return;
+        }
+        
+        const comment = newGoal.value.appraisal_data.rating_comments[rating];
+        if (!comment || !comment.trim()) {
+            showAlert('Comments Required', `Please provide justification comments for the selected rating (${rating}).`, 'warning');
+            return;
+        }
+    }
+
+    // Final safety check before save
+    if (!newGoal.value.title || !newGoal.value.title.trim()) {
+        showAlert('Title Required', 'Please provide a title for the goal.', 'warning');
+        saving.value = false;
+        return;
+    }
+    if (!newGoal.value.candidate_name) {
+        showAlert('Candidate Required', 'Please select a candidate.', 'warning');
+        saving.value = false;
+        return;
+    }
+
     saving.value = true;
     try {
-    const payload = {
-            ...newGoal.value,
+        const payload = {
+            title: newGoal.value.title.trim(),
             description: JSON.stringify(newGoal.value.description.filter(d => d.trim() !== '')),
             purposes: JSON.stringify(newGoal.value.purposes.filter(p => p.trim() !== '')),
-            challenges: JSON.stringify(newGoal.value.challenges.filter(c => c.trim() !== ''))
+            challenges: JSON.stringify(newGoal.value.challenges.filter(c => c.trim() !== '')),
+            category: newGoal.value.category || 'General',
+            target: parseFloat(newGoal.value.target) || 0,
+            due_date: newGoal.value.due_date || null,
+            completion_date: newGoal.value.completion_date || null,
+            year: parseInt(newGoal.value.year) || new Date().getFullYear(),
+            user_id: parseInt(newGoal.value.user_id || loguser.id),
+            candidate_name: newGoal.value.candidate_name,
+            employee_code: newGoal.value.employee_code,
+            location: newGoal.value.location,
+            department: newGoal.value.department,
+            job_title: newGoal.value.job_title || '',
+            manager_name: newGoal.value.manager_name || loguser.name || '',
+            smart_criteria: newGoal.value.smart_criteria,
+            quarterly_tracking: newGoal.value.quarterly_tracking,
+            appraisal_data: newGoal.value.appraisal_data,
+            status: status
         };
-        const response = await axios.post('pms/goals', payload);
+        console.log('Final Payload Sync:', payload);
+
+        // If completing, ensure completion date is set if not already
+        if (status === 'completed' && !payload.completion_date) {
+            payload.completion_date = new Date().toISOString().split('T')[0];
+        }
+
+        let response;
+        if (draftId.value) {
+            // Update the existing draft record
+            response = await axios.patch(`pms/goals/${draftId.value}`, payload);
+        } else {
+            response = await axios.post('pms/goals', payload);
+        }
+
         if (response.data.status === 'success') {
-            goals.value.push(response.data.data);
+            if (draftId.value) {
+                // Replace the draft in the list with the updated goal
+                const idx = goals.value.findIndex(g => g.id === draftId.value);
+                if (idx !== -1) goals.value[idx] = response.data.data;
+                else goals.value.push(response.data.data);
+            } else {
+                goals.value.push(response.data.data);
+            }
+            clearDraft();
             viewMode.value = 'list';
             resetForm();
-            showAlert('Success', 'SMART Goal created successfully!', 'success');
+            
+            if (status === 'completed') {
+                showAlert('Success', 'Goal Appraisal Completed successfully!', 'success');
+            } else if (status === 'submitted') {
+                showAlert('Submitted for Review', 'Your SMART goals and self-appraisal have been successfully submitted to your Line Manager for review.', 'success');
+            } else {
+                showAlert('Success', 'Goal saved successfully!', 'success');
+            }
         }
     } catch (error) {
         console.error('Error adding goal:', error);
-        showAlert('Error', 'Failed to create goal.', 'error');
+        const serverMsg = error.response?.data?.message || error.response?.data?.error || '';
+        showAlert('Error', `Failed to save goal. ${serverMsg}`, 'error');
     } finally {
         saving.value = false;
     }
@@ -150,10 +656,16 @@ const resetForm = () => {
         year: currentYear.value,
         user_id: loguser.id,
         candidate_name: '',
+        employee_code: '',
+        location: '',
+        department: '',
         manager_name: loguser.name || '',
         smart_criteria: defaultSmartCriteria(),
-        quarterly_tracking: defaultQuarterlyTracking()
+        quarterly_tracking: defaultQuarterlyTracking(),
+        appraisal_data: defaultAppraisalData()
     };
+    selectedCandidate.value = null; // Reset Dropdown
+    draftId.value = null;
     currentStep.value = 1;
 };
 
@@ -189,6 +701,31 @@ const viewGoalDetail = (goal) => {
     showDetailModal.value = true;
 };
 
+const getManagerRating = (goal) => {
+    const data = typeof goal.appraisal_data === 'string' ? JSON.parse(goal.appraisal_data || '{}') : (goal.appraisal_data || {});
+    // First: compute from competency managerRatings (the actual review scores)
+    const comps = data.competencies || [];
+    const rated = comps.filter(c => parseFloat(c.managerRating) > 0);
+    if (rated.length > 0) {
+        const total = rated.reduce((sum, c) => sum + parseFloat(c.managerRating), 0);
+        return (total / rated.length).toFixed(1);
+    }
+    // Fallback: overall_rating from DB
+    if (goal.overall_rating) return parseFloat(goal.overall_rating).toFixed(1);
+    return null;
+};
+
+const getSelfRating = (goal) => {
+    const data = typeof goal.appraisal_data === 'string' ? JSON.parse(goal.appraisal_data || '{}') : (goal.appraisal_data || {});
+    const comps = data.competencies || [];
+    const rated = comps.filter(c => parseFloat(c.selfRating) > 0);
+    if (rated.length > 0) {
+        const total = rated.reduce((sum, c) => sum + parseFloat(c.selfRating), 0);
+        return (total / rated.length).toFixed(1);
+    }
+    return null;
+};
+
 const getSmartScore = (goal) => {
     if (!goal.smart_criteria) return 0;
     const criteria = goal.smart_criteria;
@@ -196,21 +733,518 @@ const getSmartScore = (goal) => {
 };
 
 const canProceedToStep2 = computed(() => {
-    return newGoal.value.title.trim() !== '';
+    const hasTitle = newGoal.value.title && String(newGoal.value.title).trim() !== '';
+    const hasUser = !!newGoal.value.user_id;
+    // console.log('Validation:', { title: newGoal.value.title, user_id: newGoal.value.user_id, hasTitle, hasUser });
+    return hasTitle && hasUser;
 });
+
+// â”€â”€â”€ Draft Save / Load / Clear â”€â”€â”€
+const DRAFT_KEY = `pms_goal_draft_${loguser.id}`;
+
+const saveDraft = async (toServer = false) => {
+    // Always save to localStorage
+    const draftData = JSON.parse(JSON.stringify(newGoal.value));
+    draftData._step = currentStep.value;
+    draftData._draftId = draftId.value;
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
+    lastDraftSave.value = new Date();
+
+    if (toServer) {
+        savingDraft.value = true;
+        try {
+            const payload = {
+                title: newGoal.value.title,
+                description: JSON.stringify(newGoal.value.description.filter(d => d.trim() !== '')),
+                purposes: JSON.stringify(newGoal.value.purposes.filter(p => p.trim() !== '')),
+                challenges: JSON.stringify(newGoal.value.challenges.filter(c => c.trim() !== '')),
+                category: newGoal.value.category || 'General',
+                target: parseFloat(newGoal.value.target) || 0,
+                due_date: newGoal.value.due_date || null,
+                completion_date: newGoal.value.completion_date || null,
+                year: parseInt(newGoal.value.year) || new Date().getFullYear(),
+                user_id: parseInt(loguser.id),
+                candidate_name: newGoal.value.candidate_name,
+                employee_code: newGoal.value.employee_code,
+                location: newGoal.value.location,
+                department: newGoal.value.department,
+                job_title: newGoal.value.job_title || '',
+                manager_name: loguser.name || '',
+                smart_criteria: newGoal.value.smart_criteria,
+                quarterly_tracking: newGoal.value.quarterly_tracking,
+                appraisal_data: newGoal.value.appraisal_data,
+                status: 'draft'
+            };
+            console.log('Final Draft Payload Sync:', payload);
+
+            let response;
+            if (draftId.value) {
+                response = await axios.patch(`pms/goals/${draftId.value}`, payload);
+            } else {
+                response = await axios.post('pms/goals', payload);
+            }
+
+            if (response.data.status === 'success') {
+                draftId.value = response.data.data.id;
+                // Also update localStorage with the server ID
+                draftData._draftId = draftId.value;
+                localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
+
+                // Update the goals list if the draft is new
+                const idx = goals.value.findIndex(g => g.id === draftId.value);
+                if (idx !== -1) goals.value[idx] = response.data.data;
+                else goals.value.push(response.data.data);
+
+                showAlert('Draft Saved', 'Your progress has been saved as a draft.', 'success');
+            }
+        } catch (error) {
+            console.error('Error saving draft:', error);
+            let errorMsg = 'Could not save draft to server, but local backup is saved.';
+            if (error.response && error.response.data && error.response.data.errors) {
+                errorMsg += ' ' + Object.values(error.response.data.errors).flat().join(' ');
+            } else if (error.response && error.response.data && error.response.data.message) {
+                errorMsg += ' Details: ' + error.response.data.message;
+            }
+            showAlert('Error', errorMsg, 'warning');
+        } finally {
+            savingDraft.value = false;
+        }
+    }
+};
+
+const triggerPrint = () => {
+    const source = document.getElementById('protocol-report');
+    if (!source) return;
+
+    const printContainer = document.createElement('div');
+    printContainer.id = 'print-clone';
+    printContainer.innerHTML = source.innerHTML;
+    document.body.appendChild(printContainer);
+
+    const printStyle = document.createElement('style');
+    printStyle.id = 'print-clone-style';
+    printStyle.textContent = `
+        @media print {
+            body > *:not(#print-clone):not(#print-clone-style) {
+                display: none !important;
+            }
+            #print-clone {
+                display: block !important;
+                position: static !important;
+                width: 100% !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            #print-clone .hardcopy-page {
+                margin: 0 !important;
+                padding: 8mm 10mm !important;
+                width: 100% !important;
+                min-height: auto !important;
+                max-height: none !important;
+                height: auto !important;
+                page-break-after: always !important;
+                break-after: page !important;
+                box-shadow: none !important;
+                border: none !important;
+                display: flex !important;
+                flex-direction: column !important;
+                overflow: visible !important;
+            }
+            #print-clone .hardcopy-page:last-child {
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+            }
+            #print-clone table {
+                page-break-inside: auto !important;
+            }
+            #print-clone tr {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            #print-clone thead {
+                display: table-header-group !important;
+            }
+            #print-clone .section-box, 
+            #print-clone .quarterly-section, 
+            #print-clone .feedback-split-box, 
+            #print-clone .scale-guide-wrapper, 
+            #print-clone .review-section-block, 
+            #print-clone .auth-signoff-section {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            @page {
+                size: A4 portrait;
+                margin: 6mm 6mm;
+            }
+        }
+        @media screen {
+            #print-clone { display: none !important; }
+        }
+    `;
+    document.head.appendChild(printStyle);
+
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            if (document.body.contains(printContainer)) document.body.removeChild(printContainer);
+            if (document.head.contains(printStyle)) document.head.removeChild(printStyle);
+        }, 500);
+    }, 300);
+};
+
+const getDossierId = (goal) => {
+    if (!goal) return 'PMS-000';
+    const deptPrefix = goal.department ? goal.department.substring(0, 3).toUpperCase() : 'PMS';
+    return `${deptPrefix}-${goal.employee_code || goal.id}`;
+};
+
+const downloadCSV = () => {
+    const headers = ['ID', 'Candidate', 'Code', 'Title', 'Status', 'Target', 'Actual', 'Department', 'Location', 'Year'];
+    const rows = filteredGoals.value.map(g => [
+        `"${g.id}"`,
+        `"${g.candidate_name}"`,
+        `"${g.employee_code}"`,
+        `"${g.title.replace(/"/g, '""')}"`,
+        `"${g.status}"`,
+        g.target,
+        g.actual || 0,
+        `"${g.department || ''}"`,
+        `"${g.location || ''}"`,
+        g.year
+    ]);
+    const csvContent = "\ufeff" + headers.join(",") + "\n" + rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `SMART_Goals_${currentYear.value}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+const downloadSingleCSV = (goal) => {
+    const recordId = getDossierId(goal);
+    const ad = typeof goal.appraisal_data === 'string' ? JSON.parse(goal.appraisal_data || '{}') : (goal.appraisal_data || {});
+    const comps = ad.competencies || [];
+
+    // Build comprehensive horizontal headers
+    const headers = [
+        'Record ID', 'Candidate Name', 'Employee Code', 'Department', 'Location', 'Year',
+        'Goal Title', 'Category', 'Target %', 'Status', 'Manager Name',
+        'Description/Objectives', 'Purposes', 'Challenges',
+        'SMART-Specific', 'SMART-Measurable', 'SMART-Attainable', 'SMART-Relevant', 'SMART-TimeBound'
+    ];
+
+    // Quarterly headers
+    [1, 2, 3, 4].forEach(q => {
+        headers.push(`Q${q} Start Date`, `Q${q} End Date`, `Q${q} Target Measures`, `Q${q} Evidence`);
+    });
+
+    // Competency headers
+    comps.forEach(c => {
+        headers.push(`${c.title} (Weight)`, `${c.title} (Self)`, `${c.title} (Mgr)`);
+    });
+
+    // Appraisal fields
+    headers.push(
+        'Overall Manager Rating', 'Performance Rating', 'Potential Rating',
+        'What Impressed Most', 'What Impressed Least', 'General Comments',
+        'HOD Comments', 'Director Remarks',
+        'Employee Signature', 'Manager Signature', 'Signature Date',
+        'HOD Signature', 'HOD Signature Date', 'Director Signature', 'Director Signature Date'
+    );
+
+    // Build data row
+    const smart = goal.smart_criteria || {};
+    const row = [
+        recordId, goal.candidate_name, goal.employee_code,
+        goal.department || 'N/A', goal.location || 'N/A', goal.year,
+        goal.title, goal.category || 'General', `${goal.target}%`, goal.status,
+        goal.manager_name || 'N/A',
+        parseList(goal.description).join('; '),
+        parseList(goal.purposes).join('; '),
+        parseList(goal.challenges).join('; '),
+        smart.specific ? 'Yes' : 'No', smart.measurable ? 'Yes' : 'No',
+        smart.attainable ? 'Yes' : 'No', smart.relevant ? 'Yes' : 'No',
+        smart.time_bound ? 'Yes' : 'No'
+    ];
+
+    // Quarterly data
+    [1, 2, 3, 4].forEach(idx => {
+        const q = goal.quarterly_tracking?.find(qt => qt.quarter === `q${idx}`) || goal.quarterly_tracking?.[idx-1] || {};
+        row.push(q.start_date || 'N/A', q.end_date || 'N/A',
+            parseList(q.target_measures).filter(m => m).join('; ') || 'N/A',
+            q.evidence || 'N/A');
+    });
+
+    // Competency data
+    comps.forEach(c => {
+        row.push(`${c.weight}%`, c.selfRating || 0, c.managerRating || 0);
+    });
+
+    // Appraisal data
+    row.push(
+        getManagerRating(goal) || 'N/A', ad.performanceRating || 'N/A', ad.potentialRating || 'N/A',
+        ad.impressedMost || '', ad.impressedLeast || '', ad.comments || '',
+        ad.hod_comments || '', ad.director_remarks || '',
+        ad.candidate_signature_name || '', ad.manager_signature_name || '', ad.signature_date || '',
+        ad.hod_signature_name || '', ad.hod_signature_date || '', ad.director_signature_name || '', ad.director_signature_date || ''
+    );
+
+    const csvContent = "\ufeff" + headers.join(",") + "\n" + row.map(v => `"${(v+'').replace(/"/g, '""')}"`).join(",");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.style.display = 'none';
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Goal_Report_${recordId}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+const downloadPDF = () => {
+    const element = document.getElementById('protocol-report');
+    if (!element) return;
+    
+    const runDownload = () => {
+        const opt = {
+          margin:       0,
+          filename:     `PMS_Appraisal_${selectedGoal.value.candidate_name || selectedGoal.value.employee_code || selectedGoal.value.id}_${selectedGoal.value.year || 'Record'}.pdf`,
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2, useCORS: true, logging: false },
+          jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak:    { mode: ['css', 'legacy'] }
+        };
+        window.html2pdf().from(element).set(opt).save();
+    };
+
+    if (window.html2pdf) {
+        runDownload();
+    } else {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+        script.onload = runDownload;
+        document.head.appendChild(script);
+    }
+};
+
+const loadDraft = () => {
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) {
+        try {
+            const draftData = JSON.parse(saved);
+            const step = draftData._step || 1;
+            const savedDraftId = draftData._draftId || null;
+            delete draftData._step;
+            delete draftData._draftId;
+
+            // Restore arrays if they came back as strings
+            if (typeof draftData.description === 'string') draftData.description = JSON.parse(draftData.description);
+            if (typeof draftData.purposes === 'string') draftData.purposes = JSON.parse(draftData.purposes);
+            if (typeof draftData.challenges === 'string') draftData.challenges = JSON.parse(draftData.challenges);
+
+            // Ensure defaults for missing fields
+            if (!draftData.smart_criteria) draftData.smart_criteria = defaultSmartCriteria();
+            if (!draftData.quarterly_tracking) draftData.quarterly_tracking = defaultQuarterlyTracking();
+            if (!draftData.appraisal_data) {
+                draftData.appraisal_data = defaultAppraisalData();
+            } else if (!draftData.appraisal_data.rating_comments) {
+                // Safeguard for old drafts that don't have per-rating comments
+                draftData.appraisal_data.rating_comments = { 1: '', 2: '', 3: '', 4: '', 5: '' };
+            }
+            if (!Array.isArray(draftData.description)) draftData.description = [''];
+            if (!Array.isArray(draftData.purposes)) draftData.purposes = [''];
+            if (!Array.isArray(draftData.challenges)) draftData.challenges = [''];
+
+            Object.assign(newGoal.value, draftData);
+            currentStep.value = step;
+            draftId.value = savedDraftId;
+
+            // Enforce calculated calendar boundaries for drafts
+            if (newGoal.value.quarterly_tracking) {
+                const year = currentYear.value || new Date().getFullYear();
+                const today = new Date().toISOString().split('T')[0];
+                newGoal.value.quarterly_tracking.forEach(q => {
+                    const quarterKey = q.quarter ? q.quarter.toLowerCase() : '';
+                    if (quarterKey === 'q1') { if (!q.start_date) q.start_date = today; q.end_date = `${year}-03-31`; }
+                    else if (quarterKey === 'q2') { q.start_date = `${year}-04-01`; q.end_date = `${year}-06-30`; }
+                    else if (quarterKey === 'q3') { q.start_date = `${year}-07-01`; q.end_date = `${year}-09-30`; }
+                    else if (quarterKey === 'q4') { q.start_date = `${year}-10-01`; q.end_date = `${year}-12-31`; }
+                });
+            }
+
+            // Restore the AutoComplete selection if candidate data exists
+            if (draftData.candidate_name && draftData.employee_code) {
+                selectedCandidate.value = {
+                    name: draftData.candidate_name,
+                    employee_code: draftData.employee_code,
+                    job_title: draftData.job_title,
+                    full_string: draftData.employee_code + ' - ' + draftData.candidate_name
+                };
+            }
+
+            showAlert('Draft Restored', 'Your previous unsaved progress has been restored.', 'info');
+        } catch (e) {
+            console.error('Failed to load draft:', e);
+            localStorage.removeItem(DRAFT_KEY);
+        }
+    }
+};
+
+const clearDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    draftId.value = null;
+    lastDraftSave.value = null;
+};
+
+const resumeDraft = (goal) => {
+    // Resume editing a server-saved draft from the goals list
+    fetchMasterEmployees();
+    const data = { ...goal };
+    draftId.value = goal.id;
+
+    // Parse JSON fields back to arrays
+    if (typeof data.description === 'string') {
+        try { data.description = JSON.parse(data.description); } catch { data.description = [data.description]; }
+    }
+    if (typeof data.purposes === 'string') {
+        try { data.purposes = JSON.parse(data.purposes); } catch { data.purposes = [data.purposes]; }
+    }
+    if (typeof data.challenges === 'string') {
+        try { data.challenges = JSON.parse(data.challenges); } catch { data.challenges = [data.challenges]; }
+    }
+    if (typeof data.smart_criteria === 'string') {
+        try { data.smart_criteria = JSON.parse(data.smart_criteria); } catch {}
+    }
+    if (typeof data.quarterly_tracking === 'string') {
+        try { data.quarterly_tracking = JSON.parse(data.quarterly_tracking); } catch {}
+    }
+    if (typeof data.appraisal_data === 'string') {
+        try { data.appraisal_data = JSON.parse(data.appraisal_data); } catch {}
+    }
+    if (!data.smart_criteria) data.smart_criteria = defaultSmartCriteria();
+    if (!data.quarterly_tracking) data.quarterly_tracking = defaultQuarterlyTracking();
+    if (!data.appraisal_data) {
+        data.appraisal_data = defaultAppraisalData();
+    } else if (!data.appraisal_data.rating_comments) {
+        data.appraisal_data.rating_comments = { 1: '', 2: '', 3: '', 4: '', 5: '' };
+    }
+    if (!Array.isArray(data.description) || !data.description.length) data.description = [''];
+    if (!Array.isArray(data.purposes) || !data.purposes.length) data.purposes = [''];
+    if (!Array.isArray(data.challenges) || !data.challenges.length) data.challenges = [''];
+
+    Object.assign(newGoal.value, data);
+    currentStep.value = 1;
+    viewMode.value = 'create';
+};
+
+const editGoal = (goal) => {
+    // Similar to resumeDraft but for persisted goals
+    resumeDraft(goal);
+    // Ensure we update the existing ID
+    draftId.value = goal.id;
+    
+    // Set AutoComplete selection properly so it shows up in the UI
+    if (goal.candidate_name && goal.employee_code) {
+        selectedCandidate.value = {
+            name: goal.candidate_name,
+            employee_code: goal.employee_code,
+            job_title: goal.job_title,
+            full_string: goal.employee_code + ' - ' + goal.candidate_name
+        };
+    }
+};
+
+// Missing Fields Computation for Preview
+const missingFields = computed(() => {
+    if (!selectedGoal.value) return [];
+    const missing = [];
+    const g = selectedGoal.value;
+
+    // Check SMART
+    const smart = g.smart_criteria || {};
+    if (!smart.specific) missing.push('Specific (S) criteria not met');
+    if (!smart.measurable) missing.push('Measurable (M) criteria not met');
+    if (!smart.attainable) missing.push('Attainable (A) criteria not met');
+    if (!smart.relevant) missing.push('Relevant (R) criteria not met');
+    if (!smart.time_bound) missing.push('Time-bound (T) criteria not met');
+
+    // Check Quarterly Tracking
+    const tracking = g.quarterly_tracking || [];
+    tracking.forEach(q => {
+        if (!q.target_measure) missing.push(`${q.quarter.toUpperCase()} Target Measure missing`);
+        // Evidence check: simplistic check if evidence field is empty
+        if (!q.evidence) missing.push(`${q.quarter.toUpperCase()} Evidence missing`);
+    });
+    
+    // Check Appraisal - only if we care about it in this view
+    if (g.appraisal_data && g.appraisal_data.performanceRating === null) {
+        // Only flag if appraisal started but incomplete? 
+        // For now, let's strictly check goal fields as requested ("not completed fields")
+    }
+
+    return missing;
+});
+
+// Auto-save to localStorage whenever the form changes
+watch(newGoal, () => {
+    if (viewMode.value === 'create') {
+        saveDraft(false); // localStorage only, no server call
+    }
+}, { deep: true });
 
 onMounted(() => {
     fetchGoals();
+    fetchMasterEmployees();
 });
 
-// Stats Computed
+// â”€â”€â”€ Filter State â”€â”€â”€
+const filterStatus = ref('all');
+const searchQuery = ref('');
+
+// Stats Computed - uses display_status from backend
 const stats = computed(() => {
     return {
         total: goals.value.length,
-        completed: goals.value.filter(g => g.actual >= g.target).length,
-        inProgress: goals.value.filter(g => g.actual < g.target && g.actual > 0).length,
-        pending: goals.value.filter(g => g.actual === 0 || g.actual === null).length
+        assigned: goals.value.filter(g => g.display_status === 'assigned').length,
+        submitted: goals.value.filter(g => g.display_status === 'submitted').length,
+        goalCreated: goals.value.filter(g => g.display_status === 'goal_created').length,
+        appraisalCompleted: goals.value.filter(g => g.display_status === 'appraisal_completed').length,
+        reviewCompleted: goals.value.filter(g => g.display_status === 'review_completed').length,
+        draft: goals.value.filter(g => g.display_status === 'draft').length
     };
+});
+
+// Filtered Goals Computed - uses display_status
+const filteredGoals = computed(() => {
+    return goals.value.filter(g => {
+        // Status Filter by display_status
+        if (filterStatus.value !== 'all') {
+            if (filterStatus.value === 'assigned' && g.display_status !== 'assigned') return false;
+            if (filterStatus.value === 'submitted' && g.display_status !== 'submitted') return false;
+            if (filterStatus.value === 'goal_created' && g.display_status !== 'goal_created') return false;
+            if (filterStatus.value === 'appraisal_completed' && g.display_status !== 'appraisal_completed') return false;
+            if (filterStatus.value === 'review_completed' && g.display_status !== 'review_completed') return false;
+            if (filterStatus.value === 'draft' && g.display_status !== 'draft') return false;
+        }
+
+        // Search Filter
+        if (searchQuery.value) {
+            const query = searchQuery.value.toLowerCase();
+            const title = (g.title || '').toLowerCase();
+            const candidateName = (g.candidate_name || '').toLowerCase();
+            const empCode = (g.employee_code || '').toLowerCase();
+            const dept = (g.department || '').toLowerCase();
+            return title.includes(query) || candidateName.includes(query) || empCode.includes(query) || dept.includes(query);
+        }
+
+        return true;
+    });
 });
 // Dynamic Field Helpers
 const addPurpose = () => {
@@ -225,6 +1259,14 @@ const addChallenge = () => {
 const removeChallenge = (index) => {
     newGoal.value.challenges.splice(index, 1);
 };
+
+const addExecutionTarget = (qIndex) => {
+    newGoal.value.quarterly_tracking[qIndex].target_measures.push('');
+};
+const removeExecutionTarget = (qIndex, mIndex) => {
+    newGoal.value.quarterly_tracking[qIndex].target_measures.splice(mIndex, 1);
+};
+
 const addDescription = () => {
     newGoal.value.description.push('');
 };
@@ -242,38 +1284,65 @@ const parseList = (jsonString) => {
         return [jsonString]; // Fallback if regular string
     }
 };
+
 // File Upload Helper
 const uploading = ref({}); // Track uploading state per quarter
+const uploadProgress = ref({}); // Track numeric progress (0-100) per quarter
 
 const handleFileUpload = async (event, qIndex) => {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (!files.length) return;
 
     const formData = new FormData();
-    formData.append('file', file);
+    for (let i = 0; i < files.length; i++) {
+        formData.append('files[]', files[i]);
+    }
 
     uploading.value[qIndex] = true;
+    uploadProgress.value[qIndex] = 0;
 
     try {
         const response = await axios.post('pms/goals/upload-attachment', formData, {
             headers: {
                 'Content-Type': 'multipart/form-data'
+            },
+            onUploadProgress: (progressEvent) => {
+                if (progressEvent.total) {
+                    const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    uploadProgress.value[qIndex] = percent;
+                }
             }
         });
 
         if (response.data.status === 'success') {
-            newGoal.value.quarterly_tracking[qIndex].attachment = {
-                url: response.data.file_url,
-                name: response.data.file_name
-            };
-            showAlert('Success', 'File uploaded successfully', 'success');
+            if (!newGoal.value.quarterly_tracking[qIndex].attachments) {
+                newGoal.value.quarterly_tracking[qIndex].attachments = [];
+            }
+            // Append new files to existing list
+            newGoal.value.quarterly_tracking[qIndex].attachments.push(...response.data.files);
+            showAlert('Success', 'Files uploaded successfully', 'success');
         }
     } catch (error) {
         console.error('File upload failed:', error);
-        showAlert('Error', 'File upload failed. Please try again.', 'error');
+        let errorMsg = 'File upload failed. Please try again.';
+        if (error.response && error.response.data && error.response.data.errors) {
+            const errors = error.response.data.errors;
+            errorMsg = Object.values(errors).flat().join(' ');
+        } else if (error.response && error.response.data && error.response.data.message) {
+            errorMsg = error.response.data.message;
+        }
+        showAlert('Error', errorMsg, 'error');
     } finally {
         uploading.value[qIndex] = false;
+        // Reset input
+        if (event && event.target) {
+            event.target.value = '';
+        }
     }
+};
+
+const removeAttachment = (qIndex, fileIndex) => {
+    newGoal.value.quarterly_tracking[qIndex].attachments.splice(fileIndex, 1);
 };
 
 </script>
@@ -282,139 +1351,255 @@ const handleFileUpload = async (event, qIndex) => {
     <div class="h-full pb-6">
         <!-- LIST VIEW -->
         <template v-if="viewMode === 'list'">
-            <!-- Page Header with Gradient -->
-            <div class="mb-8 bg-white/50 backdrop-blur-sm border border-white/20 shadow-sm rounded-2xl p-6">
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-700 to-indigo-600 flex items-center gap-3 mb-2">
-                            <i class="pi pi-flag text-2xl text-purple-600"></i> Yearly SMART Goals Setting
-                        </h1>
-                        <p class="text-sm font-medium text-gray-500">Define, track, and achieve your strategic objectives using SMART criteria.</p>
+            <!-- Page Header -->
+            <div class="prof-card mb-6 bg-[#1A237E] !rounded-2xl">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-5 px-6">
+                    <div class="flex items-center gap-4">
+                        <div class="text-blue-200">
+                            <i class="pi pi-flag-fill text-xl"></i>
+                        </div>
+                        <div>
+                            <p class="text-white text-[9px] font-black uppercase tracking-normal mb-0.5">Performance Management System</p>
+                            <h1 class="text-lg font-black text-white tracking-tight">Define and track your strategic objectives using SMART criteria.</h1>
+                        </div>
                     </div>
                     <div class="flex items-center gap-3">
-                        <select v-model="currentYear" @change="fetchGoals" class="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-700 font-bold focus:outline-none focus:ring-2 focus:ring-purple-200 shadow-sm hover:border-purple-300 transition-all cursor-pointer">
-                            <option v-for="year in years" :key="year" :value="year">FY {{ year }}</option>
-                        </select>
-                        <button @click="startCreateGoal" class="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-purple-200 transform hover:-translate-y-0.5 transition-all flex items-center gap-2">
-                            <i class="pi pi-plus font-bold"></i>
-                            <span>New SMART Goal</span>
-                        </button>
+                        <template v-if="isManager">
+                            <button @click="openAssignModal" class="prof-button !bg-emerald-600 hover:!bg-emerald-700 px-5 py-2.5 flex items-center gap-2 group border-none shadow-lg text-sm text-white font-bold transition-all">
+                                <i class="pi pi-user-plus font-black text-xs"></i>
+                                <span class="font-black tracking-tight text-xs uppercase">Assign Goal & Appraisal</span>
+                            </button>
+                            <button @click="startCreateGoal" class="prof-button !bg-[#334155] hover:!bg-slate-700 px-5 py-2.5 flex items-center gap-2 group border-none shadow-lg text-sm text-white font-bold transition-all">
+                                <i class="pi pi-plus font-black text-xs"></i>
+                                <span class="font-black tracking-tight text-xs uppercase">NEW SMART GOAL</span>
+                            </button>
+                        </template>
+                        <template v-else>
+                            <div class="px-4 py-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 text-xs font-black text-white flex items-center gap-2">
+                                <i class="pi pi-id-card text-blue-200"></i>
+                                <span>{{ loguser.name }} ({{ loguser.employee_code || 'Employee' }})</span>
+                            </div>
+                        </template>
                     </div>
                 </div>
             </div>
 
-            <!-- Employee Info Header -->
-            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-8 overflow-hidden">
-                <div class="bg-gray-50/50 px-6 py-3 border-b border-gray-100">
-                    <h3 class="font-bold text-gray-500 text-xs uppercase tracking-wider flex items-center gap-2">
-                        <i class="pi pi-id-card"></i> Employee & Manager Information
-                    </h3>
+            <!-- EMPLOYEE PORTAL VIEW: Assigned Goal Card or Waiting State -->
+            <div v-if="isEmployee" class="mb-6">
+                <!-- Awaiting Assignment State -->
+                <div v-if="!employeeGoal" class="prof-card p-12 text-center bg-white rounded-3xl border border-slate-200 shadow-xl">
+                    <div class="w-20 h-20 mx-auto mb-5 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center text-3xl border-2 border-amber-200 shadow-inner">
+                        <i class="pi pi-clock"></i>
+                    </div>
+                    <h3 class="text-xl font-black text-slate-800 mb-2">Awaiting Goal & Appraisal Assignment</h3>
+                    <p class="text-sm text-slate-500 max-w-lg mx-auto font-medium mb-6">
+                        Your Line Manager has not yet assigned a SMART Goal & Performance Appraisal template for FY {{ currentYear }}. 
+                        Once assigned, your goal template will appear here automatically for you to define objectives, track quarterly milestones, and complete your self-appraisal.
+                    </p>
+                    <div class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold border border-slate-200">
+                        <i class="pi pi-info-circle text-xs"></i>
+                        <span>Please contact your Line Manager if you need this assigned urgently.</span>
+                    </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-0">
-                    <div class="p-6 border-b md:border-b-0 md:border-r border-gray-100 hover:bg-gray-50/50 transition-colors">
-                        <div class="flex items-center gap-4">
-                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center shadow-inner">
-                                <i class="pi pi-user text-2xl text-purple-600"></i>
+
+                <!-- Assigned Goal Hub Card -->
+                <div v-else class="prof-card p-6 bg-white rounded-3xl border border-indigo-100 shadow-xl overflow-hidden relative">
+                    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                        <div class="space-y-3 flex-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span v-if="employeeGoal.display_status === 'assigned'" class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                    <i class="pi pi-bell mr-1"></i> Assigned — Action Required: Fill & Submit
+                                </span>
+                                <span v-else-if="employeeGoal.display_status === 'submitted'" class="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                    <i class="pi pi-clock mr-1"></i> Submitted — Under Line Manager Review
+                                </span>
+                                <span v-else-if="employeeGoal.display_status === 'review_completed'" class="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                    <i class="pi pi-check-circle mr-1"></i> Review Completed (Finalized)
+                                </span>
+                                <span v-else class="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                    {{ employeeGoal.display_status }}
+                                </span>
+                                <span class="text-xs font-bold text-slate-400">FY {{ employeeGoal.year }}</span>
                             </div>
-                            <div>
-                                <p class="text-[10px] text-purple-600 uppercase font-black tracking-widest mb-0.5">Candidate</p>
-                                <p class="font-bold text-gray-800 text-lg leading-tight"></p>
-                                <p class="text-sm text-gray-500 font-medium">{{ loguser?.job_title || 'Job Title' }}</p>
+                            <h2 class="text-2xl font-black text-slate-800 tracking-tight">{{ employeeGoal.title }}</h2>
+                            <div class="flex flex-wrap gap-4 text-xs font-semibold text-slate-500">
+                                <span class="flex items-center gap-1.5"><i class="pi pi-user text-indigo-500"></i> Candidate: <strong>{{ employeeGoal.candidate_name }}</strong></span>
+                                <span class="flex items-center gap-1.5"><i class="pi pi-shield text-blue-500"></i> Line Manager: <strong>{{ employeeGoal.manager_name }}</strong></span>
+                                <span class="flex items-center gap-1.5"><i class="pi pi-building text-slate-400"></i> {{ employeeGoal.department || 'N/A' }} ({{ employeeGoal.location || 'N/A' }})</span>
                             </div>
                         </div>
-                    </div>
-                    <div class="p-6 hover:bg-gray-50/50 transition-colors">
-                        <div class="flex items-center gap-4">
-                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center shadow-inner">
-                                <i class="pi pi-users text-2xl text-emerald-600"></i>
-                            </div>
-                            <div>
-                                <p class="text-[10px] text-emerald-600 uppercase font-black tracking-widest mb-0.5">Line Manager</p>
-                                <p class="font-bold text-gray-800 text-lg leading-tight">{{ loguser?.name || 'Manager Name' }}</p>
-                                <p class="text-sm text-gray-500 font-medium">{{ loguser?.manager_title || 'Manager Title' }}</p>
-                            </div>
+                        <div class="flex items-center gap-3">
+                            <button @click="openEmployeeGoal(employeeGoal)" 
+                                class="prof-button !bg-indigo-600 hover:!bg-indigo-700 !text-white px-6 py-3 rounded-2xl shadow-lg shadow-indigo-600/30 flex items-center gap-2 font-black text-xs uppercase tracking-wider transition-all">
+                                <i :class="employeeGoal.display_status === 'assigned' ? 'pi pi-pencil' : 'pi pi-eye'"></i>
+                                <span>{{ employeeGoal.display_status === 'assigned' ? 'Fill Goals & Self-Appraisal' : 'View Submission & Status' }}</span>
+                            </button>
+                            <button @click="viewGoalDetail(employeeGoal)" 
+                                class="prof-button !bg-slate-100 hover:!bg-slate-200 !text-slate-700 px-5 py-3 rounded-2xl border border-slate-200 flex items-center gap-2 font-black text-xs uppercase tracking-wider transition-all">
+                                <i class="pi pi-file"></i>
+                                <span>View Dossier</span>
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- KPI Row -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <!-- Dashboard Stats & Table -->
+             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 <!-- Total Goals -->
-                <div class="relative overflow-hidden rounded-2xl p-6 shadow-xl shadow-purple-100 text-white transform hover:-translate-y-1 transition-transform duration-300 border border-purple-500/20"
-                     style="background: linear-gradient(135deg, #4c1d95 0%, #312e81 100%) !important;">
-                    <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-2xl"></div>
-                    <div class="flex items-center gap-3 mb-3 opacity-90">
-                        <i class="pi pi-flag text-xl"></i>
-                         <span class="text-xs font-bold uppercase tracking-wider">Total Goals</span>
+                <div class="prof-card p-4 !bg-[#5830E0] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'all'">
+                    <div class="absolute -top-10 -right-10 w-24 h-24 bg-white/10 rounded-full"></div>
+                    <div class="relative z-10">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i class="pi pi-flag-fill text-xs"></i>
+                            <span class="text-[9px] font-black uppercase tracking-normal text-indigo-100">Total Goals</span>
+                        </div>
+                        <div class="text-2xl font-black text-white mb-0.5">{{ stats.total }}</div>
+                        <div class="text-[9px] font-bold text-indigo-200 uppercase tracking-normal">Objectives</div>
                     </div>
-                    <div class="text-4xl font-extrabold mb-1">{{ stats.total }}</div>
-                    <div class="text-xs font-medium opacity-80">FY {{ currentYear }} Objectives</div>
                 </div>
 
-                <!-- Completed -->
-                <div class="relative overflow-hidden rounded-2xl p-6 shadow-xl shadow-emerald-100 text-white transform hover:-translate-y-1 transition-transform duration-300 border border-emerald-500/20"
-                     style="background: linear-gradient(135deg, #059669 0%, #064e3b 100%) !important;">
-                    <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-2xl"></div>
-                    <div class="flex items-center gap-3 mb-3 opacity-90">
-                        <i class="pi pi-check-circle text-xl"></i>
-                         <span class="text-xs font-bold uppercase tracking-wider">Completed</span>
+                <!-- Assigned -->
+                <div class="prof-card p-4 !bg-[#3949AB] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'assigned'">
+                    <div class="absolute -top-10 -right-10 w-24 h-24 bg-white/10 rounded-full"></div>
+                    <div class="relative z-10">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i class="pi pi-bell text-xs"></i>
+                            <span class="text-[9px] font-black uppercase tracking-normal text-indigo-200">Assigned</span>
+                        </div>
+                        <div class="text-2xl font-black text-white mb-0.5">{{ stats.assigned }}</div>
+                        <div class="text-[9px] font-bold text-indigo-200 uppercase tracking-normal">Awaiting Employee</div>
                     </div>
-                    <div class="text-4xl font-extrabold mb-1">{{ stats.completed }}</div>
-                    <div class="text-xs font-medium opacity-80">Achieved</div>
                 </div>
 
-                <!-- In Progress -->
-                <div class="relative overflow-hidden rounded-2xl p-6 shadow-xl shadow-blue-100 text-white transform hover:-translate-y-1 transition-transform duration-300 border border-blue-500/20"
-                     style="background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%) !important;">
-                    <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-2xl"></div>
-                    <div class="flex items-center gap-3 mb-3 opacity-90">
-                        <i class="pi pi-chart-line text-xl"></i>
-                         <span class="text-xs font-bold uppercase tracking-wider">In Progress</span>
+                <!-- Submitted -->
+                <div class="prof-card p-4 !bg-[#D97706] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'submitted'">
+                    <div class="absolute -top-10 -right-10 w-24 h-24 bg-white/10 rounded-full"></div>
+                    <div class="relative z-10">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i class="pi pi-clock text-xs"></i>
+                            <span class="text-[9px] font-black uppercase tracking-normal text-amber-200">Submitted</span>
+                        </div>
+                        <div class="text-2xl font-black text-white mb-0.5">{{ stats.submitted }}</div>
+                        <div class="text-[9px] font-bold text-amber-200 uppercase tracking-normal">Awaiting Review</div>
                     </div>
-                    <div class="text-4xl font-extrabold mb-1">{{ stats.inProgress }}</div>
-                    <div class="text-xs font-medium opacity-80">Working on</div>
                 </div>
 
-                <!-- Pending -->
-                <div class="relative overflow-hidden rounded-2xl p-6 shadow-xl shadow-gray-100 text-white transform hover:-translate-y-1 transition-transform duration-300 border border-gray-500/20"
-                     style="background: linear-gradient(135deg, #475569 0%, #1e293b 100%) !important;">
-                    <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-2xl"></div>
-                    <div class="flex items-center gap-3 mb-3 opacity-90">
-                        <i class="pi pi-clock text-xl"></i>
-                         <span class="text-xs font-bold uppercase tracking-wider">Not Started</span>
+                <!-- Appraisal Completed -->
+                <div class="prof-card p-4 !bg-[#0D7377] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'appraisal_completed'">
+                    <div class="absolute -top-10 -right-10 w-24 h-24 bg-white/10 rounded-full"></div>
+                    <div class="relative z-10">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i class="pi pi-check-circle text-xs"></i>
+                            <span class="text-[9px] font-black uppercase tracking-normal text-teal-200">Appraisal Done</span>
+                        </div>
+                        <div class="text-2xl font-black text-white mb-0.5">{{ stats.appraisalCompleted }}</div>
+                        <div class="text-[9px] font-bold text-teal-200 uppercase tracking-normal">Meeting Done</div>
                     </div>
-                    <div class="text-4xl font-extrabold mb-1">{{ stats.pending }}</div>
-                    <div class="text-xs font-medium opacity-80">Pending Action</div>
+                </div>
+
+                <!-- Review Completed -->
+                <div class="prof-card p-4 !bg-[#14532d] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'review_completed'">
+                    <div class="absolute -top-10 -right-10 w-24 h-24 bg-white/10 rounded-full"></div>
+                    <div class="relative z-10">
+                        <div class="flex items-center gap-2 mb-2">
+                            <i class="pi pi-verified text-xs"></i>
+                            <span class="text-[9px] font-black uppercase tracking-normal text-green-200">Review Done</span>
+                        </div>
+                        <div class="text-2xl font-black text-white mb-0.5">{{ stats.reviewCompleted }}</div>
+                        <div class="text-[9px] font-bold text-green-300 uppercase tracking-normal">Fully Completed</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Goals Table -->
-            <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
-                <div class="bg-gradient-to-r from-gray-50 to-white border-b border-gray-200 px-8 py-5 flex justify-between items-center">
-                    <div>
-                        <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2">
-                            Active SMART Goals
-                            <span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-xs font-bold">{{ goals.length }}</span>
-                        </h3>
-                        <p class="text-sm text-gray-500 mt-1">Manage and track your performance objectives.</p>
+            <!-- Goals List Section -->
+            <div class="prof-card mb-6 !rounded-2xl">
+                 <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/30">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 class="font-black text-lg text-gray-800 flex items-center gap-2">
+                                Active SMART Goals
+                                <span class="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-black border border-indigo-100">{{ filteredGoals.length }}</span>
+                            </h3>
+                            <p class="text-[10px] text-gray-400 mt-1 uppercase tracking-normal font-bold">Manage and track your performance objectives.</p>
+                        </div>
+                    </div>
+
+                    <!-- Filters Toolbar -->
+                    <div class="flex flex-col md:flex-row justify-between items-center gap-6 mt-6">
+                        <!-- Status Filter Tabs -->
+                        <div class="flex bg-gray-200 p-1.5 rounded-xl border border-gray-100 flex-wrap">
+                            <button @click="filterStatus = 'all'" 
+                                :class="filterStatus === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-indigo-600'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                All
+                            </button>
+                            <button @click="filterStatus = 'assigned'" 
+                                :class="filterStatus === 'assigned' ? 'bg-indigo-700 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-indigo-700'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                Assigned
+                            </button>
+                            <button @click="filterStatus = 'submitted'" 
+                                :class="filterStatus === 'submitted' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-amber-600'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                Submitted
+                            </button>
+                            <button @click="filterStatus = 'goal_created'" 
+                                :class="filterStatus === 'goal_created' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-blue-600'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                In Progress
+                            </button>
+                            <button @click="filterStatus = 'appraisal_completed'" 
+                                :class="filterStatus === 'appraisal_completed' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-teal-600'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                Appraisal Done
+                            </button>
+                            <button @click="filterStatus = 'review_completed'" 
+                                :class="filterStatus === 'review_completed' ? 'bg-green-700 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-green-700'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                Review Done
+                            </button>
+                            <button @click="filterStatus = 'draft'" 
+                                :class="filterStatus === 'draft' ? 'bg-gray-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-gray-800'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                Drafts
+                            </button>
+                        </div>
+
+                        <!-- Actions & Search Box -->
+                        <div class="flex items-center gap-3 w-full md:w-auto">
+                            <button @click="downloadCSV" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-md text-xs flex items-center justify-center gap-2 transition-all active:scale-95">
+                                <i class="pi pi-file-excel text-sm"></i> Export CSV
+                            </button>
+                            <div class="relative w-full md:w-80 border-gray-100">
+                                <input v-model="searchQuery" type="text" placeholder="Search goals, name, code..."
+                                    class="prof-input pl-12 w-full !bg-white" />
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div v-if="loading" class="p-20 flex flex-col items-center justify-center">
-                    <div class="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p class="mt-4 text-gray-500 font-medium animate-pulse">Loading goals...</p>
-                </div>
-
-                <div v-else-if="goals.length === 0" class="p-20 text-center">
+                <div v-if="!loading && goals.length === 0" class="p-20 text-center">
                     <div class="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
                         <i class="pi pi-inbox text-3xl text-gray-300"></i>
                     </div>
                     <h3 class="text-xl font-bold text-gray-800 mb-2">No SMART Goals Found</h3>
                     <p class="text-gray-500 mb-8 max-w-md mx-auto">Get started by creating your first SMART goal for this year. Set clear objectives to drive your success.</p>
-                    <button @click="startCreateGoal" class="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg shadow-purple-200 transition-all transform hover:-translate-y-1 flex items-center gap-2 mx-auto">
-                        <i class="pi pi-plus"></i>
-                        <span>Create Your First Goal</span>
+                    <button @click="startCreateGoal" class="px-6 py-3 bg-[#1A237E] hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg shadow-purple-200 transition-all transform hover:-translate-y-1 flex items-center gap-2 mx-auto">
+                        <i class="pi pi-plus text-white"></i>
+                        <span class="text-lg text-white">Create Your First Goal</span>
+                    </button>
+                </div>
+
+                <!-- No results for current filter/search -->
+                <div v-else-if="filteredGoals.length === 0" class="p-16 text-center">
+                    <div class="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="pi pi-filter-slash text-2xl text-purple-300"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-700 mb-1">No matching goals</h3>
+                    <p class="text-gray-500 text-sm mb-4">Try adjusting your filters or search query.</p>
+                    <button @click="filterStatus = 'all'; searchQuery = ''" class="px-5 py-2 bg-purple-100 text-purple-700 font-bold rounded-lg hover:bg-purple-200 transition-all text-sm">
+                        <i class="pi pi-filter-slash mr-1"></i> Clear Filters
                     </button>
                 </div>
 
@@ -422,54 +1607,111 @@ const handleFileUpload = async (event, qIndex) => {
                     <table class="w-full text-sm text-left">
                         <thead class="bg-gray-50 text-gray-600 uppercase font-bold text-xs border-b border-gray-200">
                             <tr>
-                                <th class="px-6 py-4 w-[30%]">Goal Details</th>
-                                <th class="px-6 py-4 w-[15%]">SMART Score</th>
-                                <th class="px-6 py-4 w-[20%]">Progress</th>
-                                <th class="px-6 py-4 w-[15%]">Completion Date</th>
-                                <th class="px-6 py-4 w-[20%] text-right">Actions</th>
+                                <th class="px-6 py-4 w-[25%]">Goal Details</th>
+                                <th class="px-6 py-4 w-[15%]">Record ID</th>
+                                <th class="px-6 py-4 w-[12%]">SMART Score</th>
+                                <th class="px-6 py-4 w-[15%]">Progress</th>
+                                <th class="px-6 py-4 w-[13%]">Status</th>
+                                <th class="px-6 py-4 w-[10%] text-center">Rating</th>
+                                <th class="px-6 py-4 w-[10%] text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
-                            <tr v-for="goal in goals" :key="goal.id" class="hover:bg-purple-50/30 transition-colors">
+                            <tr v-for="(goal, idx) in filteredGoals" :key="goal.id" class="hover:bg-indigo-50/50 transition-colors">
                                 <td class="px-6 py-4">
-                                    <strong class="text-gray-800 block mb-1 text-base">{{ goal.title }}</strong>
-                                    <div class="text-gray-500 text-xs line-clamp-2">
-                                        <ul v-if="parseList(goal.description).length > 1" class="list-disc list-inside">
-                                             <li v-for="(item, i) in parseList(goal.description).slice(0, 2)" :key="i">{{ item }}</li>
-                                        </ul>
-                                        <span v-else>{{ parseList(goal.description)[0] || 'No description' }}</span>
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <div class="w-2 h-2 rounded-full" :class="[goal.display_status === 'review_completed' ? 'bg-green-500' : goal.display_status === 'appraisal_completed' ? 'bg-teal-500' : goal.display_status === 'goal_created' ? 'bg-blue-500 pulse-subtle' : 'bg-amber-500']"></div>
+                                        <strong class="text-gray-800 text-base font-black">{{ goal.candidate_name || 'N/A' }}</strong>
+                                        <span v-if="goal.display_status === 'draft'" class="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-600 rounded-lg border border-amber-100">Draft</span>
+                                    </div>
+                                    <div class="text-indigo-900 text-[11px] font-extrabold pl-4 mb-0.5">{{ goal.title }}</div>
+                                    <div class="text-gray-400 text-[10px] font-bold line-clamp-1 pl-4">
+                                        {{ parseList(goal.description)[0] || 'No description provided' }}
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
-                                    <div class="flex items-center gap-1">
+                                    <span class="text-[11px] font-black text-slate-800 tracking-tight">{{ getRecordId(goal) }}</span>
+                                </td>
+                                 <td class="px-6 py-4">
+                                     <div class="flex items-center gap-1.5">
                                         <span v-for="criteria in smartLabels" :key="criteria.key"
-                                            :class="[goal.smart_criteria?.[criteria.key] ? criteria.color : 'bg-gray-100 text-gray-400 border-gray-200']"
-                                            class="w-7 h-7 rounded-md flex items-center justify-center text-xs font-black border">
-                                            {{ criteria.label.charAt(0) }}
+                                            :class="[goal.smart_criteria?.[criteria.key] ? criteria.color : 'bg-gray-50 text-gray-200 border-gray-100']"
+                                            class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-black border transition-all">
+                                            {{ criteria.short }}
                                         </span>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
-                                    <div class="flex items-center gap-3">
-                                        <div class="flex-1 h-2.5 bg-gray-200 rounded-full overflow-hidden">
-                                            <div class="h-full rounded-full transition-all duration-500"
-                                                :class="goal.actual >= goal.target ? 'bg-gradient-to-r from-green-400 to-green-500' : 'bg-gradient-to-r from-purple-400 to-purple-600'"
-                                                :style="{ width: Math.min(100, ((goal.actual || 0) / (goal.target || 100)) * 100) + '%' }"></div>
+                                    <div class="flex items-center gap-4">
+                                        <div class="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-100 shadow-inner">
+                                            <div class="h-full rounded-full transition-all duration-1000 ease-out relative"
+                                                :class="getTimeProgress(goal) === 100 ? 'bg-gradient-to-r from-teal-400 to-emerald-500' : 'bg-gradient-to-r from-indigo-400 via-indigo-500 to-indigo-600'"
+                                                :style="{ width: getTimeProgress(goal) + '%' }">
+                                                <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+                                            </div>
                                         </div>
-                                        <span class="text-xs font-bold text-gray-700 w-12 text-right">{{ Math.round(((goal.actual || 0) / (goal.target || 100)) * 100) }}%</span>
+                                        <span class="text-[11px] font-black text-gray-700 w-12 text-right">{{ getTimeProgress(goal) }}%</span>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
-                                    <span v-if="goal.completion_date" class="text-gray-700 text-sm font-medium">{{ new Date(goal.completion_date).toLocaleDateString() }}</span>
-                                    <span v-else class="text-gray-400 text-sm italic">Not set</span>
+                                    <span v-if="goal.display_status === 'draft'" class="px-3 py-1.5 rounded-xl bg-slate-50 text-slate-600 text-[10px] font-black uppercase tracking-widest border border-slate-200 shadow-sm">
+                                        <i class="pi pi-file-edit mr-1.5"></i> Draft
+                                    </span>
+                                    <span v-else-if="goal.display_status === 'assigned'" class="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-widest border border-indigo-200 shadow-sm">
+                                        <i class="pi pi-bell mr-1.5 text-xs"></i> Assigned
+                                    </span>
+                                    <span v-else-if="goal.display_status === 'submitted'" class="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 text-[10px] font-black uppercase tracking-widest border border-amber-200 shadow-sm">
+                                        <i class="pi pi-clock mr-1.5 text-xs"></i> Submitted (Awaiting Review)
+                                    </span>
+                                    <span v-else-if="goal.display_status === 'goal_created'" class="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 text-[10px] font-black uppercase tracking-widest border border-blue-200 shadow-sm">
+                                        <i class="pi pi-file-plus mr-1.5 text-xs"></i> In Progress
+                                    </span>
+                                    <span v-else-if="goal.display_status === 'appraisal_completed'" class="px-3 py-1.5 rounded-xl bg-teal-50 text-teal-700 text-[10px] font-black uppercase tracking-widest border border-teal-200 shadow-sm">
+                                        <i class="pi pi-check-circle mr-1.5 text-xs"></i> Appraisal Done
+                                    </span>
+                                    <span v-else-if="goal.display_status === 'review_completed'" class="px-3 py-1.5 rounded-xl bg-green-50 text-green-700 text-[10px] font-black uppercase tracking-widest border border-green-200 shadow-sm">
+                                        <i class="pi pi-verified mr-1.5 text-xs"></i> Review Completed
+                                    </span>
+                                    <span v-else class="px-3 py-1.5 rounded-xl bg-gray-50 text-gray-500 text-[10px] font-black uppercase tracking-widest border border-gray-100 shadow-sm">
+                                        <i class="pi pi-minus mr-1.5 text-xs"></i> {{ goal.display_status }}
+                                    </span>
                                 </td>
-                                <td class="px-6 py-4 text-right">
-                                    <div class="flex items-center justify-end gap-1">
-                                        <button @click="viewGoalDetail(goal)" class="action-btn action-btn-view" title="View Details">
-                                            <i class="pi pi-eye"></i>
+                                <td class="px-6 py-4 text-center font-black text-[11px]">
+                                    <span v-if="getManagerRating(goal)" class="px-2 py-1 bg-slate-100 text-slate-700 rounded border border-slate-200" :title="'Manager avg: ' + getManagerRating(goal) + '/5'">
+                                        {{ getManagerRating(goal) }}
+                                    </span>
+                                    <span v-else class="text-gray-300">-</span>
+                                </td>
+                                <td class="px-6 py-4 text-right whitespace-nowrap">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <!-- Fill / Edit Button -->
+                                        <button v-if="goal.status === 'assigned' || goal.status === 'draft'" @click="editGoal(goal)" 
+                                            class="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
+                                            <i class="pi pi-pencil text-[9px]"></i> {{ goal.status === 'assigned' ? 'Fill Goal' : 'Edit' }}
                                         </button>
-                                        <button @click="deleteGoal(goal.id)" class="action-btn action-btn-delete" title="Delete">
-                                            <i class="pi pi-trash"></i>
+
+                                        <!-- Review Button (for managers) -->
+                                        <button v-if="goal.status === 'submitted' && isManager" @click="router.push({ path: '/pms/review' })" 
+                                            class="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white rounded-lg border border-amber-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
+                                            <i class="pi pi-verified text-[9px]"></i> Review
+                                        </button>
+                                        
+                                        <!-- Appraise Button (for in-progress) -->
+                                        <button v-if="goal.status === 'in_progress'" @click="router.push({ name: 'pms-appraisal', query: { goal_id: goal.id } })" 
+                                            class="flex items-center gap-2 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white rounded-lg border border-teal-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
+                                            <i class="pi pi-star-fill text-[9px]"></i> Appraise
+                                        </button>
+                                        
+                                        <!-- Preview Button -->
+                                        <button @click="selectedGoal = goal; showDetailModal = true" 
+                                            class="flex items-center gap-2 px-3 py-1.5 bg-slate-50 text-slate-700 hover:bg-slate-800 hover:text-white rounded-lg border border-slate-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
+                                            <i class="pi pi-eye text-[9px]"></i> View
+                                        </button>
+
+                                        <!-- Delete Button (Manager only) -->
+                                        <button v-if="isManager" @click="deleteGoal(goal.id)" 
+                                            class="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-600 hover:text-white rounded-lg border border-red-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm">
+                                            <i class="pi pi-trash text-[9px]"></i> Delete
                                         </button>
                                     </div>
                                 </td>
@@ -482,83 +1724,179 @@ const handleFileUpload = async (event, qIndex) => {
 
         <!-- CREATE VIEW - Full Page Multi-Step Form -->
         <template v-if="viewMode === 'create'">
-            <!-- Header with Stepper -->
-            <div class="mb-6 rounded-2xl shadow-lg shadow-purple-200 text-white overflow-hidden relative"
-                 style="background: linear-gradient(135deg, #6b21a8 0%, #3730a3 100%) !important;">
-                <div class="absolute top-0 right-0 p-4 opacity-10">
-                    <i class="pi pi-compass text-9xl"></i>
-                </div>
-                <div class="px-8 py-6 relative z-10">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-6">
-                            <button @click="cancelCreate" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-white border border-white/10">
-                                <i class="pi pi-arrow-left text-xl"></i>
+            <!-- Dashboard Header - Bold Title -->
+            <div class="mb-6">
+                <div class="bg-[#1A237E] rounded-2xl shadow-xl overflow-hidden">
+                    <div class="px-8 py-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div class="flex items-center gap-4">
+                            <button @click="cancelCreate" class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/20 transition-all border border-white/10 active:scale-95">
+                                <i class="pi pi-arrow-left font-black text-xs"></i>
                             </button>
                             <div>
-                                <h1 class="text-2xl font-bold flex items-center gap-2">
-                                    Create SMART Goal
-                                    <span class="px-2 py-0.5 rounded text-xs bg-white/20 border border-white/10 font-bold tracking-wider uppercase">FY {{ currentYear }}</span>
+                                <h1 class="text-2xl font-black text-white tracking-normal uppercase flex items-center gap-3">
+                                    <span>{{ currentStep === 1 ? 'YEARLY SMART GOALS SETTING' : currentStep === 2 ? 'QUARTERLY TARGET TRACKING & EVIDENCE' : 'ANNUAL PERFORMANCE APPRAISAL (SELF-EVALUATION)' }}</span>
+                                    <div v-if="currentStep >= 2" class="flex items-center gap-2 px-3 py-1 bg-white/10 rounded-xl border border-white/20 backdrop-blur-sm">
+                                        <i class="pi pi-user text-indigo-200 text-xs"></i>
+                                        <span class="text-sm font-bold tracking-normal normal-case text-indigo-100">{{ newGoal.candidate_name || 'Pending Candidate' }}</span>
+                                    </div>
                                 </h1>
-                                <p class="text-purple-100 text-sm mt-1">Step {{ currentStep }} of {{ totalSteps }}</p>
+                                <p class="text-indigo-200 text-[10px] font-black mt-1 tracking-normal uppercase opacity-80">
+                                    <template v-if="currentStep === 1">Step 1 of 3: GOAL DEFINITION & STRATEGIC OBJECTIVES</template>
+                                    <template v-else-if="currentStep === 2">Step 2 of 3: MEASURE (Growth Over Last Year & Quarters) — Keep a log of your progress.</template>
+                                    <template v-else>Step 3 of 3: PERFORMANCE KEY COMPETENCIES & SIGN-OFF</template>
+                                    <span class="ml-2 px-2 py-0.5 rounded bg-white/15 text-white text-[10px] font-bold border border-white/10">FY {{ currentYear }}</span>
+                                </p>
                             </div>
                         </div>
-                        <div class="flex items-center gap-4">
-                            <!-- Step Indicators -->
-                            <div class="flex items-center gap-4 bg-black/20 px-6 py-3 rounded-2xl border border-white/10 backdrop-blur-sm">
-                                <div class="flex items-center gap-3">
-                                    <div :class="currentStep >= 1 ? 'bg-white text-purple-700 shadow-md' : 'bg-white/20 text-white'"
-                                        class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all border-2 border-transparent">1</div>
-                                    <span class="text-white font-bold text-sm hidden md:inline" :class="currentStep >= 1 ? 'opacity-100' : 'opacity-60'">Goal Details</span>
+
+                        <!-- Stepper Pills (3 Steps) -->
+                        <div class="flex items-center gap-1 bg-white/10 p-1 rounded-xl backdrop-blur-sm border border-white/10">
+                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="currentStep = 1" :class="currentStep === 1 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
+                                <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" :class="currentStep >= 1 ? (currentStep === 1 ? 'bg-[#1A237E] text-white' : 'bg-green-500 text-white') : 'bg-white/20'">
+                                    <span v-if="currentStep > 1">✓</span><span v-else>1</span>
                                 </div>
-                                <div class="w-12 h-0.5 bg-white/20 rounded-full"></div>
-                                <div class="flex items-center gap-3">
-                                    <div :class="currentStep >= 2 ? 'bg-white text-purple-700 shadow-md' : 'bg-white/20 text-white'"
-                                        class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all border-2 border-transparent">2</div>
-                                    <span class="text-white font-bold text-sm hidden md:inline" :class="currentStep >= 2 ? 'opacity-100' : 'opacity-60'">Quarterly Tracking</span>
+                                <span class="text-xs font-bold uppercase tracking-wider hidden sm:inline">Definition</span>
+                            </div>
+                            <div class="w-5 h-[2px] rounded-full" :class="currentStep >= 2 ? 'bg-white/50' : 'bg-white/10'"></div>
+                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="nextStep" :class="currentStep === 2 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
+                                <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" :class="currentStep >= 2 ? (currentStep === 2 ? 'bg-[#1A237E] text-white' : 'bg-green-500 text-white') : 'bg-white/20'">
+                                    <span v-if="currentStep > 2">✓</span><span v-else>2</span>
                                 </div>
+                                <span class="text-xs font-bold uppercase tracking-wider hidden sm:inline">Tracking</span>
+                            </div>
+                            <div class="w-5 h-[2px] rounded-full" :class="currentStep >= 3 ? 'bg-white/50' : 'bg-white/10'"></div>
+                            <div class="flex items-center gap-2 px-3.5 py-2 rounded-lg transition-all duration-500 cursor-pointer" @click="currentStep === 2 ? nextStep() : null" :class="currentStep === 3 ? 'bg-white text-[#1A237E] shadow-lg' : 'text-white/60'">
+                                <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" :class="currentStep === 3 ? 'bg-[#1A237E] text-white' : 'bg-white/20'">
+                                    3
+                                </div>
+                                <span class="text-xs font-bold uppercase tracking-wider hidden sm:inline">Appraisal</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- STEP 1: Goal Details -->
-            <div v-if="currentStep === 1" class="space-y-6 animate-fadeIn">
-                <!-- Employee Info Mini Header -->
-                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-                    <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100">
-                        <!-- Candidate Section -->
-                        <div class="p-6 relative overflow-hidden group hover:bg-purple-50/30 transition-colors">
-                            <div class="flex items-start justify-between relative z-10">
-                                <div class="flex items-start gap-4">
-                                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center shadow-inner text-purple-600">
-                                        <i class="pi pi-user text-xl"></i>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-[10px] text-purple-600 uppercase font-black tracking-widest mb-1">Candidate Name</p>
-                                        <input v-model="newGoal.candidate_name" type="text" class="font-bold text-gray-800 text-lg w-full bg-transparent border-b-2 border-gray-200 hover:border-purple-400 focus:border-purple-600 focus:ring-0 px-0 py-0.5 transition-all placeholder-gray-400" placeholder="Enter Name..." />
-                                        <p class="text-sm text-gray-500 mt-1 font-medium">{{ loguser?.job_title || 'Select Job Title' }}</p>
-                                    </div>
+            <!-- Read-Only Banner when Submitted or Reviewed -->
+            <div v-if="isFormReadOnly" class="mb-5 p-4 rounded-2xl border flex items-center justify-between gap-4"
+                :class="newGoal.status === 'review_completed' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'">
+                <div class="flex items-center gap-3">
+                    <i :class="newGoal.status === 'review_completed' ? 'pi pi-check-circle text-emerald-600' : 'pi pi-lock text-amber-600'" class="text-xl"></i>
+                    <div>
+                        <h4 class="font-black text-sm uppercase tracking-wide">
+                            {{ newGoal.status === 'review_completed' ? 'Review Completed & Finalized' : 'Submission Locked Under Manager Review' }}
+                        </h4>
+                        <p class="text-xs font-semibold opacity-90">
+                            {{ newGoal.status === 'review_completed' 
+                                ? 'Your Line Manager has completed and approved this performance appraisal.' 
+                                : 'Your goals and self-appraisal have been signed off and submitted. Editing is locked while awaiting review.' }}
+                        </p>
+                    </div>
+                </div>
+                <span class="px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-white border shadow-xs">
+                    Status: {{ newGoal.status }}
+                </span>
+            </div>
+
+            <Transition :name="stepTransition" mode="out-in">
+                <!-- STEP 1: Goal Details -->
+                <div v-if="currentStep === 1" :key="1" class="space-y-5">
+                <!-- Candidate & Manager Info Row -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Candidate Info Card -->
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                        <div class="bg-[#E8EAF6] px-5 py-3 border-b border-[#C5CAE9]">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg bg-[#1A237E] text-white flex items-center justify-center">
+                                    <i class="pi pi-user text-xs"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-sm text-[#1A237E]">Candidate Name</h3>
+                                    <p class="text-[9px] text-[#3949AB] font-black uppercase tracking-normal opacity-70">Job Title & Identification</p>
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- Line Manager Section -->
-                        <div class="p-6 relative overflow-hidden group hover:bg-emerald-50/30 transition-colors">
-                             <div class="flex items-start justify-between relative z-10">
-                                <div class="flex items-start gap-4">
-                                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center shadow-inner text-emerald-600">
-                                        <i class="pi pi-briefcase text-xl"></i>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-[10px] text-emerald-600 uppercase font-black tracking-widest mb-1">Line Manager Name</p>
-                                        <input v-model="newGoal.manager_name" type="text" class="font-bold text-gray-800 text-lg w-full bg-transparent border-b-2 border-transparent hover:border-gray-200 focus:border-emerald-500 focus:ring-0 px-0 py-0.5 transition-all placeholder-gray-300" placeholder="Enter Manager Name..." />
-                                        <p class="text-sm text-gray-500 mt-1 font-medium">{{ loguser?.manager_title || 'Select Manager Title' }}</p>
+                        <div class="p-5 space-y-3">
+                            <!-- Locked for Employee: Pre-filled with Candidate Name & ID (NO search bar) -->
+                            <div v-if="isEmployee" class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-base shadow-sm">
+                                    {{ (newGoal.candidate_name || loguser.name || 'E').charAt(0).toUpperCase() }}
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-base font-black text-slate-800 leading-tight uppercase">{{ newGoal.candidate_name || loguser.name }}</p>
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                        <span class="text-[10px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded uppercase">ID: {{ newGoal.employee_code || loguser.employee_code || 'N/A' }}</span>
+                                        <span class="text-[10px] font-bold text-slate-500"><i class="pi pi-lock text-[8px] mr-1"></i>Pre-filled & Locked</span>
                                     </div>
                                 </div>
-                                <div class="text-right bg-gray-50 px-3 py-1 rounded-lg border border-gray-100">
-                                    <p class="text-[10px] text-gray-400 uppercase font-bold">Date</p>
-                                    <p class="font-bold text-gray-700 text-sm">{{ new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }}</p>
+                            </div>
+
+                            <!-- Searchable AutoComplete for Manager -->
+                            <AutoComplete
+                                v-else
+                                v-model="selectedCandidate"
+                                :suggestions="filteredMasterEmployees"
+                                @complete="searchCandidate"
+                                @item-select="onCandidateSelect"
+                                optionLabel="full_string"
+                                placeholder="Type staff name or ID..."
+                                inputClass="!w-full !bg-[#F8FAFC] !border !border-gray-200 !rounded-lg !py-2.5 !px-3 !text-sm !font-semibold transition-all focus:!bg-white focus:!border-[#1A237E]"
+                                class="w-full"
+                            >
+                                <template #item="slotProps">
+                                    <div class="flex items-center gap-3 py-2 px-1">
+                                        <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs border border-indigo-100 shadow-sm">
+                                            {{ slotProps.item.name.charAt(0).toUpperCase() }}
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center justify-between mb-0.5">
+                                                <div class="font-black text-slate-800 text-sm truncate">{{ slotProps.item.name }}</div>
+                                                <div class="text-[9px] font-black px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded uppercase">ID: {{ slotProps.item.employee_code }}</div>
+                                            </div>
+                                            <div class="flex items-center gap-2 text-[10px] font-bold text-slate-400">
+                                                <span class="flex items-center gap-1">
+                                                    <i class="pi pi-building text-[8px]"></i>
+                                                    {{ slotProps.item.department && slotProps.item.department !== 'N/A' ? slotProps.item.department : (finddept(slotProps.item.joining_dept_id) || 'No Dept') }}
+                                                </span>
+                                                <span class="w-1 h-1 rounded-full bg-slate-200"></span>
+                                                <span class="flex items-center gap-1">
+                                                    <i class="pi pi-map-marker text-[8px]"></i>
+                                                    {{ slotProps.item.location && slotProps.item.location !== 'N/A' ? slotProps.item.location : (findbranch(slotProps.item.joining_branch_id) || 'No Loc') }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </AutoComplete>
+                            <div class="flex flex-wrap gap-2">
+                                <span class="px-3 py-1 bg-[#F1F5F9] rounded text-[10px] font-semibold text-gray-500 border border-gray-100">Joining Department: {{ newGoal.department || 'N/A' }}</span>
+                                <span class="px-3 py-1 bg-[#F1F5F9] rounded text-[10px] font-semibold text-gray-500 border border-gray-100">Joining Location: {{ newGoal.location || 'N/A' }}</span>
+                                <span class="px-3 py-1 bg-indigo-50 rounded text-[10px] font-black text-indigo-700 border border-indigo-100">Joining Position: {{ newGoal.job_title || 'N/A' }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Line Manager Card -->
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                        <div class="bg-[#305286] px-5 py-3 border-b border-[#264270]">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg bg-white/15 text-white flex items-center justify-center border border-white/10">
+                                    <i class="pi pi-shield text-xs"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-sm text-white">Line Manager Name</h3>
+                                    <p class="text-[9px] text-blue-200 font-black uppercase tracking-widest opacity-70">Signature & Date</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-5">
+                            <div class="flex items-end justify-between">
+                                <div>
+                                    <p class="text-lg font-bold text-gray-800 leading-none mb-1">{{ newGoal.manager_name }}</p>
+                                    <span class="text-[10px] font-semibold text-gray-400">Authorized Evaluator</span>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-[10px] font-semibold text-gray-400 mb-0.5">Date</p>
+                                    <p class="font-bold text-sm text-gray-700">{{ new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }}</p>
                                 </div>
                             </div>
                         </div>
@@ -566,127 +1904,120 @@ const handleFileUpload = async (event, qIndex) => {
                 </div>
 
                 <!-- Main Form Grid -->
-                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-5">
                     <!-- Left Column: Goals, Purposes, Challenges -->
-                    <div class="lg:col-span-3 space-y-6">
+                    <div class="lg:col-span-3 space-y-5">
                         <!-- GOALS Section -->
-                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                            <div class="bg-blue-600 px-6 py-4 border-b border-blue-600 flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center backdrop-blur-sm">
-                                    <i class="pi pi-flag text-sm"></i>
-                                </div>
-                                <div>
-                                    <h4 class="font-bold text-white text-sm uppercase tracking-wide">Goal Definition</h4>
-                                    <p class="text-xs text-blue-100">What do you want to achieve?</p>
-                                </div>
+                        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                            <div class="bg-[#C5CAE9] px-5 py-3 border-b border-[#9FA8DA]">
+                                <h4 class="font-bold text-base text-[#1A237E] uppercase tracking-wide">GOALS</h4>
+                                <p class="text-xs text-[#283593] font-medium italic mt-0.5">Be specific and concise. Include the measure and time frame.</p>
                             </div>
-                            <div class="p-6 space-y-5">
-                                <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 ml-1">Goal Title</label>
-                                    <input v-model="newGoal.title" type="text" class="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-lg font-bold text-gray-800 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none placeholder-gray-400" placeholder="e.g. Improve Customer Satisfaction Score by 15%" />
+                            <div class="p-5 space-y-4">
+                                <div class="relative">
+                                    <label class="block text-xs font-bold text-[#1A237E] uppercase tracking-wide mb-2">Goals Title</label>
+                                    <input v-model="newGoal.title" :disabled="isFormReadOnly" type="text" 
+                                        class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-3 px-4 text-sm font-semibold text-gray-800 focus:bg-white focus:border-[#1A237E] focus:ring-2 focus:ring-[#1A237E]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" 
+                                        placeholder="E.g. Maximize operational efficiencies..." />
                                 </div>
                                 
-                                <div class="space-y-3">
-                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 ml-1">Objectives / Key Results</label>
-                                    <div v-for="(desc, index) in newGoal.description" :key="index" class="flex gap-3 group">
-                                        <textarea v-model="newGoal.description[index]" rows="2" class="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none resize-none placeholder-gray-400" placeholder="Describe a specific objective..."></textarea>
-                                        <button @click="removeDescription(index)" v-if="newGoal.description.length > 1" class="text-gray-300 hover:text-red-500 w-10 h-10 flex items-center justify-center rounded-xl hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100" title="Remove">
-                                            <i class="pi pi-trash"></i>
+                                <div class="space-y-3 pt-1">
+                                    <label class="block text-xs font-bold text-[#3949AB] uppercase tracking-wide">Goals Description</label>
+                                    <div v-for="(desc, index) in newGoal.description" :key="index" class="flex gap-3 group/item">
+                                        <div class="w-8 h-8 rounded-lg bg-[#E8EAF6] flex items-center justify-center text-[#1A237E] font-bold text-xs border border-[#C5CAE9] shrink-0 mt-1">{{ index + 1 }}</div>
+                                        <textarea v-model="newGoal.description[index]" :disabled="isFormReadOnly" rows="2" 
+                                            class="flex-1 bg-white border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-medium text-gray-700 focus:border-[#1A237E] focus:ring-2 focus:ring-[#1A237E]/10 outline-none resize-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" 
+                                            placeholder="Define a measurable performance indicator..."></textarea>
+                                        <button @click="removeDescription(index)" v-if="!isFormReadOnly && newGoal.description.length > 1" 
+                                            class="w-8 h-8 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-all opacity-0 group-hover/item:opacity-100 shrink-0 mt-1" title="Remove">
+                                            <i class="pi pi-times text-xs"></i>
                                         </button>
                                     </div>
-                                    <button @click="addDescription" class="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-2 mt-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all border border-blue-100">
-                                        <i class="pi pi-plus-circle"></i> Add Another Objective
+                                    <button v-if="!isFormReadOnly" @click="addDescription" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#1A237E] bg-[#E8EAF6] hover:bg-[#C5CAE9] rounded-lg transition-all active:scale-95 border border-[#C5CAE9]">
+                                        <i class="pi pi-plus text-[10px]"></i> Add Goals Description
                                     </button>
                                 </div>
                             </div>
                         </div>
 
                         <!-- PURPOSES Section -->
-                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                             <div class="bg-green-600 px-6 py-4 border-b border-green-600 flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center backdrop-blur-sm">
-                                    <i class="pi pi-question-circle text-sm"></i>
-                                </div>
-                                <div>
-                                    <h4 class="font-bold text-white text-sm uppercase tracking-wide">Purposes & Benefits</h4>
-                                    <p class="text-xs text-green-100">Why is this relevant?</p>
-                                </div>
+                        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                            <div class="bg-[#B2DFDB] px-5 py-3 border-b border-[#80CBC4]">
+                                <h4 class="font-bold text-base text-[#004D40] uppercase tracking-wide">PURPOSES</h4>
+                                <p class="text-xs text-[#00695C] font-medium italic mt-0.5">Why is the goal relevant? What are the benefits?</p>
                             </div>
-                             <div class="p-6 space-y-4">
-                                <div v-for="(purpose, index) in newGoal.purposes" :key="index" class="flex gap-3 group">
-                                     <textarea v-model="newGoal.purposes[index]" rows="2" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-green-500 focus:ring-4 focus:ring-green-500/10 transition-all outline-none resize-none placeholder-gray-400" placeholder="Explain the purpose and benefits..."></textarea>
-                                     <button @click="removePurpose(index)" v-if="newGoal.purposes.length > 1" class="text-gray-300 hover:text-red-500 w-10 h-10 flex items-center justify-center rounded-xl hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100" title="Remove">
-                                        <i class="pi pi-trash"></i>
-                                     </button>
+                            <div class="p-5 space-y-3">
+                                <div v-for="(purpose, index) in newGoal.purposes" :key="index" class="flex gap-3 group/item">
+                                    <div class="w-8 h-8 rounded-lg bg-[#E0F2F1] text-[#00695C] flex items-center justify-center font-bold text-xs border border-[#B2DFDB] shrink-0 mt-1">
+                                        <i class="pi pi-check text-[10px]"></i>
+                                    </div>
+                                    <textarea v-model="newGoal.purposes[index]" :disabled="isFormReadOnly" rows="2" 
+                                        class="flex-1 bg-white border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-medium text-gray-700 focus:border-[#00695C] focus:ring-2 focus:ring-[#00695C]/10 outline-none resize-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" 
+                                        placeholder="Establish the business relevance..."></textarea>
+                                    <button @click="removePurpose(index)" v-if="!isFormReadOnly && newGoal.purposes.length > 1" 
+                                        class="w-8 h-8 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-all opacity-0 group-hover/item:opacity-100 shrink-0 mt-1" title="Remove">
+                                        <i class="pi pi-times text-xs"></i>
+                                    </button>
                                 </div>
-                                <button @click="addPurpose" class="text-sm font-bold text-green-600 hover:text-green-700 flex items-center gap-2 mt-2 px-4 py-2 bg-green-50 hover:bg-green-100 rounded-xl transition-all border border-green-100">
-                                    <i class="pi pi-plus-circle"></i> Add Another Purpose
+                                <button v-if="!isFormReadOnly" @click="addPurpose" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#004D40] bg-[#E0F2F1] hover:bg-[#B2DFDB] rounded-lg transition-all active:scale-95 border border-[#B2DFDB]">
+                                    <i class="pi pi-plus text-[10px]"></i> Add Purpose
                                 </button>
-                             </div>
+                            </div>
                         </div>
 
                         <!-- CHALLENGES Section -->
-                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                            <div class="bg-orange-500 px-6 py-4 border-b border-orange-500 flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center backdrop-blur-sm">
-                                    <i class="pi pi-exclamation-triangle text-sm"></i>
-                                </div>
-                                <div>
-                                    <h4 class="font-bold text-white text-sm uppercase tracking-wide">Potential Challenges</h4>
-                                    <p class="text-xs text-orange-100">Obstacles to overcome</p>
-                                </div>
+                        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                            <div class="bg-[#FFE0B2] px-5 py-3 border-b border-[#FFCC80]">
+                                <h4 class="font-bold text-base text-[#E65100] uppercase tracking-wide">CHALLENGES</h4>
+                                <p class="text-xs text-[#EF6C00] font-medium italic mt-0.5">What are the challenges to overcome? What resources and skills are needed?</p>
                             </div>
-                            <div class="p-6 space-y-4">
-                                <div v-for="(challenge, index) in newGoal.challenges" :key="index" class="flex gap-3 group">
-                                     <textarea v-model="newGoal.challenges[index]" rows="2" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all outline-none resize-none placeholder-gray-400" placeholder="List potential challenge..."></textarea>
-                                      <button @click="removeChallenge(index)" v-if="newGoal.challenges.length > 1" class="text-gray-300 hover:text-red-500 w-10 h-10 flex items-center justify-center rounded-xl hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100" title="Remove">
-                                        <i class="pi pi-trash"></i>
-                                     </button>
+                            <div class="p-5 space-y-3">
+                                <div v-for="(challenge, index) in newGoal.challenges" :key="index" class="flex gap-3 group/item">
+                                    <div class="w-8 h-8 rounded-lg bg-[#FFF3E0] text-[#E65100] flex items-center justify-center font-bold text-xs border border-[#FFE0B2] shrink-0 mt-1">
+                                        <i class="pi pi-exclamation-triangle text-[10px]"></i>
+                                    </div>
+                                    <textarea v-model="newGoal.challenges[index]" :disabled="isFormReadOnly" rows="2" 
+                                        class="flex-1 bg-white border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-medium text-gray-700 focus:border-[#E65100] focus:ring-2 focus:ring-[#E65100]/10 outline-none resize-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" 
+                                        placeholder="Anticipate potential roadblocks..."></textarea>
+                                    <button @click="removeChallenge(index)" v-if="!isFormReadOnly && newGoal.challenges.length > 1" 
+                                        class="w-8 h-8 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-all opacity-0 group-hover/item:opacity-100 shrink-0 mt-1" title="Remove">
+                                        <i class="pi pi-times text-xs"></i>
+                                    </button>
                                 </div>
-                                <button @click="addChallenge" class="text-sm font-bold text-orange-600 hover:text-orange-700 flex items-center gap-2 mt-2 px-4 py-2 bg-orange-50 hover:bg-orange-100 rounded-xl transition-all border border-orange-100">
-                                    <i class="pi pi-plus-circle"></i> Add Another Challenge
+                                <button v-if="!isFormReadOnly" @click="addChallenge" class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-[#E65100] bg-[#FFF3E0] hover:bg-[#FFE0B2] rounded-lg transition-all active:scale-95 border border-[#FFE0B2]">
+                                    <i class="pi pi-plus text-[10px]"></i> Add Challenge
                                 </button>
-                             </div>
+                            </div>
                         </div>
 
-                        <!-- Completion Date -->
-                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                            <div class="bg-gray-800 px-6 py-4 border-b border-gray-800 flex items-center gap-3">
-                                 <div class="w-8 h-8 rounded-lg bg-white/20 text-white flex items-center justify-center backdrop-blur-sm">
-                                    <i class="pi pi-calendar text-sm"></i>
-                                </div>
-                                <div>
-                                    <h4 class="font-bold text-white text-sm uppercase tracking-wide">Classifications</h4>
-                                </div>
+                        <!-- COMPLETION DATE Section -->
+                        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                            <div class="bg-[#CFD8DC] px-5 py-3 border-b border-[#B0BEC5]">
+                                <h4 class="font-bold text-base text-[#37474F] uppercase tracking-wide">COMPLETION DATE</h4>
+                                <p class="text-xs text-[#546E7A] font-medium italic mt-0.5">Classification, target and timeline</p>
                             </div>
-                            <div class="p-6">
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="p-5">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <!-- Category -->
                                     <div class="space-y-2">
-                                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide ml-1">Category</label>
-                                        <div class="relative">
-                                            <i class="pi pi-tag absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10"></i>
-                                            <select v-model="newGoal.category" class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none appearance-none transition-all">
-                                                <option>General</option>
-                                                <option>Technical</option>
-                                                <option>Development</option>
-                                                <option>Behavioral</option>
-                                                <option>Leadership</option>
-                                            </select>
-                                            <i class="pi pi-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
-                                        </div>
+                                        <label class="block text-xs font-bold text-[#37474F] uppercase tracking-wide">Category</label>
+                                        <select v-model="newGoal.category" :disabled="isFormReadOnly" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-semibold text-gray-700 focus:border-[#37474F] focus:ring-2 focus:ring-[#37474F]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed">
+                                            <option>General</option>
+                                            <option>Technical</option>
+                                            <option>Development</option>
+                                            <option>Behavioral</option>
+                                            <option>Leadership</option>
+                                        </select>
                                     </div>
+                                    <!-- Target Value -->
                                     <div class="space-y-2">
-                                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide ml-1">Target Value</label>
-                                        <div class="relative">
-                                            <i class="pi pi-chart-bar absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10"></i>
-                                            <input v-model="newGoal.target" type="number" class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all" />
-                                        </div>
+                                        <label class="block text-xs font-bold text-[#37474F] uppercase tracking-wide">Target Performance</label>
+                                        <input v-model="newGoal.target" :disabled="isFormReadOnly" type="number" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-semibold text-gray-700 focus:border-[#37474F] focus:ring-2 focus:ring-[#37474F]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" />
                                     </div>
+                                    <!-- Completion Date -->
                                     <div class="space-y-2">
-                                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide ml-1">Completion Date</label>
-                                         <div class="relative">
-                                            <input v-model="newGoal.completion_date" type="date" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:bg-white focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 outline-none transition-all" />
-                                        </div>
+                                        <label class="block text-xs font-bold text-[#37474F] uppercase tracking-wide">Date To be Completed</label>
+                                        <input v-model="newGoal.completion_date" :disabled="isFormReadOnly" type="date" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2.5 px-3 text-sm font-semibold text-gray-700 focus:border-[#37474F] focus:ring-2 focus:ring-[#37474F]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" />
                                     </div>
                                 </div>
                             </div>
@@ -695,632 +2026,760 @@ const handleFileUpload = async (event, qIndex) => {
 
                     <!-- Right Column: SMART Criteria Checklist -->
                     <div class="lg:col-span-1">
-                        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden sticky top-6">
-                            <div class="bg-gray-50/50 px-6 py-4 border-b border-gray-100">
-                                <h4 class="font-bold text-gray-700 text-sm uppercase tracking-wide">My Goal Is...</h4>
-                                <p class="text-xs text-gray-500 mt-0.5">Check (✓) if criteria is met</p>
+                        <div class="bg-white overflow-hidden sticky top-6 shadow-md rounded-2xl border border-gray-200">
+                            <!-- Table Header -->
+                            <div class="bg-[#1A237E] px-4 py-3">
+                                <div class="flex items-center justify-between">
+                                    <h4 class="font-bold text-sm text-white uppercase tracking-wide">MY GOAL IS...</h4>
+                                    <span class="text-[10px] font-bold text-indigo-200 uppercase tracking-wider">Check (✓)</span>
+                                </div>
                             </div>
-                            <div class="p-4 space-y-3">
-                                <label v-for="criteria in smartLabels" :key="criteria.key" 
-                                    class="flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50"
-                                    :class="newGoal.smart_criteria[criteria.key] ? criteria.color + ' border-current shadow-sm' : 'bg-white border-gray-100 text-gray-500 hover:border-gray-300'">
-                                    <span class="font-bold text-sm" :class="newGoal.smart_criteria[criteria.key] ? '' : 'text-gray-500'">{{ criteria.label }}</span>
+
+                            <!-- Criteria Rows -->
+                            <div class="divide-y divide-gray-100">
+                                <div v-for="(criteria, cIndex) in smartLabels" :key="criteria.key" 
+                                    class="flex items-center justify-between px-4 py-3.5 transition-all duration-200"
+                                    :class="newGoal.smart_criteria[criteria.key] ? 'bg-green-50/50' : 'hover:bg-gray-50'">
+                                    
+                                    <!-- Criteria Name -->
+                                    <span class="font-semibold text-sm text-gray-700">{{ criteria.label }}</span>
+                                    
+                                    <!-- Colored Letter Badge + Checkbox -->
                                     <div class="flex items-center gap-3">
-                                        <span class="w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs"
-                                            :class="newGoal.smart_criteria[criteria.key] ? 'bg-white/60' : 'bg-gray-100 text-gray-400'">
+                                        <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm shrink-0"
+                                            :class="criteria.badgeColor + ' text-white'">
                                             {{ criteria.short }}
-                                        </span>
-                                        <input type="checkbox" v-model="newGoal.smart_criteria[criteria.key]" class="hidden" />
-                                        <div class="w-5 h-5 rounded border-2 flex items-center justify-center transition-all"
-                                             :class="newGoal.smart_criteria[criteria.key] ? 'bg-current border-transparent' : 'border-gray-300 bg-white'">
-                                            <i class="pi pi-check text-[10px] text-white" v-show="newGoal.smart_criteria[criteria.key]"></i>
+                                        </div>
+                                        <label class="relative cursor-pointer">
+                                            <input type="checkbox" v-model="newGoal.smart_criteria[criteria.key]" :disabled="isFormReadOnly" 
+                                                class="w-5 h-5 rounded-2xl border-2 border-gray-100 text-[#1A237E] focus:ring-[#1A237E] focus:ring-2 cursor-pointer accent-[#1A237E] disabled:cursor-not-allowed" />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Score Display -->
+                            <div class="border-t-2 border-gray-200 bg-[#F5F5F5] px-4 py-3">
+                                <div class="flex items-center gap-3">
+                                    <!-- Circular Score -->
+                                    <div class="relative w-12 h-12 shrink-0">
+                                        <svg class="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
+                                            <circle cx="24" cy="24" r="20" fill="none" stroke-width="3" class="stroke-gray-200" />
+                                            <circle cx="24" cy="24" r="20" fill="none" stroke-width="3" stroke-linecap="round"
+                                                class="transition-all duration-1000"
+                                                :class="getSmartScore(newGoal) === 5 ? 'stroke-[#2E7D32]' : getSmartScore(newGoal) >= 3 ? 'stroke-[#1565C0]' : 'stroke-gray-400'"
+                                                :stroke-dasharray="125.6"
+                                                :stroke-dashoffset="125.6 - (125.6 * getSmartScore(newGoal) / 5)" />
+                                        </svg>
+                                        <div class="absolute inset-0 flex items-center justify-center">
+                                            <span class="text-sm font-black" :class="getSmartScore(newGoal) === 5 ? 'text-[#2E7D32]' : getSmartScore(newGoal) >= 3 ? 'text-[#1565C0]' : 'text-gray-400'">
+                                                {{ getSmartScore(newGoal) }}/5
+                                            </span>
                                         </div>
                                     </div>
-                                </label>
+                                    
+                                    <!-- Score Details -->
+                                    <div class="flex-1">
+                                        <div class="text-[10px] font-bold uppercase tracking-wide mb-1"
+                                            :class="getSmartScore(newGoal) === 5 ? 'text-[#2E7D32]' : getSmartScore(newGoal) >= 3 ? 'text-[#1565C0]' : 'text-gray-500'">
+                                            {{ getSmartScore(newGoal) === 5 ? 'ALL CRITERIA MET' : getSmartScore(newGoal) >= 3 ? 'GOOD PROGRESS' : 'NEEDS WORK' }}
+                                        </div>
+                                            <div v-for="n in 5" :key="n" class="h-2 flex-1 rounded-full bg-gray-200"
+                                                :class="n <= getSmartScore(newGoal) 
+                                                    ? (getSmartScore(newGoal) === 5 ? 'bg-[#2E7D32]' : 'bg-[#1565C0]') 
+                                                    : 'bg-gray-200'">
+                                            </div>
+                                        <p class="text-[9px] text-gray-500 font-semibold mt-1 uppercase tracking-wider">{{ getSmartScore(newGoal) }} of 5 criteria met</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- STEP 2: Quarterly Tracking -->
-            <div v-if="currentStep === 2" class="space-y-6 animate-fadeIn">
-                <!-- Goal Summary -->
-                <div class="relative rounded-2xl p-8 shadow-2xl shadow-purple-200 text-white overflow-hidden"
-                     style="background: linear-gradient(135deg, #6b21a8 0%, #312e81 100%) !important;">
-                    <div class="absolute top-0 right-0 p-4 opacity-10">
-                        <i class="pi pi-flag text-9xl"></i>
-                    </div>
-                    <div class="absolute inset-0 bg-white/5 backdrop-blur-sm"></div>
-                    
-                    <div class="relative z-10">
-                        <div class="flex flex-col md:flex-row gap-6 justify-between items-start">
-                             <div class="flex-1">
-                                <h3 class="font-bold text-3xl mb-2 text-white/90">{{ newGoal.title || 'Untitled Goal' }}</h3>
-                                <p class="text-purple-100 text-lg leading-relaxed mb-6">{{ newGoal.description[0] || 'No description provided' }}</p>
+            <!-- STEP 2: Quarterly Tracking with Multiple Uploads -->
+            <div v-else-if="currentStep === 2" :key="2" class="space-y-5">
+
+                <!-- Removed Start & End Date Summary block as requested -->
+
+                <!-- Quarterly Tracking Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                     <div v-for="(quarter, index) in newGoal.quarterly_tracking" :key="index" 
+                        class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-full hover:shadow-md transition-all duration-300">
+                        <!-- Quarter Header - Colored -->
+                        <div class="py-3 px-5 flex justify-between items-center"
+                            :class="index === 0 ? 'bg-[#1A237E] text-white' : index === 1 ? 'bg-[#1A237E] text-white' : index === 2 ? 'bg-[#1A237E] text-white' : 'bg-[#1A237E] text-white'">
+                            <h5 class="font-bold text-lg tracking-wide">
+                                {{ quarter.quarter ? quarter.quarter.toUpperCase() : 'Q'+(index+1) }}
+                            </h5>
+                            <i class="pi pi-calendar text-white/70 text-xs"></i>
+                        </div>
+                        <div class="p-4 space-y-3 flex-1 flex flex-col">
+                            <!-- Date Fields (Editable but Auto-populated) -->
+                            <!-- Date Fields (Editable but Auto-populated) -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-bold text-[#1A237E] uppercase tracking-wider mb-1 block">Start Date</label>
+                                    <input type="date" v-model="quarter.start_date" :disabled="isFormReadOnly" class="w-full bg-[#F8FAFC] border border-gray-200 rounded-lg py-2 px-2 text-[11px] font-semibold text-gray-700 focus:border-[#1A237E] focus:ring-1 focus:ring-[#1A237E]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" />
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-bold text-[#E65100] uppercase tracking-wider mb-1 block">End Date</label>
+                                    <input type="date" v-model="quarter.end_date" :disabled="isFormReadOnly" class="w-full bg-[#FFF3E0] border border-[#FFE0B2] rounded-lg py-2 px-2 text-[11px] font-semibold text-gray-700 focus:border-[#E65100] focus:ring-1 focus:ring-[#E65100]/10 outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" />
+                                </div>
+                            </div>
+                            
+                            <!-- Target Measure -->
+                            <div class="relative flex-1 flex flex-col">
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-[9px] font-bold text-gray-500 uppercase tracking-wider block">Target Measure</label>
+                                    <button v-if="!isFormReadOnly" @click="addExecutionTarget(index)" class="flex items-center gap-1 px-2 py-1 bg-[#E8EAF6] hover:bg-[#1A237E] hover:text-white rounded-lg transition-colors text-[#1A237E]">
+                                        <i class="pi pi-plus text-[8px]"></i>
+                                        <span class="text-[8px] font-bold uppercase tracking-wider">Add</span>
+                                    </button>
+                                </div>
+                                <div class="space-y-2 mb-3">
+                                    <div v-for="(measure, mIndex) in quarter.target_measures" :key="'m'+mIndex" class="flex items-start gap-2 group/measure">
+                                        <textarea v-model="quarter.target_measures[mIndex]" :disabled="isFormReadOnly" rows="2" class="flex-1 bg-[#F8FAFC] border border-gray-200 rounded-lg py-2 px-3 text-sm font-medium text-gray-700 focus:border-[#1A237E] focus:ring-1 focus:ring-[#1A237E]/10 outline-none resize-none transition-all disabled:opacity-75 disabled:cursor-not-allowed" placeholder="Target measure..."></textarea>
+                                        <button @click="removeExecutionTarget(index, mIndex)" v-if="!isFormReadOnly && quarter.target_measures.length > 1" class="w-7 h-7 rounded-lg bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-all opacity-0 group-hover/measure:opacity-100 shrink-0 mt-1"><i class="pi pi-times text-[10px]"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Evidence -->
+                            <div class="flex-1 flex flex-col justify-end">
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Evidence</label>
+                                    <span class="text-[9px] font-bold text-[#1A237E] bg-[#E8EAF6] px-2 py-0.5 rounded-full">{{ quarter.attachments?.length || 0 }} FILES</span>
+                                </div>
                                 
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="text-xs font-bold text-purple-300 uppercase tracking-wider mr-2">SMART Status:</span>
-                                    <span v-for="criteria in smartLabels" :key="criteria.key"
-                                        :class="[newGoal.smart_criteria[criteria.key] ? 'bg-white text-purple-800' : 'bg-white/10 text-white/40']"
-                                        class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black transition-all">
-                                        {{ criteria.short }}
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="bg-white/10 rounded-xl p-4 backdrop-blur-md border border-white/10 min-w-[200px]">
-                                <div class="text-center">
-                                    <p class="text-xs text-purple-200 uppercase font-bold tracking-widest mb-1">Target</p>
-                                    <p class="text-4xl font-black">{{ newGoal.target }}</p>
-                                    <p class="text-sm font-bold mt-1 text-purple-200">{{ newGoal.completion_date ? new Date(newGoal.completion_date).toLocaleDateString() : 'No date set' }}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Quarterly Tracking Table -->
-                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div class="bg-gradient-to-r from-gray-50 to-white px-8 py-6 border-b border-gray-100 flex items-center justify-between">
-                        <div>
-                            <h4 class="font-bold text-gray-800 text-lg flex items-center gap-2">
-                                <i class="pi pi-calendar text-purple-600 bg-purple-50 p-2 rounded-lg"></i> 
-                                Quarterly Milestones
-                            </h4>
-                            <p class="text-sm text-gray-500 mt-1 pl-10">Define targets and evidence for each quarter (Cumulative Growth)</p>
-                        </div>
-                    </div>
-                    
-                    <div class="p-8 bg-gray-50/50">
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                            <!-- Q1 -->
-                            <div v-for="(quarter, index) in newGoal.quarterly_tracking" :key="index" 
-                                class="rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 bg-white group hover:-translate-y-1">
-                                <div :class="quarterColors['q'+(index+1)].header" class="py-4 px-4 font-bold text-center border-b border-white/20 relative overflow-hidden">
-                                     <div class="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity bg-white"></div>
-                                     <span class="text-lg tracking-widest">{{ quarter.quarter ? quarter.quarter.toUpperCase() : 'Q'+(index+1) }}</span>
-                                </div>
-                                <div class="p-5 space-y-4">
-                                    <div>
-                                        <label class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
-                                            <i class="pi pi-calendar text-gray-300"></i> Date
-                                        </label>
-                                        <input v-model="quarter.date" type="date" 
-                                            class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 outline-none transition-all" />
-                                    </div>
-                                    <div>
-                                        <label class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
-                                            <i class="pi pi-bullseye text-gray-300"></i> Target
-                                        </label>
-                                        <div class="relative">
-                                            <textarea v-model="quarter.target_measure" rows="3"
-                                                class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 outline-none transition-all resize-none" 
-                                                placeholder="Target..."></textarea>
+                                <div class="space-y-2 mb-3 min-h-[40px]">
+                                    <div v-for="(file, fIndex) in quarter.attachments" :key="fIndex" class="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100 group/file hover:bg-white hover:shadow-sm transition-all">
+                                        <div class="flex items-center gap-2 overflow-hidden">
+                                            <div class="w-7 h-7 rounded-lg bg-[#E8EAF6] text-[#1A237E] flex items-center justify-center">
+                                                <i class="pi pi-file text-xs"></i>
+                                            </div>
+                                            <div class="overflow-hidden">
+                                                <p class="truncate max-w-[80px] text-[10px] font-bold text-gray-700">{{ file.file_name || file.name }}</p>
+                                            </div>
                                         </div>
+                                        <button v-if="!isFormReadOnly" @click="removeAttachment(index, fIndex)" class="w-5 h-5 rounded-full flex items-center justify-center text-gray-300 hover:text-white hover:bg-red-500 transition-all">
+                                            <i class="pi pi-times text-[7px]"></i>
+                                        </button>
                                     </div>
-                                    <div>
-                                        <label class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
-                                            <i class="pi pi-file text-gray-300"></i> Evidence
-                                        </label>
-                                        <div class="relative">
-                                            <textarea v-model="quarter.evidence" rows="3"
-                                                class="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 outline-none transition-all resize-none" 
-                                                placeholder="Evidence..."></textarea>
+                                    <div v-if="uploading[index]" class="mt-4 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100/50">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <span class="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Uploading Evidence...</span>
+                                            <span class="text-[9px] font-black text-indigo-600">{{ uploadProgress[index] || 0 }}%</span>
                                         </div>
-                                    </div>
-                                    <!-- Attachment Section -->
-                                    <div class="pt-2 border-t border-gray-50">
-                                        <div v-if="quarter.attachment" class="flex items-center gap-2 p-2 bg-blue-50 border border-blue-100 rounded-lg group/file">
-                                            <i class="pi pi-file-pdf text-blue-500"></i>
-                                            <a :href="quarter.attachment.url" target="_blank" class="text-xs text-blue-600 hover:underline truncate flex-1 font-medium">
-                                                {{ quarter.attachment.name }}
-                                            </a>
-                                            <button @click="quarter.attachment = null" class="text-gray-400 hover:text-red-500">
-                                                <i class="pi pi-times text-xs"></i>
-                                            </button>
-                                        </div>
-
-                                        <div v-else class="relative">
-                                            <label class="flex items-center justify-center gap-2 w-full p-2 bg-gray-50 hover:bg-purple-50 border border-dashed border-gray-300 hover:border-purple-300 rounded-lg cursor-pointer transition-all group/upload">
-                                                <i class="pi pi-paperclip text-gray-400 group-hover/upload:text-purple-500"></i>
-                                                <span class="text-xs text-gray-500 group-hover/upload:text-purple-600 font-medium">Attach File</span>
-                                                <input type="file" @change="handleFileUpload($event, index)" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png" />
-                                            </label>
-                                            <div v-if="uploading[index]" class="absolute inset-y-0 right-0 flex items-center pr-3">
-                                                <i class="pi pi-spin pi-spinner text-purple-600"></i>
+                                        <div class="h-1.5 w-full bg-indigo-100 rounded-full overflow-hidden shadow-inner">
+                                            <div class="h-full bg-indigo-600 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(79,70,229,0.4)]"
+                                                :style="{ width: (uploadProgress[index] || 0) + '%' }">
                                             </div>
                                         </div>
                                     </div>
+
+                                    <div v-if="!quarter.attachments?.length && !uploading[index]" class="text-[9px] text-gray-400 font-semibold uppercase tracking-wider py-4 text-center border-2 border-dashed border-gray-100 rounded-lg flex flex-col items-center gap-1 bg-gray-50/20">
+                                        <i class="pi pi-cloud-upload text-sm opacity-30 text-[#1A237E]"></i>
+                                        No files yet
+                                    </div>
                                 </div>
+ 
+                                <template v-if="!isFormReadOnly">
+                                    <input type="file" multiple @change="handleFileUpload($event, index)" class="hidden" :id="'file-upload-'+index">
+                                    <label :for="'file-upload-'+index" class="w-full flex items-center justify-center gap-2 py-2 bg-[#E8EAF6] hover:bg-[#1A237E] hover:text-white rounded-lg cursor-pointer transition-all text-black text-xs font-bold uppercase tracking-wider">
+                                        <i class="pi pi-plus text-[10px]"></i>
+                                        Add Evidence
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- STEP 3: Performance Key Competencies (Self-Rating ONLY) -->
+            <div v-else-if="currentStep === 3" :key="3" class="space-y-6">
+                <!-- Competencies Table Card -->
+                <div class="bg-white rounded-3xl border border-gray-200 shadow-md overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-100 bg-slate-50/80 flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-black text-slate-800 text-base flex items-center gap-2">
+                                <i class="pi pi-chart-bar text-[#1A237E]"></i> Performance Key Competencies &amp; Self-Rating
+                            </h3>
+                            <p class="text-gray-400 text-[10px] uppercase tracking-normal font-bold">
+                                Annual performance evaluation (5 Key Areas &bull; Self-Evaluation Mode)
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white shadow-xs flex items-center gap-2">
+                                <span class="text-[10px] font-black uppercase text-slate-400">Total Weight:</span>
+                                <span class="text-xs font-black text-emerald-700">100%</span>
+                            </div>
+                            <div class="px-3.5 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 shadow-xs flex items-center gap-2">
+                                <span class="text-[10px] font-black uppercase text-indigo-700">Self Score:</span>
+                                <span class="text-base font-black text-indigo-700">{{ selfAppraisalOverallRating }}</span>
+                                <span class="text-[10px] font-bold text-indigo-300">/ 5.00</span>
+                                <span class="text-xs font-black text-indigo-800 bg-white border border-indigo-200 px-2 py-0.5 rounded-md">
+                                    {{ selfAppraisalOverallPercentage }}%
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50/90 border-b border-gray-100">
+                                    <th class="px-4 py-3 text-left text-[9px] font-black text-gray-400 uppercase tracking-normal w-12">#</th>
+                                    <th class="px-4 py-3 text-left text-[9px] font-black text-gray-400 uppercase tracking-normal">Competency &amp; Specific Criteria</th>
+                                    <th class="px-4 py-3 text-center text-[9px] font-black text-gray-400 uppercase tracking-normal w-24">Weight (%)</th>
+                                    <th class="px-4 py-3 text-center text-[9px] font-black text-indigo-600 uppercase tracking-normal w-32 bg-indigo-50/50">Self Rating</th>
+                                    <th class="px-4 py-3 text-center text-[9px] font-black text-slate-400 uppercase tracking-normal w-32 bg-slate-50/60">Manager Rating</th>
+                                    <th class="px-4 py-3 text-center text-[9px] font-black text-gray-400 uppercase tracking-normal w-24">W. Score</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-for="(comp, index) in newGoal.appraisal_data.competencies" :key="comp.id || index" class="hover:bg-indigo-50/10 transition-colors">
+                                    <td class="px-4 py-3.5 font-black text-gray-300 text-xs align-top pt-4">0{{ index + 1 }}</td>
+                                    <td class="px-4 py-3">
+                                        <div class="font-black text-slate-800 text-sm mb-1 tracking-tight">{{ comp.title }}</div>
+                                        <div v-if="comp.descriptions && comp.descriptions.length" class="space-y-0.5">
+                                            <p v-for="(desc, dIdx) in comp.descriptions" :key="dIdx" class="text-[11px] text-gray-500 leading-snug font-medium">{{ desc }}</p>
+                                        </div>
+                                        <p v-else-if="comp.descriptionText" class="text-[11px] text-gray-500 leading-snug font-medium whitespace-pre-line">{{ comp.descriptionText }}</p>
+                                    </td>
+                                    <td class="px-4 py-3 text-center align-middle">
+                                        <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-lg text-xs font-black text-gray-700 bg-slate-100 border border-slate-200">
+                                            {{ comp.weight || 20 }}%
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 bg-indigo-50/30 align-middle">
+                                        <!-- SELF RATING: Enabled for employee -->
+                                        <select v-model.number="comp.selfRating" :disabled="isFormReadOnly" class="prof-input !py-1.5 !px-2 w-full !text-center font-black text-xs !rounded-lg border-indigo-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600/20">
+                                            <option :value="0">— Select —</option>
+                                            <option :value="1">1 - Unsatisfactory</option>
+                                            <option :value="2">2 - Partly Meeting</option>
+                                            <option :value="3">3 - Meeting Expectations</option>
+                                            <option :value="4">4 - Exceeding Expectations</option>
+                                            <option :value="5">5 - Outstanding</option>
+                                        </select>
+                                    </td>
+                                    <td class="px-4 py-3 bg-slate-50/60 align-middle text-center">
+                                        <!-- MANAGER RATING: Locked showing '--' (as requested) -->
+                                        <div class="flex items-center justify-center">
+                                            <div class="py-1.5 px-4 bg-slate-100/90 rounded-lg border border-slate-200 text-slate-400 font-black text-xs tracking-widest cursor-not-allowed select-none" title="Manager Rating is provided by your Line Manager during review">
+                                                <span v-if="comp.managerRating && comp.managerRating > 0">{{ comp.managerRating }}</span>
+                                                <span v-else>--</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-center font-black text-indigo-700 text-sm align-middle">
+                                        {{ ((parseFloat(comp.selfRating || 0) * parseFloat(comp.weight || 20)) / 100).toFixed(2) }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="bg-gray-50/90 border-t border-gray-100">
+                                <tr>
+                                    <td colspan="2" class="px-6 py-4 font-black text-gray-600 tracking-normal text-xs uppercase">
+                                        Self-Assessment Evaluation Summary
+                                    </td>
+                                    <td class="px-4 py-4 text-center font-black text-xs text-emerald-700">100%</td>
+                                    <td colspan="2" class="px-4 py-4 text-center font-black text-gray-400 uppercase tracking-wider text-[9px]">
+                                        TOTAL WEIGHTED SELF SCORE
+                                    </td>
+                                    <td class="px-4 py-4 text-center">
+                                        <div class="flex items-center justify-center gap-1.5">
+                                            <span class="font-black text-indigo-700 text-xl">{{ selfAppraisalOverallRating }}</span>
+                                            <span class="text-xs font-bold text-indigo-300">/ 5.00</span>
+                                            <span class="text-[11px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                                                {{ selfAppraisalOverallPercentage }}%
+                                            </span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Self Feedback & Comments Row -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div class="p-5 bg-white rounded-3xl border border-gray-200 shadow-sm space-y-2">
+                        <label class="text-[10px] font-black text-[#1A237E] uppercase tracking-wider block">What Impressed Most / Key Achievements</label>
+                        <textarea v-model="newGoal.appraisal_data.impressedMost" :disabled="isFormReadOnly" rows="3"
+                            class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl p-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-[#1A237E] outline-none resize-none transition-all"
+                            placeholder="Detail projects, initiatives or milestones achieved successfully..."></textarea>
+                    </div>
+                    <div class="p-5 bg-white rounded-3xl border border-gray-200 shadow-sm space-y-2">
+                        <label class="text-[10px] font-black text-[#1A237E] uppercase tracking-wider block">What Impressed Least / Challenges Overcome</label>
+                        <textarea v-model="newGoal.appraisal_data.impressedLeast" :disabled="isFormReadOnly" rows="3"
+                            class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl p-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-[#1A237E] outline-none resize-none transition-all"
+                            placeholder="Detail obstacles encountered and lessons learned..."></textarea>
+                    </div>
+                </div>
+
+                <!-- General Comments & Sign-off Box -->
+                <div class="p-6 bg-white rounded-3xl border border-gray-200 shadow-sm space-y-4">
+                    <div>
+                        <label class="text-[10px] font-black text-[#1A237E] uppercase tracking-wider block mb-1">Employee Self-Comments &amp; Development Goals</label>
+                        <textarea v-model="newGoal.appraisal_data.comments" :disabled="isFormReadOnly" rows="3"
+                            class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl p-3 text-sm font-medium text-slate-700 focus:bg-white focus:border-[#1A237E] outline-none resize-none transition-all"
+                            placeholder="Any personal comments, skill areas for growth, or requests for training..."></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-gray-100">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Candidate Sign-Off</label>
+                            <input v-model="newGoal.appraisal_data.candidate_signature_name" :disabled="isFormReadOnly" type="text"
+                                class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-bold text-gray-800 focus:bg-white focus:border-[#1A237E] outline-none"
+                                placeholder="Enter Full Name" />
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Date</label>
+                            <input v-model="newGoal.appraisal_data.signature_date" :disabled="isFormReadOnly" type="date"
+                                class="w-full bg-[#F8FAFC] border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-bold text-gray-700 focus:bg-white focus:border-[#1A237E] outline-none" />
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Assigned Line Manager</label>
+                            <div class="py-2.5 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-700">
+                                {{ newGoal.manager_name || 'Line Manager' }}
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+            </Transition>
 
-            <!-- Footer Navigation -->
-            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-                <button v-if="currentStep > 1" @click="prevStep" 
-                    class="px-6 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-bold hover:border-gray-800 hover:text-gray-900 transition-all duration-200 flex items-center gap-2">
-                    <i class="pi pi-arrow-left"></i> 
-                    Go Back
-                </button>
-                <button v-else @click="cancelCreate" 
-                    class="px-6 py-3 rounded-xl bg-white border-2 border-gray-200 text-gray-600 font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 flex items-center gap-2 shadow-sm">
-                    Cancel Goal
-                </button>
-
-                <div class="flex items-center gap-4">
-                    <div class="flex items-center gap-3">
-                    <button v-if="currentStep < totalSteps" @click="nextStep" :disabled="!canProceedToStep2" class="px-8 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-bold shadow-xl shadow-purple-200 hover:shadow-2xl hover:shadow-purple-300 transition-all transform hover:-translate-y-1 disabled:opacity-50 disabled:transform-none disabled:shadow-none min-w-[200px] flex items-center justify-center gap-3 text-lg">
-                         <span>Next Step</span>
-                         <i class="pi pi-arrow-right"></i>
+            <!-- Navigation Footer -->
+            <div class="mt-8 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-indigo-900/5">
+                <div class="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
+                    <button v-if="currentStep > 1" @click="prevStep" 
+                        class="prof-button !bg-white !text-gray-600 !border !border-gray-200 !rounded-3xl !py-3.5 px-8 hover:shadow-md transition-all">
+                        <i class="pi pi-arrow-left mr-2 font-bold text-xs"></i> 
+                        Previous Step
                     </button>
-                    <button v-else @click="addGoal" :disabled="saving" class="px-8 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-bold shadow-xl shadow-emerald-200 hover:shadow-2xl hover:shadow-emerald-300 transition-all transform hover:-translate-y-1 disabled:opacity-70 disabled:transform-none disabled:shadow-none min-w-[220px] flex items-center justify-center gap-3 text-lg">
-                        <i v-if="saving" class="pi pi-spin pi-spinner"></i>
-                        <i v-else class="pi pi-check"></i>
-                        {{ saving ? 'Saving...' : 'Complete & Save' }}
+                    <button v-else @click="cancelCreate" 
+                        class="prof-button !bg-white !text-gray-400 !border !border-gray-100 !rounded-3xl !py-3.5 px-8 hover:text-red-500 hover:shadow-sm transition-all text-xs font-black uppercase tracking-widest leading-none">
+                        Back to List
+                    </button>
+
+                    <button v-if="!isFormReadOnly" @click="addGoal('draft')" :disabled="savingDraft"
+                        class="prof-button !bg-white !text-indigo-600 !border !border-indigo-200/50 !rounded-3xl !py-3.5 px-8 shadow-sm hover:shadow-md transition-all">
+                        <i class="pi pi-save mr-2 font-bold text-xs"></i> 
+                        {{ savingDraft ? 'Saving...' : 'Save Draft' }}
                     </button>
                 </div>
+
+                <div class="flex items-center gap-4 w-full sm:w-auto justify-end">
+                    <button v-if="currentStep < totalSteps" @click="nextStep" 
+                        class="prof-button !bg-indigo-600 !text-white !rounded-3xl !py-3.5 px-8 shadow-xl shadow-indigo-600/30 hover:scale-[1.02] active:scale-95">
+                        Next Stage
+                        <i class="pi pi-arrow-right ml-3 text-xs font-bold"></i>
+                    </button>
+                    
+                    <!-- Employee Final Submission Button in Step 3 -->
+                    <template v-else-if="isEmployee">
+                        <button v-if="!isFormReadOnly" @click="submitGoalForReview" :disabled="saving"
+                            class="prof-button !bg-emerald-600 hover:!bg-emerald-700 !text-white !rounded-3xl !py-3.5 px-8 shadow-xl shadow-emerald-600/30 hover:scale-[1.02] active:scale-95">
+                            <i v-if="saving" class="pi pi-spin pi-spinner mr-3"></i>
+                            <i v-else class="pi pi-send mr-3 font-bold text-xs"></i>
+                            {{ saving ? 'Submitting...' : 'Sign Off & Submit to Line Manager' }}
+                        </button>
+                        <div v-else class="px-6 py-3 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase tracking-wider border border-slate-200">
+                            <i class="pi pi-lock mr-2"></i> Submission Locked
+                        </div>
+                    </template>
+
+                    <!-- Manager Submission Button -->
+                    <button v-else-if="!isFormReadOnly" @click="addGoal('in_progress')" :disabled="saving"
+                        class="prof-button !bg-teal-600 !text-white !rounded-3xl !py-3.5 px-8 shadow-xl shadow-teal-600/30 hover:scale-[1.02] active:scale-95">
+                        <i v-if="saving" class="pi pi-spin pi-spinner mr-3"></i>
+                        <i v-else class="pi pi-check-circle mr-3 font-bold text-xs"></i>
+                        {{ saving ? 'Submitting...' : 'Save & Publish Goal' }}
+                    </button>
                 </div>
             </div>
         </template>
 
-        <!-- Goal Detail Modal -->
-        <transition name="modal">
-            <div v-if="showDetailModal && selectedGoal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" @click.self="showDetailModal = false">
-                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden">
-                    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                        <h3 class="font-bold text-xl text-gray-800">{{ selectedGoal.title }}</h3>
-                        <button @click="showDetailModal = false" class="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-lg">
-                            <i class="pi pi-times"></i>
-                        </button>
+        <!-- ASSIGN GOAL & APPRAISAL MODAL (FOR MANAGERS) -->
+        <Dialog v-model:visible="showAssignModal" :modal="true" :showHeader="false"
+            class="!rounded-3xl !overflow-hidden !border-none !shadow-2xl"
+            :style="{ width: '92vw', maxWidth: '750px' }"
+            :contentStyle="{ padding: '0', borderRadius: '1.5rem', overflow: 'hidden' }">
+            <div class="bg-white rounded-3xl overflow-hidden">
+                <!-- Modal Header -->
+                <div class="bg-[#1A237E] p-6 text-white flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white">
+                            <i class="pi pi-user-plus text-base"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-black tracking-tight">Assign Goals &amp; Appraisal Template</h3>
+                            <p class="text-xs text-indigo-200 font-medium">Provision portal access and set competency evaluation weights.</p>
+                        </div>
                     </div>
-                    
-                    <div class="p-6 overflow-y-auto max-h-[calc(85vh-120px)] space-y-5 modal-content">
-                        <!-- SMART Score -->
-                        <div class="flex items-center gap-2 p-4 bg-gray-50 rounded-xl">
-                            <span class="text-sm font-bold text-gray-600">SMART Score:</span>
-                            <div class="flex gap-1">
-                                <span v-for="criteria in smartLabels" :key="criteria.key"
-                                    :class="[selectedGoal.smart_criteria?.[criteria.key] ? criteria.color : 'bg-gray-100 text-gray-400 border-gray-200']"
-                                    class="w-8 h-8 rounded-md flex items-center justify-center text-sm font-black border">
-                                    {{ criteria.label.charAt(0) }}
-                                </span>
-                            </div>
-                            <span class="ml-auto font-bold text-primary">{{ getSmartScore(selectedGoal) }}/5</span>
-                        </div>
+                    <button @click="showAssignModal = false" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all cursor-pointer">
+                        <i class="pi pi-times text-xs"></i>
+                    </button>
+                </div>
 
-                        <!-- Description -->
-                        <div v-if="selectedGoal.description">
-                            <h4 class="font-bold text-gray-700 mb-2">Description / Objectives</h4>
-                            <ul class="list-disc list-inside text-gray-600 space-y-1">
-                                <li v-for="(item, i) in parseList(selectedGoal.description)" :key="i">{{ item }}</li>
-                            </ul>
-                        </div>
+                <!-- Modal Body -->
+                <div class="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                    <!-- Assignment Target Toggle -->
+                    <div>
+                        <label class="text-xs font-black text-slate-700 uppercase tracking-wide block mb-2">Assignment Scope</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <label class="flex items-center gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition-all"
+                                :class="assignForm.assign_type === 'single' ? 'border-[#1A237E] bg-indigo-50/50 shadow-xs' : 'border-slate-200 hover:border-slate-300'">
+                                <input type="radio" v-model="assignForm.assign_type" value="single" class="accent-[#1A237E] w-4 h-4" />
+                                <div>
+                                    <p class="text-xs font-black text-slate-800 uppercase">Single Employee</p>
+                                    <p class="text-[10px] text-slate-500 font-medium">Select a specific team member</p>
+                                </div>
+                            </label>
 
-                        <!-- Purposes -->
-                        <div v-if="selectedGoal.purposes" class="p-4 bg-green-50 rounded-xl border border-green-100">
-                            <h4 class="font-bold text-green-800 mb-2 flex items-center gap-2">
-                                <i class="pi pi-question-circle"></i> Purposes
-                            </h4>
-                            <ul class="list-disc list-inside text-green-700 space-y-1">
-                                <li v-for="(item, i) in parseList(selectedGoal.purposes)" :key="i">{{ item }}</li>
-                            </ul>
+                            <label class="flex items-center gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition-all"
+                                :class="assignForm.assign_type === 'all_team' ? 'border-[#1A237E] bg-indigo-50/50 shadow-xs' : 'border-slate-200 hover:border-slate-300'">
+                                <input type="radio" v-model="assignForm.assign_type" value="all_team" class="accent-[#1A237E] w-4 h-4" />
+                                <div>
+                                    <p class="text-xs font-black text-slate-800 uppercase">All Team Members</p>
+                                    <p class="text-[10px] text-slate-500 font-medium">Bulk assign to entire team</p>
+                                </div>
+                            </label>
                         </div>
+                    </div>
 
-                        <!-- Challenges -->
-                        <div v-if="selectedGoal.challenges" class="p-4 bg-orange-50 rounded-xl border border-orange-100">
-                            <h4 class="font-bold text-orange-800 mb-2 flex items-center gap-2">
-                                <i class="pi pi-exclamation-triangle"></i> Challenges
-                            </h4>
-                             <ul class="list-disc list-inside text-orange-700 space-y-1">
-                                <li v-for="(item, i) in parseList(selectedGoal.challenges)" :key="i">{{ item }}</li>
-                            </ul>
-                        </div>
-
-                        <!-- Quarterly Tracking -->
-                        <div v-if="selectedGoal.quarterly_tracking">
-                            <h4 class="font-bold text-gray-700 mb-3">Quarterly Tracking</h4>
-                            <div class="grid grid-cols-4 gap-3">
-                                <div v-for="(data, q) in selectedGoal.quarterly_tracking" :key="q" class="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                    <span class="text-xs font-bold uppercase text-gray-500">{{ q.toUpperCase() }}</span>
-                                    <div class="mt-2 text-sm space-y-1">
-                                        <p><strong>Date:</strong> {{ data.date || '-' }}</p>
-                                        <p><strong>Target:</strong> {{ data.target_measure || '-' }}</p>
-                                        <p><strong>Evidence:</strong> {{ data.evidence || '-' }}</p>
+                    <!-- Single Employee Selector -->
+                    <div v-if="assignForm.assign_type === 'single'" class="space-y-2">
+                        <label class="text-xs font-black text-slate-700 uppercase tracking-wide block">Select Employee</label>
+                        <AutoComplete
+                            v-model="assignForm.selected_candidate"
+                            :suggestions="filteredMasterEmployees"
+                            @complete="searchCandidate"
+                            optionLabel="full_string"
+                            placeholder="Type employee name or ID..."
+                            inputClass="!w-full !bg-[#F8FAFC] !border !border-gray-200 !rounded-xl !py-2.5 !px-3.5 !text-sm !font-semibold transition-all focus:!bg-white focus:!border-[#1A237E]"
+                            class="w-full"
+                        >
+                            <template #item="slotProps">
+                                <div class="flex items-center gap-3 py-1 px-1">
+                                    <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs">
+                                        {{ slotProps.item.name.charAt(0).toUpperCase() }}
                                     </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="font-bold text-slate-800 text-xs truncate">{{ slotProps.item.name }}</div>
+                                        <div class="text-[10px] font-medium text-slate-400">ID: {{ slotProps.item.employee_code }} &bull; {{ slotProps.item.department }}</div>
+                                    </div>
+                                </div>
+                            </template>
+                        </AutoComplete>
+
+                        <div v-if="assignForm.selected_candidate" class="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 flex items-center justify-between text-xs">
+                            <div>
+                                <span class="font-black text-indigo-900">{{ assignForm.selected_candidate.name }}</span>
+                                <span class="text-indigo-600 font-semibold ml-2">({{ assignForm.selected_candidate.employee_code }})</span>
+                            </div>
+                            <span class="text-[10px] font-black uppercase text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
+                                {{ assignForm.selected_candidate.department }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- All Team Notice -->
+                    <div v-else class="p-4 bg-blue-50/80 rounded-2xl border border-blue-200 flex items-start gap-3">
+                        <i class="pi pi-users text-blue-600 mt-0.5"></i>
+                        <div class="text-xs text-blue-800">
+                            <p class="font-bold">Team-wide Bulk Assignment:</p>
+                            <p class="text-[11px] text-blue-600 mt-0.5">
+                                A goal and appraisal dossier will be created for all active personnel reporting to you.
+                                User accounts will be automatically provisioned with: <strong>Username: Firstname EmployeeCode</strong>, <strong>Password: Password</strong>.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Goal Meta Row -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-600 uppercase tracking-wider block mb-1">Goal Title</label>
+                            <input v-model="assignForm.title" type="text"
+                                class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:border-[#1A237E] outline-none" />
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-600 uppercase tracking-wider block mb-1">Fiscal Year &amp; Target</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <select v-model="assignForm.year" class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl py-2 px-2 text-xs font-bold text-slate-800 focus:bg-white outline-none">
+                                    <option v-for="y in years" :key="y" :value="y">FY {{ y }}</option>
+                                </select>
+                                <input v-model="assignForm.target" type="number" placeholder="Target %"
+                                    class="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl py-2 px-2 text-xs font-bold text-slate-800 focus:bg-white outline-none" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Competency Weights Customization -->
+                    <div class="space-y-3 pt-2 border-t border-slate-100">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <label class="text-xs font-black text-slate-800 uppercase tracking-wide">Key Competency Weights</label>
+                                <p class="text-[10px] text-slate-400 font-medium">Customize percentage weights (Total must equal 100%)</p>
+                            </div>
+                            <div class="px-2.5 py-1 rounded-xl text-xs font-black border"
+                                :class="assignTotalWeight === 100 ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse'">
+                                Total: {{ assignTotalWeight }}%
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div v-for="(name, idx) in competencyNames" :key="idx"
+                                class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                                <div class="flex items-center gap-2 flex-1 pr-3">
+                                    <span class="w-5 h-5 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">{{ idx + 1 }}</span>
+                                    <span class="text-xs font-bold text-slate-700 truncate">{{ name }}</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <select v-model.number="assignForm.weights[idx]"
+                                        class="bg-white border border-slate-200 rounded-lg py-1 px-2 text-xs font-black text-slate-800 outline-none">
+                                        <option v-for="w in [5, 10, 15, 20, 25, 30, 35, 40, 50, 60]" :key="w" :value="w">{{ w }}%</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Credential Instructions Note -->
+                    <div class="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-[11px] text-amber-800 flex items-center gap-2">
+                        <i class="pi pi-key text-amber-600"></i>
+                        <span>
+                            <strong>Employee Credentials:</strong> Assigned employees can log into the portal using 
+                            <code>[FirstName] [EmployeeCode]</code> (e.g. <code>David H123</code>) with default password <code>Password</code>.
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                    <button @click="showAssignModal = false"
+                        class="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-500 hover:bg-slate-100 transition-all uppercase tracking-wider cursor-pointer">
+                        Cancel
+                    </button>
+                    <button @click="submitAssignGoal" :disabled="assigning || assignTotalWeight !== 100"
+                        class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2 cursor-pointer">
+                        <i v-if="assigning" class="pi pi-spin pi-spinner"></i>
+                        <i v-else class="pi pi-check"></i>
+                        <span>{{ assigning ? 'Assigning...' : 'Assign & Provision Access' }}</span>
+                    </button>
                 </div>
             </div>
-        </transition>
+        </Dialog>
+
+        <Dialog v-model:visible="showDetailModal" :modal="true" :showHeader="false" 
+            class="!p-0 overflow-hidden shadow-2xl border-none" 
+            :style="{ width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh', margin: '0' }"
+            :contentStyle="{ padding: '0', backgroundColor: isDark ? '#0f172a' : '#F1F5F9', display: 'flex' }">
+            
+            <div v-if="selectedGoal" class="flex w-full h-full overflow-hidden">
+                
+                <!-- Document Viewport (Left/Center) -->
+                <div class="flex-1 overflow-y-auto bg-slate-200 p-8 md:p-12 lg:p-20 flex flex-col items-center custom-scrollbar scroll-smooth">
+                    
+                    <div id="protocol-report" class="w-full max-w-[210mm] print:m-0 print:shadow-none print:w-full no-scrollbar">
+                        <PrintableHardCopyDossier :goal="selectedGoal" :employees="masterEmployees" />
+                    </div>
+                </div>
+
+                <!-- Right Sidebar (Controls) -->
+                <div class="w-[380px] bg-slate-900 flex flex-col no-print shrink-0 border-l border-white/5">
+                    
+                    <!-- Close Button -->
+                    <div class="p-4 flex justify-end">
+                        <button @click="showDetailModal = false" class="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all cursor-pointer border-none">
+                            <i class="pi pi-times"></i>
+                        </button>
+                    </div>
+
+                    <div class="p-10 flex-1 overflow-y-auto no-scrollbar">
+                        
+                        <!-- Visual Header -->
+                        <div class="mb-10 text-center">
+                            <div class="inline-flex w-24 h-24 rounded-3xl bg-red-500/10 text-red-500 items-center justify-center mb-6 shadow-2xl shadow-red-500/20 border border-red-500/20">
+                                <i class="pi pi-file-pdf text-4xl"></i>
+                            </div>
+                            <h2 class="text-xl font-black text-white uppercase tracking-tight mb-2">Goal Dossier</h2>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ getDossierId(selectedGoal) }} // VERIFIED DOCUMENT</p>
+                        </div>
+
+                        <!-- Brief Description -->
+                        <div class="mb-10 space-y-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-1 h-4 bg-indigo-500"></div>
+                                <h3 class="text-[10px] font-black text-white uppercase tracking-widest">Quick Brief</h3>
+                            </div>
+                            <div class="p-5 bg-white/5 rounded-2xl border border-white/5 text-[11px] font-medium text-slate-400 leading-relaxed italic">
+                                "{{ selectedGoal.title }}: A strategic goal focused on {{ selectedGoal.category.toLowerCase() }} optimization for the {{ selectedGoal.year }} PMS cycle."
+                            </div>
+                        </div>
+
+                        <!-- Metadata -->
+                        <div class="grid grid-cols-2 gap-4 mb-10">
+                            <div class="p-4 bg-white/5 rounded-xl border border-white/5">
+                                <span class="text-[8px] font-black text-slate-500 uppercase block mb-1">Status</span>
+                                <span class="text-[10px] font-black text-indigo-400 uppercase">{{ selectedGoal.status }}</span>
+                            </div>
+                            <div class="p-4 bg-white/5 rounded-xl border border-white/5">
+                                <span class="text-[8px] font-black text-slate-500 uppercase block mb-1">Target</span>
+                                <span class="text-[10px] font-black text-white uppercase">{{ selectedGoal.target }}%</span>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="space-y-3">
+                            <button @click="downloadPDF" 
+                                class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-xl shadow-indigo-600/20 border-none cursor-pointer">
+                                <i class="pi pi-download"></i> Download PDF
+                            </button>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button @click="downloadSingleCSV(selectedGoal)" 
+                                    class="py-4 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer">
+                                    <i class="pi pi-file-excel"></i> CSV
+                                </button>
+                                <button @click="triggerPrint" 
+                                    class="py-4 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer">
+                                    <i class="pi pi-print"></i> Print
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer Info -->
+                    <div class="p-10 border-t border-white/5">
+                        <div class="flex items-center gap-4">
+                            <img :src="'https://ui-avatars.com/api/?name='+encodeURIComponent(selectedGoal.candidate_name)+'&background=fff&color=1e293b&size=64'" class="w-10 h-10 rounded-xl" />
+                            <div>
+                                <p class="text-[10px] font-black text-white uppercase tracking-tight">{{ selectedGoal.candidate_name }}</p>
+                                <p class="text-[8px] font-bold text-slate-500 uppercase uppercase">{{ selectedGoal.employee_code }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </Dialog>
     </div>
 </template>
 
 <style scoped>
-.form-control {
-    width: 100%;
-    padding: 0.65rem 1rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 0.5rem;
-    font-size: 0.9rem;
-    color: #1e293b;
-    background-color: #ffffff;
-    transition: all 0.2s;
-}
-
-.form-control:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
-}
-
-.form-control::placeholder {
-    color: #94a3b8;
-}
-
-.modal-enter-active, .modal-leave-active {
-    transition: all 0.3s ease;
-}
-.modal-enter-from, .modal-leave-to {
-    opacity: 0;
-    transform: scale(0.95);
-}
-
-.line-clamp-1 {
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-/* Custom scrollbar styling to match theme */
-.modal-content::-webkit-scrollbar {
-    width: 8px;
-}
-
-.modal-content::-webkit-scrollbar-track {
-    background: #f3f0ff;
-    border-radius: 4px;
-}
-
-.modal-content::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #8b5cf6, #7c3aed);
-    border-radius: 4px;
-}
-
-.modal-content::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #7c3aed, #6d28d9);
-}
-
-/* Custom checkbox styling to match theme */
-.smart-checkbox {
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: 0.375rem;
-    border: 2px solid #d1d5db;
-    background-color: #ffffff;
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-    transition: all 0.2s ease;
-    position: relative;
-}
-
-.smart-checkbox:checked {
-    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-    border-color: #7c3aed;
-}
-
-.smart-checkbox:checked::after {
-    content: '';
+.watermark-logo {
     position: absolute;
-    left: 6px;
-    top: 3px;
-    width: 6px;
-    height: 10px;
-    border: solid white;
-    border-width: 0 2.5px 2.5px 0;
-    transform: rotate(45deg);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 280px;
+    height: auto;
+    opacity: 0.04;
+    pointer-events: none;
+    z-index: 0;
+    user-select: none;
+}
+.doc-page > *:not(.watermark-logo) {
+    position: relative;
+    z-index: 1;
+}
+@keyframes pulse-subtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+.animate-pulse-subtle {
+    animation: pulse-subtle 2s infinite ease-in-out;
+}
+.font-segoe {
+    font-family: 'Inter', sans-serif;
 }
 
-.smart-checkbox:hover {
-    border-color: #8b5cf6;
-}
-
-.smart-checkbox:focus {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
-}
-
-/* Fade In Animation */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
+@media print {
+    /* Hide sidebar, navigation, and non-report elements */
+    .no-print,
+    nav, header, footer, aside,
+    .p-dialog-mask::before {
+        display: none !important;
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
+
+    body, html {
+        background: white !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
     }
-}
 
-.animate-fadeIn {
-    animation: fadeIn 0.3s ease-out;
-}
+    /* Make all ancestors of the report visible and unstyled */
+    .p-dialog-mask,
+    .p-dialog,
+    .p-dialog-content {
+        position: static !important;
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+        display: block !important;
+    }
 
-/* Quarterly Table Styles */
-.quarterly-table th:first-child {
-    border-top-left-radius: 0.5rem;
-}
+    #protocol-report {
+        position: static !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        overflow: visible !important;
+    }
 
-.quarterly-table th:last-child {
-    border-top-left-radius: 0.5rem;
-}
+    /* Hide the scrollable wrapper's chrome, make it flow */
+    #protocol-report > * {
+        visibility: visible !important;
+    }
 
-/* Stepper Header Styles */
-.stepper-header {
-    background: linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%);
-}
+    .doc-page {
+        margin: 0 !important;
+        padding: 10mm !important;
+        width: 100% !important;
+        min-height: auto !important;
+        max-height: none !important;
+        height: auto !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        box-shadow: none !important;
+        border: none !important;
+        display: block !important;
+        overflow: visible !important;
+        border-radius: 0 !important;
+    }
 
-.back-btn {
-    color: rgba(255, 255, 255, 0.8);
-}
+    .doc-page:last-child {
+        page-break-after: avoid !important;
+    }
 
-.back-btn:hover {
-    color: white;
-    background-color: rgba(255, 255, 255, 0.1);
-}
+    /* Avoid breaking inside rows/blocks */
+    table { page-break-inside: auto !important; }
+    tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+    thead { display: table-header-group !important; }
+    .space-y-4 > *, .space-y-6 > *, .space-y-8 > *, .space-y-10 > * {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .grid {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .mt-auto { margin-top: 10mm !important; }
 
-.step-active {
-    background-color: white;
-    color: #7c3aed;
-}
-
-.step-inactive {
-    background-color: rgba(255, 255, 255, 0.2);
-    color: white;
-}
-
-.progress-bar {
-    background: linear-gradient(90deg, #7c3aed, #9333ea);
-}
-
-/* Page Header Styles */
-.page-header {
-    background: linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%);
-}
-
-.year-select {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: white;
-    padding: 0.625rem 1rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    min-width: 120px;
-}
-
-.year-select:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.5);
-}
-
-.year-select:focus {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
-}
-
-.year-select option {
-    background: #7c3aed;
-    color: white;
-}
-
-.create-goal-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: white;
-    color: #7c3aed;
-    padding: 0.625rem 1.25rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.create-goal-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.15);
-}
-
-.create-goal-btn:active {
-    transform: translateY(0);
-}
-
-/* Employee Header Banner */
-.employee-header-banner {
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-}
-
-/* KPI Card Styles */
-.kpi-card {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    padding: 1.25rem;
-    background: white;
-    border-radius: 0.75rem;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
-    transition: all 0.2s ease;
-}
-
-.kpi-card:hover {
-    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
-}
-
-.kpi-icon {
-    width: 3rem;
-    height: 3rem;
-    border-radius: 0.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-    flex-shrink: 0;
-}
-
-.kpi-content {
-    flex: 1;
-    min-width: 0;
-}
-
-.kpi-label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #6b7280;
-    margin-bottom: 0.25rem;
-}
-
-.kpi-value {
-    font-size: 1.875rem;
-    font-weight: 900;
-    line-height: 1.2;
-}
-
-.kpi-sub {
-    font-size: 0.75rem;
-    color: #9ca3af;
-    margin-top: 0.25rem;
-}
-
-/* KPI Card Color Variants */
-.kpi-total .kpi-icon {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-}
-
-.kpi-total .kpi-value {
-    color: #6366f1;
-}
-
-.kpi-completed .kpi-icon {
-    background: linear-gradient(135deg, #10b981, #059669);
-    color: white;
-}
-
-.kpi-completed .kpi-value {
-    color: #10b981;
-}
-
-.kpi-progress .kpi-icon {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-    color: white;
-}
-
-.kpi-progress .kpi-value {
-    color: #f59e0b;
-}
-
-.kpi-pending .kpi-icon {
-    background: linear-gradient(135deg, #6b7280, #4b5563);
-    color: white;
-}
-
-.kpi-pending .kpi-value {
-    color: #6b7280;
-}
-
-/* Goal Count Badge */
-.goal-count-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.375rem 0.875rem;
-    background: linear-gradient(135deg, #7c3aed, #9333ea);
-    color: white;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    box-shadow: 0 2px 4px -1px rgba(124, 58, 237, 0.3);
-}
-
-/* Empty State Styles */
-.empty-state-icon {
-    width: 5rem;
-    height: 5rem;
-    margin: 0 auto 1.5rem;
-    background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.empty-state-icon i {
-    font-size: 2.5rem;
-    color: #9ca3af;
-}
-
-.create-first-goal-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: linear-gradient(135deg, #7c3aed, #9333ea);
-    color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 4px 12px -2px rgba(124, 58, 237, 0.4);
-}
-
-.create-first-goal-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px -4px rgba(124, 58, 237, 0.5);
-}
-
-/* Action Button Styles */
-.action-btn {
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background: transparent;
-}
-
-.action-btn-view {
-    color: #6b7280;
-}
-
-.action-btn-view:hover {
-    background: linear-gradient(135deg, #7c3aed10, #9333ea10);
-    color: #7c3aed;
-}
-
-.action-btn-delete {
-    color: #6b7280;
-}
-
-.action-btn-delete:hover {
-    background: #fef2f2;
-    color: #ef4444;
+    @page {
+        size: A4 portrait;
+        margin: 8mm 5mm;
+    }
 }
 </style>

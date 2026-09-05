@@ -2,30 +2,109 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Goal;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class GoalController extends Controller
 {
     /**
-     * Display a listing of goals for the authenticated user or a specific employee.
+     * Compute display_status for a goal.
+     */
+    private function computeDisplayStatus($goal, $completedReviewEmpCodes = null)
+    {
+        if ($completedReviewEmpCodes === null) {
+            $year = $goal->year ?? date('Y');
+            $completedReviewEmpCodes = \App\Models\Review::where('year', $year)
+                ->where('status', 'completed')
+                ->pluck('emp_code')
+                ->toArray();
+        }
+
+        if ($goal->status === 'draft') {
+            return 'draft';
+        } elseif ($goal->status === 'assigned') {
+            return 'assigned';
+        } elseif ($goal->status === 'submitted') {
+            return 'submitted';
+        } elseif ($goal->status === 'review_completed') {
+            return 'review_completed';
+        } elseif ($goal->status === 'completed' && $goal->employee_code && in_array($goal->employee_code, $completedReviewEmpCodes)) {
+            return 'review_completed';
+        } elseif ($goal->status === 'completed') {
+            return 'appraisal_completed';
+        } else {
+            return 'goal_created';
+        }
+    }
+
+    /**
+     * Fetch goals for the authenticated user unless specified otherwise.
      */
     public function index(Request $request)
     {
-        $userId = $request->query('user_id');
-        $year = $request->query('year', date('Y'));
+        $year = $request->get('year', date('Y'));
+        $user = $request->user();
+        $userId = $user ? $user->id : $request->get('user_id');
 
-        $query = Goal::where('year', $year);
-
-        if ($userId) {
-            $query->where('user_id', $userId);
-        } else {
-            // Default to the current authenticated user's goals
-            $query->where('user_id', Auth::id()); 
+        if (!$userId) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
         }
 
-        $goals = $query->orderBy('due_date', 'asc')->get();
+        $isAdmin = $user && $user->admin;
+
+        // Admin sees all goals; regular users see their own + their team's
+        $query = \App\Models\Goal::where('year', $year);
+
+        if (!$isAdmin) {
+            $isManager = $user && ($user->is_manager || $user->position_id === 1);
+            $teamUserIds = \App\Models\User::where('line_manager_id', $userId)->pluck('id')->toArray();
+            $teamEmpCodes = \App\Models\Employee::where('line_manager_id', $userId)->pluck('employeeid')->filter()->toArray();
+
+            $query->where(function ($q) use ($userId, $user, $teamUserIds, $teamEmpCodes, $isManager) {
+                // Matches own goals as employee or creator
+                $q->where('user_id', $userId);
+
+                if ($user && !empty($user->employee_code)) {
+                    $q->orWhere('employee_code', $user->employee_code);
+                }
+
+                // If manager or has subordinates, also see their team's goals
+                if ($isManager || !empty($teamUserIds) || !empty($teamEmpCodes)) {
+                    if (!empty($teamUserIds)) {
+                        $q->orWhereIn('user_id', $teamUserIds);
+                    }
+                    if (!empty($teamEmpCodes)) {
+                        $q->orWhereIn('employee_code', $teamEmpCodes);
+                    }
+                    if ($user) {
+                        $q->orWhere('manager_name', $user->name);
+                    }
+                }
+            });
+        }
+
+        $goals = $query->orderBy('created_at', 'desc')->get();
+
+        // Fetch completed reviews for this year to determine review status
+        $completedReviewEmpCodes = \App\Models\Review::where('year', $year)
+            ->where('status', 'completed')
+            ->pluck('emp_code')
+            ->toArray();
+
+        // Add computed display_status to each goal and resolve job_title from employee joining position
+        $goals->each(function ($goal) use ($completedReviewEmpCodes) {
+            $goal->display_status = $this->computeDisplayStatus($goal, $completedReviewEmpCodes);
+            if ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
+                $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
+                if ($emp) {
+                    $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
+                    if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
+                        $goal->job_title = $pos;
+                    }
+                }
+            }
+        });
 
         return response()->json([
             'status' => 'success',
@@ -34,80 +113,76 @@ class GoalController extends Controller
     }
 
     /**
-     * Store a newly created goal.
+     * Store a new goal.
      */
     public function store(Request $request)
     {
-        $validatedData = $request->validate([
-            'user_id' => 'required|exists:users,id',
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'purposes' => 'nullable|string',
-            'challenges' => 'nullable|string',
-            'category' => 'nullable|string|max:255',
-            'weight' => 'nullable|numeric|min:0|max:100',
-            'target' => 'nullable|integer|min:0',
-            'due_date' => 'nullable|date',
-            'completion_date' => 'nullable|date',
-            'smart_criteria' => 'nullable|array',
-            'quarterly_tracking' => 'nullable|array',
-            'year' => 'required|integer'
-        ]);
+        // Debug: log what we receive
+        \Log::info('GoalController@store - incoming data keys: ' . implode(', ', array_keys($request->all())));
+        
+        $data = $request->all();
+        if ((empty($data['job_title']) || in_array($data['job_title'], ['Employee', 'N/A', ''])) && !empty($data['employee_code'])) {
+            $emp = \App\Models\Employee::where('employeeid', $data['employee_code'])->first();
+            if ($emp) {
+                $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
+                if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
+                    $data['job_title'] = $pos;
+                }
+            }
+        }
 
-        $goal = Goal::create([
-            'user_id' => $validatedData['user_id'],
-            'title' => $validatedData['title'],
-            'description' => $validatedData['description'] ?? null,
-            'purposes' => $validatedData['purposes'] ?? null,
-            'challenges' => $validatedData['challenges'] ?? null,
-            'category' => $validatedData['category'] ?? 'General',
-            'weight' => $validatedData['weight'] ?? 0,
-            'target' => $validatedData['target'] ?? 100,
-            'actual' => 0,
-            'status' => 'not_started',
-            'due_date' => $validatedData['due_date'] ?? null,
-            'completion_date' => $validatedData['completion_date'] ?? null,
-            'smart_criteria' => $validatedData['smart_criteria'] ?? null,
-            'quarterly_tracking' => $validatedData['quarterly_tracking'] ?? null,
-            'year' => $validatedData['year'],
-            'created_by' => Auth::id()
-        ]);
+        $goal = \App\Models\Goal::create($data);
+        $goal->display_status = $this->computeDisplayStatus($goal);
 
         return response()->json([
             'status' => 'success',
             'message' => 'Goal created successfully',
             'data' => $goal
-        ], 201);
-    }
-
-    /**
-     * Update the specified goal.
-     */
-    public function update(Request $request, Goal $goal)
-    {
-        $validatedData = $request->validate([
-            'title' => 'sometimes|required|string|max:255',
-            'description' => 'nullable|string',
-            'actual' => 'nullable|integer|min:0',
-            'rating' => 'nullable|integer|min:1|max:5',
-            'status' => 'nullable|string|in:not_started,in_progress,completed,on_hold',
-            'due_date' => 'nullable|date'
-        ]);
-
-        $goal->update($validatedData);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Goal updated successfully',
-            'data' => $goal
         ]);
     }
 
     /**
-     * Remove the specified goal.
+     * Update an existing goal.
      */
-    public function destroy(Goal $goal)
+    public function update(Request $request, $id)
     {
+        try {
+            $goal = \App\Models\Goal::findOrFail($id);
+            
+            $data = $request->except(['display_status']);
+            if ((empty($data['job_title']) || in_array($data['job_title'], ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
+                $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
+                if ($emp) {
+                    $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
+                    if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
+                        $data['job_title'] = $pos;
+                    }
+                }
+            }
+
+            $goal->update($data);
+            $goal->display_status = $this->computeDisplayStatus($goal);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Goal updated successfully',
+                'data' => $goal
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('GoalController@update failed: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to update goal: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a goal.
+     */
+    public function destroy($id)
+    {
+        $goal = \App\Models\Goal::findOrFail($id);
         $goal->delete();
 
         return response()->json([
@@ -117,33 +192,368 @@ class GoalController extends Controller
     }
 
     /**
-     * Upload an attachment for a goal (e.g., milestone evidence).
+     * Handle file uploads for goal attachments.
      */
     public function uploadAttachment(Request $request)
     {
         $request->validate([
-            'files.*' => 'required|file|mimes:pdf,doc,docx,xls,xlsx,csv,jpg,jpeg,png|max:10240', // 10MB max
+            'files.*' => 'required|file|mimes:jpeg,png,jpg,gif,svg,pdf,doc,docx,xls,xlsx,csv,txt|max:10240', // 10MB max
         ]);
 
-        $uploadedFiles = [];
-
         if ($request->hasFile('files')) {
-            foreach ($request->file('files') as $file) {
-                $fileName = time() . '_' . $file->getClientOriginalName();
-                $path = $file->storeAs('goal_attachments', $fileName, 'public');
+            $files = $request->file('files');
+            $uploadedFiles = [];
 
+            foreach ($files as $file) {
+                // Generate a unique filename
+                $filename = time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
+                
+                // Store the file in the 'public/attachments' directory
+                $path = $file->storeAs('public/attachments', $filename);
+                
+                // Keep track of uploaded files to return to frontend
                 $uploadedFiles[] = [
-                    'file_url' => asset('storage/' . $path),
-                    'file_name' => $file->getClientOriginalName()
+                    'name' => $file->getClientOriginalName(),
+                    'path' => Storage::url($path), // Generate public URL
+                    'type' => $file->getClientMimeType(),
                 ];
             }
 
             return response()->json([
                 'status' => 'success',
+                'message' => 'Files uploaded successfully',
                 'files' => $uploadedFiles
             ]);
         }
 
-        return response()->json(['status' => 'error', 'message' => 'No files uploaded'], 400);
+        return response()->json([
+            'status' => 'error',
+            'message' => 'No files uploaded'
+        ], 400);
+    }
+
+    /**
+     * Fetch all goals with appraisal data for HR review.
+     */
+    public function allAppraisals(Request $request)
+    {
+        try {
+            $year = $request->get('year', date('Y'));
+            $user = $request->user();
+            $isAdmin = $user && $user->admin;
+
+            $query = \App\Models\Goal::with('user')
+                ->where('year', $year)
+                ->whereNotNull('appraisal_data')
+                ->where('status', '!=', 'draft');
+
+            // Non-admin users only see their own submissions
+            if (!$isAdmin && $user) {
+                $query->where('user_id', $user->id);
+            }
+
+            $goals = $query->orderBy('submitted_at', 'desc')
+                ->orderBy('updated_at', 'desc')
+                ->get();
+
+            $goals->each(function ($goal) {
+                if ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
+                    $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
+                    if ($emp) {
+                        $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
+                        if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
+                            $goal->job_title = $pos;
+                        }
+                    }
+                }
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $goals
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in allAppraisals: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Database error. Please ensure migrations are run.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Review and evaluate an appraisal (HR Action).
+     */
+    public function reviewAppraisal(Request $request, $id)
+    {
+        $goal = \App\Models\Goal::findOrFail($id);
+        
+        $goal->update([
+            'status' => $request->input('status'),
+            'hr_comments' => $request->input('hr_comments'),
+            'overall_rating' => $request->input('overall_rating'),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Appraisal reviewed successfully',
+            'data' => $goal
+        ]);
+    }
+
+    /**
+     * Fetch goals with appraisal data for the Appraisal view.
+     */
+    public function appraisals(Request $request)
+    {
+        $year = $request->get('year', date('Y'));
+        $user = $request->user();
+        $userId = $request->get('user_id', $user ? $user->id : null);
+        $goalId = $request->get('goal_id');
+
+        \Log::info("GoalController@appraisals - year: $year, userId: $userId, goalId: $goalId");
+
+        // If a specific goal_id is provided, prioritize it
+        if ($goalId) {
+            $goal = \App\Models\Goal::find($goalId);
+            if ($goal) {
+                return response()->json([
+                    'status' => 'success',
+                    'data' => [
+                        'goal' => $goal,
+                        'appraisal_data' => $goal->appraisal_data,
+                        'all_goals' => []
+                    ]
+                ]);
+            }
+        }
+
+        // For employee, query by employee_code or user_id
+        $query = \App\Models\Goal::where('year', $year);
+        if ($user && !$user->admin && !$user->is_manager && $user->position_id !== 1) {
+            $query->where(function ($q) use ($user, $userId) {
+                if (!empty($user->employee_code)) {
+                    $q->where('employee_code', $user->employee_code);
+                }
+                if ($userId) {
+                    $q->orWhere('user_id', $userId);
+                }
+            });
+        } else {
+            $query->where('user_id', $userId);
+        }
+
+        $goals = $query->orderBy('created_at', 'desc')->get();
+
+        if ($goals->isEmpty()) {
+            return response()->json([
+                'status' => 'empty',
+                'message' => 'No appraisal data found for this year'
+            ]);
+        }
+
+        $primaryGoal = $goals->first();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'goal' => $primaryGoal,
+                'appraisal_data' => $primaryGoal->appraisal_data,
+                'all_goals' => $goals
+            ]
+        ]);
+    }
+
+    /**
+     * Assign Goal and Appraisal template to single employee or all team members in bulk.
+     */
+    public function assign(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
+        }
+
+        $year = $request->input('year', date('Y'));
+        $assignType = $request->input('assign_type', 'single'); // 'single' or 'all_team'
+        $selectedEmployees = $request->input('employees', []);
+        
+        $goalTitle = $request->input('title', 'Yearly SMART Goals FY ' . $year);
+        $description = $request->input('description', ['Define key performance indicators...']);
+        $purposes = $request->input('purposes', ['Establish business relevance and benefits...']);
+        $challenges = $request->input('challenges', ['Potential obstacles and mitigations']);
+        $category = $request->input('category', 'Operational');
+        $target = $request->input('target', 100);
+        $dueDate = $request->input('due_date', $year . '-12-31');
+        $completionDate = $request->input('completion_date', null);
+        $smartCriteria = $request->input('smart_criteria', [
+            'specific' => true,
+            'measurable' => true,
+            'attainable' => true,
+            'relevant' => true,
+            'time_bound' => true,
+        ]);
+        $quarterlyTracking = $request->input('quarterly_tracking', null);
+        $appraisalTemplate = $request->input('appraisal_data', null);
+
+        // Resolve target employee list
+        $targetList = [];
+        if ($assignType === 'all_team') {
+            $empQuery = \App\Models\Employee::query();
+            if (!$user->admin) {
+                $empQuery->where('line_manager_id', $user->id);
+            }
+            $targetEmployees = $empQuery->get();
+            foreach ($targetEmployees as $emp) {
+                $targetList[] = [
+                    'employee_code' => $emp->employeeid,
+                    'name' => trim($emp->firstname . ' ' . $emp->surname),
+                    'firstname' => $emp->firstname,
+                    'surname' => $emp->surname,
+                    'department' => $emp->department ?: ($emp->joiningdepartment ?? 'N/A'),
+                    'location' => $emp->location ?: ($emp->joininglocation ?? 'N/A'),
+                    'job_title' => $emp->job_title ?: ($emp->joiningposition ?? 'Employee'),
+                    'email' => $emp->email,
+                ];
+            }
+        } else {
+            if (is_array($selectedEmployees) && isset($selectedEmployees[0])) {
+                $targetList = $selectedEmployees;
+            } elseif (!empty($selectedEmployees)) {
+                $targetList = [$selectedEmployees];
+            }
+        }
+
+        if (empty($targetList)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No employees selected or found to assign goals to.'
+            ], 422);
+        }
+
+        $assignedCount = 0;
+        $createdGoals = [];
+
+        foreach ($targetList as $empData) {
+            $empCode = $empData['employee_code'] ?? null;
+            if (!$empCode) continue;
+
+            $candName = $empData['name'] ?? trim(($empData['firstname'] ?? '') . ' ' . ($empData['surname'] ?? ''));
+            $dept = $empData['department'] ?? 'N/A';
+            $loc = $empData['location'] ?? 'N/A';
+            $jobTitle = $empData['job_title'] ?? ($empData['position'] ?? 'Employee');
+            $email = $empData['email'] ?? null;
+
+            // Provision or resolve login account for employee
+            // Format: Username = Firstname + EmployeeCode (e.g. David H123), Password = Password
+            $firstName = !empty($empData['firstname']) ? trim($empData['firstname']) : explode(' ', $candName)[0];
+            $generatedUsername = trim($firstName . ' ' . $empCode);
+
+            $empUser = \App\Models\User::where('employee_code', $empCode)->first();
+            if (!$empUser) {
+                $empUser = \App\Models\User::where('username', $generatedUsername)->first();
+            }
+
+            if (!$empUser) {
+                try {
+                    $empUser = \App\Models\User::create([
+                        'name' => $candName,
+                        'username' => $generatedUsername,
+                        'email' => $email,
+                        'password' => bcrypt('Password'),
+                        'employee_code' => $empCode,
+                        'department' => $dept,
+                        'location' => $loc,
+                        'line_manager_id' => $user->id,
+                        'report_to' => $user->name,
+                        'is_manager' => 0,
+                        'admin' => 0,
+                        'permissions' => ['/pms/goals', '/pms/appraisal'],
+                    ]);
+                } catch (\Exception $e) {
+                    \Log::warning("Could not auto-create user for {$candName}: " . $e->getMessage());
+                }
+            } else {
+                if (empty($empUser->line_manager_id)) {
+                    $empUser->update([
+                        'line_manager_id' => $user->id,
+                        'report_to' => $user->name
+                    ]);
+                }
+            }
+
+            // Prepare Appraisal Data snapshot for this employee
+            $empAppraisalData = $appraisalTemplate ?: [
+                'competencies' => [
+                    ['id' => 1, 'title' => 'Performance & Teamwork', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Overall performance based on feedback from Line or Operations Managers', 'Teamwork and people management issues']],
+                    ['id' => 2, 'title' => 'Customer Service / Relationship Building', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Super saver cards and service quality', 'Google rating improvement and satisfaction']],
+                    ['id' => 3, 'title' => 'Execution / Sales Results Driven', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Business driven metric set by department', 'Loss to company % mitigation and delivery']],
+                    ['id' => 4, 'title' => 'Compliance & Quality Standards', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Adherence to company policies, SOPs, safety, and regulatory compliance', 'Wooqer checklist and department standards implementation']],
+                    ['id' => 5, 'title' => 'Continuous Improvement in workflows/processes', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Culture of adaptability and operational innovation', 'Flexibility and problem solving']],
+                ],
+                'comments' => '',
+                'impressedMost' => '',
+                'impressedLeast' => '',
+                'performanceRating' => 0,
+                'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
+                'candidate_signature_name' => $candName,
+                'manager_signature_name' => $user->name,
+                'signature_date' => date('Y-m-d')
+            ];
+
+            // Check if a goal already exists for this employee in this year
+            $existingGoal = \App\Models\Goal::where('year', $year)
+                ->where(function ($q) use ($empCode, $empUser) {
+                    $q->where('employee_code', $empCode);
+                    if ($empUser) {
+                        $q->orWhere('user_id', $empUser->id);
+                    }
+                })
+                ->first();
+
+            $goalData = [
+                'title' => $goalTitle,
+                'description' => is_array($description) ? $description : json_decode($description, true) ?: [$description],
+                'purposes' => is_array($purposes) ? $purposes : json_decode($purposes, true) ?: [$purposes],
+                'challenges' => is_array($challenges) ? $challenges : json_decode($challenges, true) ?: [$challenges],
+                'category' => $category,
+                'target' => $target,
+                'due_date' => $dueDate,
+                'completion_date' => $completionDate,
+                'year' => $year,
+                'user_id' => $empUser ? $empUser->id : $user->id,
+                'candidate_name' => $candName,
+                'employee_code' => $empCode,
+                'location' => $loc,
+                'department' => $dept,
+                'job_title' => $jobTitle,
+                'manager_name' => $user->name,
+                'smart_criteria' => $smartCriteria,
+                'quarterly_tracking' => $quarterlyTracking,
+                'appraisal_data' => $empAppraisalData,
+                'status' => 'assigned',
+            ];
+
+            if ($existingGoal) {
+                if (in_array($existingGoal->status, ['assigned', 'draft', 'in_progress'])) {
+                    $existingGoal->update($goalData);
+                    $existingGoal->display_status = $this->computeDisplayStatus($existingGoal);
+                    $createdGoals[] = $existingGoal;
+                }
+            } else {
+                $newG = \App\Models\Goal::create($goalData);
+                $newG->display_status = $this->computeDisplayStatus($newG);
+                $createdGoals[] = $newG;
+            }
+
+            $assignedCount++;
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Successfully assigned goals and appraisal to {$assignedCount} employee(s).",
+            'count' => $assignedCount,
+            'data' => $createdGoals
+        ]);
     }
 }

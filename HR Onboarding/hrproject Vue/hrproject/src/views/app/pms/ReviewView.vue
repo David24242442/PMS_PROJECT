@@ -461,36 +461,47 @@ const downloadFile = async (url, filename) => {
             </div>
 
             <!-- Stats Analytics Widget -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <!-- All Goals Card -->
                 <div @click="filterStatus = 'all'" :class="filterStatus === 'all' ? 'border-[#1A237E] bg-indigo-50/50 shadow-indigo-900/10 ring-2 ring-[#1A237E]/30' : 'border-slate-100 bg-white'" class="p-6 rounded-3xl border shadow-xl shadow-indigo-900/5 flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
                     <div>
-                        <span class="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1">Total Submission</span>
+                        <span class="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1">Total Submissions</span>
                         <div class="text-3xl font-black text-slate-900">{{ goals.length }}</div>
                     </div>
-                    <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/20">
+                    <div class="w-12 h-12 rounded-2xl bg-[#1A237E] text-white flex items-center justify-center shadow-lg shadow-indigo-900/20">
                         <i class="pi pi-folders"></i>
                     </div>
                 </div>
 
-                <!-- Reviewed Card -->
-                <div @click="filterStatus = 'appraisal_completed'" :class="filterStatus === 'appraisal_completed' ? 'border-teal-600 bg-teal-50/30 shadow-teal-900/10 ring-2 ring-teal-600/30' : 'border-slate-100 bg-white'" class="p-6 rounded-3xl border shadow-xl shadow-indigo-900/5 flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
+                <!-- Submitted for Review Card -->
+                <div @click="filterStatus = 'submitted'" :class="filterStatus === 'submitted' ? 'border-indigo-600 bg-indigo-50/40 shadow-indigo-900/10 ring-2 ring-indigo-600/30' : 'border-slate-100 bg-white'" class="p-6 rounded-3xl border shadow-xl shadow-indigo-900/5 flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
                     <div>
-                        <span class="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1">Appraisal Meeting Completed</span>
+                        <span class="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1">Awaiting Review</span>
+                        <div class="text-3xl font-black text-slate-900">{{ goals.filter(g => g.display_status === 'submitted').length }}</div>
+                    </div>
+                    <div class="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/20">
+                        <i class="pi pi-send"></i>
+                    </div>
+                </div>
+
+                <!-- Reviewed Card -->
+                <div @click="filterStatus = 'appraisal_completed'" :class="filterStatus === 'appraisal_completed' ? 'border-amber-500 bg-amber-50/30 shadow-amber-900/10 ring-2 ring-amber-500/30' : 'border-slate-100 bg-white'" class="p-6 rounded-3xl border shadow-xl shadow-indigo-900/5 flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
+                    <div>
+                        <span class="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1">Appraisal Done</span>
                         <div class="text-3xl font-black text-slate-900">{{ goals.filter(g => g.display_status === 'appraisal_completed').length }}</div>
                     </div>
-                    <div class="w-12 h-12 rounded-2xl bg-teal-600 text-white flex items-center justify-center shadow-lg shadow-teal-600/20">
+                    <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/20">
                         <i class="pi pi-eye"></i>
                     </div>
                 </div>
 
                 <!-- Completed Card -->
-                <div @click="filterStatus = 'review_completed'" :class="filterStatus === 'review_completed' ? 'border-sky-600 bg-sky-50/30 shadow-sky-900/10 ring-2 ring-sky-600/30' : 'border-slate-100 bg-white'" class="p-6 rounded-3xl border shadow-xl shadow-indigo-900/5 flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
+                <div @click="filterStatus = 'review_completed'" :class="filterStatus === 'review_completed' ? 'border-teal-600 bg-teal-50/30 shadow-teal-900/10 ring-2 ring-teal-600/30' : 'border-slate-100 bg-white'" class="p-6 rounded-3xl border shadow-xl shadow-indigo-900/5 flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
                     <div>
                         <span class="text-[11px] font-black text-slate-400 uppercase tracking-widest block mb-1">Review Completed</span>
                         <div class="text-3xl font-black text-slate-900">{{ goals.filter(g => g.display_status === 'review_completed').length }}</div>
                     </div>
-                    <div class="w-12 h-12 rounded-2xl bg-sky-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/20">
+                    <div class="w-12 h-12 rounded-2xl bg-teal-600 text-white flex items-center justify-center shadow-lg shadow-teal-600/20">
                         <i class="pi pi-check-circle"></i>
                     </div>
                 </div>
@@ -531,7 +542,13 @@ const downloadFile = async (url, filename) => {
                                     <div class="text-xs text-slate-500 font-medium line-clamp-2">{{ goal.category }} - {{ goal.target }}</div>
                                 </td>
                                 <td class="px-6 py-5 text-center">
-                                    <span v-if="goal.display_status === 'goal_created'" class="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-slate-50 text-slate-600 border-slate-100">
+                                    <span v-if="goal.display_status === 'assigned'" class="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-amber-50 text-amber-700 border-amber-200">
+                                        Assigned
+                                    </span>
+                                    <span v-else-if="goal.display_status === 'submitted'" class="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-indigo-50 text-indigo-700 border-indigo-200">
+                                        Submitted for Review
+                                    </span>
+                                    <span v-else-if="goal.display_status === 'goal_created'" class="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-slate-50 text-slate-600 border-slate-100">
                                         Goal Created
                                     </span>
                                     <span v-else-if="goal.display_status === 'appraisal_completed'" class="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-amber-50 text-amber-600 border-amber-100">

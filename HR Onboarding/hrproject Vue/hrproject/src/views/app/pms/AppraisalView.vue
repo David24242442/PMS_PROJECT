@@ -21,9 +21,14 @@ const router = useRouter();
 const goalId = ref(route.query.goal_id || null);
 const goalStatus = ref('');
 
-// Read-only when appraisal is submitted (completed) and review is done
+const isManager = computed(() => {
+    return !!(loguser?.admin || loguser?.is_manager || loguser?.position_id === 1 || loguser?.designation === 'Manager');
+});
+const isEmployee = computed(() => !isManager.value);
+
+// Read-only when appraisal is submitted (completed/submitted) and review is done
 const isReadOnly = computed(() => {
-    return ['review_completed', 'completed'].includes(goalStatus.value);
+    return ['review_completed', 'completed', 'submitted'].includes(goalStatus.value);
 });
 
 // Master Employee Data for Dropdown (for managers starting new appraisals)
@@ -442,15 +447,19 @@ const saveAppraisal = async (submit = false) => {
             overallPerformanceRating: overallPerformanceRating.value
         };
 
+        const targetStatus = submit ? (isEmployee.value ? 'submitted' : 'completed') : 'draft';
         const payload = {
             appraisal_data: appraisalData,
-            status: submit ? 'completed' : 'draft'
+            status: targetStatus
         };
 
         // Correct usage: appraisals are stored in goals table via appraisal_data column
         const response = await axios.patch(`pms/goals/${goalId.value}`, payload);
         if (response.data.status === 'success') {
-            const alertResult = await showAlert('Success', submit ? 'Appraisal completed successfully!' : 'Draft saved successfully!', 'success');
+            const successMsg = submit 
+                ? (isEmployee.value ? 'Appraisal submitted to Line Manager for review successfully!' : 'Appraisal completed successfully!')
+                : 'Draft saved successfully!';
+            const alertResult = await showAlert('Success', successMsg, 'success');
             if (submit) {
                 // Use Vue Router instead of hard redirect to prevent connection reset
                 router.push('/pms/goals');
