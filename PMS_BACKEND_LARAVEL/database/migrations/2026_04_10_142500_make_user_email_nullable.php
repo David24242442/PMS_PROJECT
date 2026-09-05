@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class AddCreatorToUsersTable extends Migration
+class MakeUserEmailNullable extends Migration
 {
     /**
      * Run the migrations.
@@ -14,7 +14,7 @@ class AddCreatorToUsersTable extends Migration
     public function up()
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->bigInteger('user_id')->nullable()->references('id')->on('users');
+            $table->string('email')->nullable()->change();
         });
     }
 
@@ -26,7 +26,7 @@ class AddCreatorToUsersTable extends Migration
     public function down()
     {
         Schema::table('users', function (Blueprint $table) {
-            //
+            $table->string('email')->nullable(false)->change();
         });
     }
 }

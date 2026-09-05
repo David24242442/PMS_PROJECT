@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class AddCreatorToUsersTable extends Migration
+class AddPermissionsToUsersTable extends Migration
 {
     /**
      * Run the migrations.
@@ -14,7 +14,9 @@ class AddCreatorToUsersTable extends Migration
     public function up()
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->bigInteger('user_id')->nullable()->references('id')->on('users');
+            if (!Schema::hasColumn('users', 'permissions')) {
+                $table->text('permissions')->nullable()->after('remember_token');
+            }
         });
     }
 
@@ -26,7 +28,9 @@ class AddCreatorToUsersTable extends Migration
     public function down()
     {
         Schema::table('users', function (Blueprint $table) {
-            //
+            if (Schema::hasColumn('users', 'permissions')) {
+                $table->dropColumn('permissions');
+            }
         });
     }
 }
