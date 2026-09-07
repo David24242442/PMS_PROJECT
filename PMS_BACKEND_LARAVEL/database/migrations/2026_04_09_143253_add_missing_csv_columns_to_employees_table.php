@@ -14,9 +14,15 @@ class AddMissingCsvColumnsToEmployeesTable extends Migration
     public function up()
     {
         Schema::table('employees', function (Blueprint $table) {
-            $table->string('full_name')->nullable()->after('id');
-            $table->string('job_title')->nullable()->after('full_name');
-            $table->string('department')->nullable()->after('job_title');
+            if (!Schema::hasColumn('employees', 'full_name')) {
+                $table->string('full_name')->nullable();
+            }
+            if (!Schema::hasColumn('employees', 'job_title')) {
+                $table->string('job_title')->nullable();
+            }
+            if (!Schema::hasColumn('employees', 'department')) {
+                $table->string('department')->nullable();
+            }
         });
     }
 

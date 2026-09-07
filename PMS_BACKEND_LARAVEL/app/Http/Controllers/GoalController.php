@@ -373,219 +373,267 @@ class GoalController extends Controller
      */
     public function assign(Request $request)
     {
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
-        }
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
+            }
 
-        $year = $request->input('year', date('Y'));
-        $assignType = $request->input('assign_type', 'single'); // 'single' or 'all_team'
-        $selectedEmployees = $request->input('employees', []);
-        
-        $goalTitle = $request->input('title', 'Yearly SMART Goals FY ' . $year);
-        $description = $request->input('description', ['Define key performance indicators...']);
-        $purposes = $request->input('purposes', ['Establish business relevance and benefits...']);
-        $challenges = $request->input('challenges', ['Potential obstacles and mitigations']);
-        $category = $request->input('category', 'Operational');
-        $target = $request->input('target', 100);
-        $dueDate = $request->input('due_date', $year . '-12-31');
-        $completionDate = $request->input('completion_date', null);
-        $smartCriteria = $request->input('smart_criteria', [
-            'specific' => true,
-            'measurable' => true,
-            'attainable' => true,
-            'relevant' => true,
-            'time_bound' => true,
-        ]);
-        $quarterlyTracking = $request->input('quarterly_tracking', null);
-        $appraisalTemplate = $request->input('appraisal_data', null);
+            $year = $request->input('year', date('Y'));
+            $assignType = $request->input('assign_type', 'single'); // 'single' or 'all_team'
+            $selectedEmployees = $request->input('employees', []);
+            
+            $goalTitle = $request->input('title', 'Yearly SMART Goals FY ' . $year);
+            $description = $request->input('description', ['Define key performance indicators...']);
+            $purposes = $request->input('purposes', ['Establish business relevance and benefits...']);
+            $challenges = $request->input('challenges', ['Potential obstacles and mitigations']);
+            $category = $request->input('category', 'Operational');
+            $target = $request->input('target', 100);
+            $dueDate = $request->input('due_date', $year . '-12-31');
+            $completionDate = $request->input('completion_date', null);
+            $smartCriteria = $request->input('smart_criteria', [
+                'specific' => true,
+                'measurable' => true,
+                'attainable' => true,
+                'relevant' => true,
+                'time_bound' => true,
+            ]);
+            $quarterlyTracking = $request->input('quarterly_tracking', null);
+            $appraisalTemplate = $request->input('appraisal_data', null);
 
-        // If no explicit appraisal_data provided, fallback to line manager's saved custom template
-        if (empty($appraisalTemplate) || empty($appraisalTemplate['competencies'])) {
-            if (!empty($user->appraisal_template)) {
-                $rawComps = is_array($user->appraisal_template) ? $user->appraisal_template : json_decode($user->appraisal_template, true);
-                if (!empty($rawComps)) {
-                    $appraisalTemplate = [
-                        'competencies' => $rawComps,
+            // If no explicit appraisal_data provided, fallback to line manager's saved custom template
+            if (empty($appraisalTemplate) || empty($appraisalTemplate['competencies'])) {
+                if (!empty($user->appraisal_template)) {
+                    $rawComps = is_array($user->appraisal_template) ? $user->appraisal_template : json_decode($user->appraisal_template, true);
+                    if (!empty($rawComps)) {
+                        $appraisalTemplate = [
+                            'competencies' => $rawComps,
+                            'comments' => '',
+                            'impressedMost' => '',
+                            'impressedLeast' => '',
+                            'performanceRating' => 0,
+                            'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
+                            'candidate_signature_name' => '',
+                            'manager_signature_name' => $user->name,
+                            'signature_date' => date('Y-m-d')
+                        ];
+                    }
+                }
+            }
+
+            // Resolve target employee list
+            $targetList = [];
+            if ($assignType === 'all_team') {
+                $empQuery = \App\Models\Employee::query();
+                if (!$user->admin) {
+                    $empQuery->where('line_manager_id', $user->id);
+                }
+                $targetEmployees = $empQuery->get();
+                foreach ($targetEmployees as $emp) {
+                    $targetList[] = [
+                        'employee_code' => $emp->employeeid,
+                        'name' => trim($emp->firstname . ' ' . $emp->surname),
+                        'firstname' => $emp->firstname,
+                        'surname' => $emp->surname,
+                        'department' => $emp->department ?: ($emp->joiningdepartment ?? 'N/A'),
+                        'location' => $emp->location ?: ($emp->joininglocation ?? 'N/A'),
+                        'job_title' => $emp->job_title ?: ($emp->joiningposition ?? 'Employee'),
+                        'email' => $emp->email,
+                    ];
+                }
+            } else {
+                if (is_array($selectedEmployees) && isset($selectedEmployees[0])) {
+                    $targetList = $selectedEmployees;
+                } elseif (!empty($selectedEmployees)) {
+                    $targetList = [$selectedEmployees];
+                }
+            }
+
+            if (empty($targetList)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No employees selected or found to assign goals to.'
+                ], 422);
+            }
+
+            // Ensure table columns exist before inserting
+            try {
+                if (\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+                    \Illuminate\Support\Facades\Schema::table('goals', function ($table) {
+                        if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'appraisal_data')) {
+                            $table->longText('appraisal_data')->nullable();
+                        }
+                        if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'manager_name')) {
+                            $table->string('manager_name')->nullable();
+                        }
+                    });
+                }
+            } catch (\Throwable $e) {
+                \Log::warning("Schema check in assign: " . $e->getMessage());
+            }
+
+            $userCols = \Illuminate\Support\Facades\Schema::hasTable('users') ? \Illuminate\Support\Facades\Schema::getColumnListing('users') : [];
+            $goalCols = \Illuminate\Support\Facades\Schema::hasTable('goals') ? \Illuminate\Support\Facades\Schema::getColumnListing('goals') : [];
+            $empCols  = \Illuminate\Support\Facades\Schema::hasTable('employees') ? \Illuminate\Support\Facades\Schema::getColumnListing('employees') : [];
+
+            $assignedCount = 0;
+            $createdGoals = [];
+
+            foreach ($targetList as $empData) {
+                try {
+                    $empCode = $empData['employee_code'] ?? null;
+                    if (!$empCode) continue;
+
+                    $candName = $empData['name'] ?? trim(($empData['firstname'] ?? '') . ' ' . ($empData['surname'] ?? ''));
+                    $dept = $empData['department'] ?? 'N/A';
+                    $loc = $empData['location'] ?? 'N/A';
+                    $jobTitle = $empData['job_title'] ?? ($empData['position'] ?? 'Employee');
+                    $email = $empData['email'] ?? null;
+
+                    // Provision or resolve login account for employee
+                    // Format: Username = Firstname + EmployeeCode (e.g. David H123), Password = Password
+                    $firstName = !empty($empData['firstname']) ? trim($empData['firstname']) : explode(' ', $candName)[0];
+                    $generatedUsername = trim($firstName . ' ' . $empCode);
+
+                    $empUser = null;
+                    if (in_array('employee_code', $userCols)) {
+                        $empUser = \App\Models\User::where('employee_code', $empCode)->first();
+                    }
+                    if (!$empUser) {
+                        $empUser = \App\Models\User::where('username', $generatedUsername)->first();
+                    }
+
+                    if (!$empUser) {
+                        try {
+                            $newUserData = [
+                                'name' => $candName,
+                                'username' => $generatedUsername,
+                                'email' => $email,
+                                'password' => bcrypt('Password'),
+                            ];
+                            if (in_array('employee_code', $userCols)) $newUserData['employee_code'] = $empCode;
+                            if (in_array('department', $userCols)) $newUserData['department'] = $dept;
+                            if (in_array('location', $userCols)) $newUserData['location'] = $loc;
+                            if (in_array('line_manager_id', $userCols)) $newUserData['line_manager_id'] = $user->id;
+                            if (in_array('report_to', $userCols)) $newUserData['report_to'] = $user->name;
+                            if (in_array('is_manager', $userCols)) $newUserData['is_manager'] = 0;
+                            if (in_array('admin', $userCols)) $newUserData['admin'] = 0;
+                            if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/pms/goals', '/pms/appraisal'];
+
+                            $empUser = \App\Models\User::create($newUserData);
+                        } catch (\Throwable $e) {
+                            \Log::warning("Could not auto-create user for {$candName}: " . $e->getMessage());
+                        }
+                    } else {
+                        try {
+                            $updateData = [];
+                            if (in_array('line_manager_id', $userCols)) $updateData['line_manager_id'] = $user->id;
+                            if (in_array('report_to', $userCols)) $updateData['report_to'] = $user->name;
+                            if (!empty($updateData)) {
+                                $empUser->update($updateData);
+                            }
+                        } catch (\Throwable $e) {
+                            \Log::warning("Could not update manager for {$candName}: " . $e->getMessage());
+                        }
+                    }
+
+                    // Sync reporting line in employees table as well
+                    if (in_array('line_manager_id', $empCols)) {
+                        try {
+                            \App\Models\Employee::where('employeeid', $empCode)->update([
+                                'line_manager_id' => $user->id
+                            ]);
+                        } catch (\Throwable $e) {
+                            // ignore
+                        }
+                    }
+
+                    // Prepare Appraisal Data snapshot for this employee
+                    $empAppraisalData = $appraisalTemplate ?: [
+                        'competencies' => [
+                            ['id' => 1, 'title' => 'Performance & Teamwork', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Overall performance based on feedback from Line or Operations Managers', 'Teamwork and people management issues']],
+                            ['id' => 2, 'title' => 'Customer Service / Relationship Building', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Super saver cards and service quality', 'Google rating improvement and satisfaction']],
+                            ['id' => 3, 'title' => 'Execution / Sales Results Driven', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Business driven metric set by department', 'Loss to company % mitigation and delivery']],
+                            ['id' => 4, 'title' => 'Compliance & Quality Standards', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Adherence to company policies, SOPs, safety, and regulatory compliance', 'Wooqer checklist and department standards implementation']],
+                            ['id' => 5, 'title' => 'Continuous Improvement in workflows/processes', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Culture of adaptability and operational innovation', 'Flexibility and problem solving']],
+                        ],
                         'comments' => '',
                         'impressedMost' => '',
                         'impressedLeast' => '',
                         'performanceRating' => 0,
                         'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
-                        'candidate_signature_name' => '',
+                        'candidate_signature_name' => $candName,
                         'manager_signature_name' => $user->name,
                         'signature_date' => date('Y-m-d')
                     ];
+
+                    // Check if a goal already exists for this employee in this year
+                    $existingGoal = \App\Models\Goal::where('year', $year)
+                        ->where(function ($q) use ($empCode, $empUser) {
+                            $q->where('employee_code', $empCode);
+                            if ($empUser) {
+                                $q->orWhere('user_id', $empUser->id);
+                            }
+                        })
+                        ->first();
+
+                    $rawGoalData = [
+                        'title' => $goalTitle,
+                        'description' => is_array($description) ? $description : (json_decode($description, true) ?: [$description]),
+                        'purposes' => is_array($purposes) ? $purposes : (json_decode($purposes, true) ?: [$purposes]),
+                        'challenges' => is_array($challenges) ? $challenges : (json_decode($challenges, true) ?: [$challenges]),
+                        'category' => $category,
+                        'target' => $target,
+                        'due_date' => $dueDate,
+                        'completion_date' => $completionDate,
+                        'year' => $year,
+                        'user_id' => $empUser ? $empUser->id : $user->id,
+                        'candidate_name' => $candName,
+                        'employee_code' => $empCode,
+                        'location' => $loc,
+                        'department' => $dept,
+                        'job_title' => $jobTitle,
+                        'manager_name' => $user->name,
+                        'smart_criteria' => $smartCriteria,
+                        'quarterly_tracking' => $quarterlyTracking,
+                        'appraisal_data' => $empAppraisalData,
+                        'status' => 'assigned',
+                    ];
+
+                    // Filter goal data by columns actually present in goals table
+                    $goalData = !empty($goalCols) ? array_intersect_key($rawGoalData, array_flip($goalCols)) : $rawGoalData;
+
+                    if ($existingGoal) {
+                        if (in_array($existingGoal->status, ['assigned', 'draft', 'in_progress'])) {
+                            $existingGoal->update($goalData);
+                            $existingGoal->display_status = $this->computeDisplayStatus($existingGoal);
+                            $createdGoals[] = $existingGoal;
+                        }
+                    } else {
+                        $newG = \App\Models\Goal::create($goalData);
+                        $newG->display_status = $this->computeDisplayStatus($newG);
+                        $createdGoals[] = $newG;
+                    }
+
+                    $assignedCount++;
+                } catch (\Throwable $itemEx) {
+                    \Log::error("GoalController@assign item failed for {$candName}: " . $itemEx->getMessage());
                 }
             }
-        }
 
-        // Resolve target employee list
-        $targetList = [];
-        if ($assignType === 'all_team') {
-            $empQuery = \App\Models\Employee::query();
-            if (!$user->admin) {
-                $empQuery->where('line_manager_id', $user->id);
-            }
-            $targetEmployees = $empQuery->get();
-            foreach ($targetEmployees as $emp) {
-                $targetList[] = [
-                    'employee_code' => $emp->employeeid,
-                    'name' => trim($emp->firstname . ' ' . $emp->surname),
-                    'firstname' => $emp->firstname,
-                    'surname' => $emp->surname,
-                    'department' => $emp->department ?: ($emp->joiningdepartment ?? 'N/A'),
-                    'location' => $emp->location ?: ($emp->joininglocation ?? 'N/A'),
-                    'job_title' => $emp->job_title ?: ($emp->joiningposition ?? 'Employee'),
-                    'email' => $emp->email,
-                ];
-            }
-        } else {
-            if (is_array($selectedEmployees) && isset($selectedEmployees[0])) {
-                $targetList = $selectedEmployees;
-            } elseif (!empty($selectedEmployees)) {
-                $targetList = [$selectedEmployees];
-            }
-        }
-
-        if (empty($targetList)) {
+            return response()->json([
+                'status' => 'success',
+                'message' => "Successfully assigned goals and appraisal to {$assignedCount} employee(s).",
+                'count' => $assignedCount,
+                'data' => $createdGoals
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('GoalController@assign fatal error: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             return response()->json([
                 'status' => 'error',
-                'message' => 'No employees selected or found to assign goals to.'
-            ], 422);
+                'message' => 'Failed to assign goals: ' . $e->getMessage()
+            ], 500);
         }
-
-        $assignedCount = 0;
-        $createdGoals = [];
-
-        foreach ($targetList as $empData) {
-            $empCode = $empData['employee_code'] ?? null;
-            if (!$empCode) continue;
-
-            $candName = $empData['name'] ?? trim(($empData['firstname'] ?? '') . ' ' . ($empData['surname'] ?? ''));
-            $dept = $empData['department'] ?? 'N/A';
-            $loc = $empData['location'] ?? 'N/A';
-            $jobTitle = $empData['job_title'] ?? ($empData['position'] ?? 'Employee');
-            $email = $empData['email'] ?? null;
-
-            // Provision or resolve login account for employee
-            // Format: Username = Firstname + EmployeeCode (e.g. David H123), Password = Password
-            $firstName = !empty($empData['firstname']) ? trim($empData['firstname']) : explode(' ', $candName)[0];
-            $generatedUsername = trim($firstName . ' ' . $empCode);
-
-            $empUser = \App\Models\User::where('employee_code', $empCode)->first();
-            if (!$empUser) {
-                $empUser = \App\Models\User::where('username', $generatedUsername)->first();
-            }
-
-            if (!$empUser) {
-                try {
-                    $empUser = \App\Models\User::create([
-                        'name' => $candName,
-                        'username' => $generatedUsername,
-                        'email' => $email,
-                        'password' => bcrypt('Password'),
-                        'employee_code' => $empCode,
-                        'department' => $dept,
-                        'location' => $loc,
-                        'line_manager_id' => $user->id,
-                        'report_to' => $user->name,
-                        'is_manager' => 0,
-                        'admin' => 0,
-                        'permissions' => ['/pms/goals', '/pms/appraisal'],
-                    ]);
-                } catch (\Exception $e) {
-                    \Log::warning("Could not auto-create user for {$candName}: " . $e->getMessage());
-                }
-            } else {
-                $empUser->update([
-                    'line_manager_id' => $user->id,
-                    'report_to' => $user->name
-                ]);
-            }
-
-            // Sync reporting line in employees table as well
-            try {
-                \App\Models\Employee::where('employeeid', $empCode)->update([
-                    'line_manager_id' => $user->id
-                ]);
-            } catch (\Exception $e) {
-                // Table might not have column in some envs
-            }
-
-            // Prepare Appraisal Data snapshot for this employee
-            $empAppraisalData = $appraisalTemplate ?: [
-                'competencies' => [
-                    ['id' => 1, 'title' => 'Performance & Teamwork', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Overall performance based on feedback from Line or Operations Managers', 'Teamwork and people management issues']],
-                    ['id' => 2, 'title' => 'Customer Service / Relationship Building', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Super saver cards and service quality', 'Google rating improvement and satisfaction']],
-                    ['id' => 3, 'title' => 'Execution / Sales Results Driven', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Business driven metric set by department', 'Loss to company % mitigation and delivery']],
-                    ['id' => 4, 'title' => 'Compliance & Quality Standards', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Adherence to company policies, SOPs, safety, and regulatory compliance', 'Wooqer checklist and department standards implementation']],
-                    ['id' => 5, 'title' => 'Continuous Improvement in workflows/processes', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Culture of adaptability and operational innovation', 'Flexibility and problem solving']],
-                ],
-                'comments' => '',
-                'impressedMost' => '',
-                'impressedLeast' => '',
-                'performanceRating' => 0,
-                'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
-                'candidate_signature_name' => $candName,
-                'manager_signature_name' => $user->name,
-                'signature_date' => date('Y-m-d')
-            ];
-
-            // Check if a goal already exists for this employee in this year
-            $existingGoal = \App\Models\Goal::where('year', $year)
-                ->where(function ($q) use ($empCode, $empUser) {
-                    $q->where('employee_code', $empCode);
-                    if ($empUser) {
-                        $q->orWhere('user_id', $empUser->id);
-                    }
-                })
-                ->first();
-
-            $goalData = [
-                'title' => $goalTitle,
-                'description' => is_array($description) ? $description : (json_decode($description, true) ?: [$description]),
-                'purposes' => is_array($purposes) ? $purposes : (json_decode($purposes, true) ?: [$purposes]),
-                'challenges' => is_array($challenges) ? $challenges : (json_decode($challenges, true) ?: [$challenges]),
-                'category' => $category,
-                'target' => $target,
-                'due_date' => $dueDate,
-                'completion_date' => $completionDate,
-                'year' => $year,
-                'user_id' => $empUser ? $empUser->id : $user->id,
-                'candidate_name' => $candName,
-                'employee_code' => $empCode,
-                'location' => $loc,
-                'department' => $dept,
-                'job_title' => $jobTitle,
-                'manager_name' => $user->name,
-                'smart_criteria' => $smartCriteria,
-                'quarterly_tracking' => $quarterlyTracking,
-                'appraisal_data' => $empAppraisalData,
-                'status' => 'assigned',
-            ];
-
-            if ($existingGoal) {
-                if (in_array($existingGoal->status, ['assigned', 'draft', 'in_progress'])) {
-                    $existingGoal->update($goalData);
-                    $existingGoal->display_status = $this->computeDisplayStatus($existingGoal);
-                    $createdGoals[] = $existingGoal;
-                }
-            } else {
-                $newG = \App\Models\Goal::create($goalData);
-                $newG->display_status = $this->computeDisplayStatus($newG);
-                $createdGoals[] = $newG;
-            }
-
-            $assignedCount++;
-        }
-
-        return response()->json([
-            'status' => 'success',
-            'message' => "Successfully assigned goals and appraisal to {$assignedCount} employee(s).",
-            'count' => $assignedCount,
-            'data' => $createdGoals
-        ]);
     }
 
     /**

@@ -13,9 +13,17 @@ class MakeUserEmailNullable extends Migration
      */
     public function up()
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('email')->nullable()->change();
-        });
+        try {
+            Schema::table('users', function (Blueprint $table) {
+                $table->string('email')->nullable()->change();
+            });
+        } catch (\Throwable $e) {
+            try {
+                \Illuminate\Support\Facades\DB::statement("ALTER TABLE users MODIFY COLUMN email VARCHAR(255) NULL");
+            } catch (\Throwable $ex) {
+                // Ignore if not supported
+            }
+        }
     }
 
     /**

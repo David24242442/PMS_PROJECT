@@ -9,10 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('goals', function (Blueprint $table) {
-            $table->string('candidate_name')->nullable()->after('user_id');
-            $table->string('employee_code')->nullable()->after('candidate_name');
-            $table->string('location')->nullable()->after('employee_code');
-            $table->string('department')->nullable()->after('location');
+            if (!Schema::hasColumn('goals', 'candidate_name')) {
+                $table->string('candidate_name')->nullable();
+            }
+            if (!Schema::hasColumn('goals', 'employee_code')) {
+                $table->string('employee_code')->nullable();
+            }
+            if (!Schema::hasColumn('goals', 'location')) {
+                $table->string('location')->nullable();
+            }
+            if (!Schema::hasColumn('goals', 'department')) {
+                $table->string('department')->nullable();
+            }
         });
     }
 

@@ -15,7 +15,7 @@ class AddDepartmentToUsersTable extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             if (!Schema::hasColumn('users', 'department')) {
-                $table->string('department')->nullable();
+                $table->string('department')->nullable()->after('position');
             }
         });
     }
