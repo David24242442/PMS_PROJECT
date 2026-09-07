@@ -131,7 +131,7 @@
             </div>
 
             <!-- PMS Group (Renamed to PMS, contains PMS Submissions) -->
-            <div v-if="loguser?.admin || loguser?.is_manager || loguser?.position_id === 1 || ['/pms/dashboard', '/pms/goals', '/pms/review', '/pms/appraisal', '/hr/submissions'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.pms && isExpanded }">
+            <div v-if="loguser" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.pms && isExpanded }">
                 <div class="menu-item" @click="toggleMenu('pms')" :title="!isExpanded ? 'PMS' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-chart-bar"></span>
@@ -143,11 +143,11 @@
                         <span class="pi pi-home"></span>
                         Dashboard
                     </router-link>
-                    <router-link v-if="loguser?.admin || loguser?.is_manager || loguser?.position_id === 1 || loguser?.permissions?.includes('/pms/goals')" to="/pms/goals">
+                    <router-link to="/pms/goals">
                         <span class="pi pi-bullseye"></span>
                         Goals
                     </router-link>
-                    <router-link v-if="loguser?.admin || loguser?.is_manager || loguser?.position_id === 1 || loguser?.permissions?.includes('/pms/appraisal')" to="/pms/appraisal">
+                    <router-link to="/pms/appraisal">
                         <span class="pi pi-file-edit"></span>
                         Appraisal
                     </router-link>

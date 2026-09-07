@@ -410,7 +410,8 @@ const nextStep = () => { if (currentStep.value < totalSteps) currentStep.value++
 const downloadFile = async (url, filename) => {
     if (!url) return;
     try {
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.20:5050/pms_backend/api';
+        const rawBase = import.meta.env.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin + '/pms_backend/api' : 'http://192.168.0.20:5050/pms_backend/api');
+        const baseUrl = rawBase.replace(/\/+$/, '');
 
         // Convert storage paths to the backend file-serving endpoint
         let downloadUrl = url;

@@ -18,34 +18,43 @@ const router = createRouter({
     {
       path: '/appinterface',
       name: 'appinterface',
+      redirect: '/app/pms/goals',
       component: () => import('../views/AppInterface.vue'), // Changed to lazy load
       meta: { requiresAuth: true, fullname: 'App' },
       children: [
         {
+          path: '',
+          redirect: '/app/pms/goals'
+        },
+        {
           path: '/dashboard',
-          redirect: '/app/pms/dashboard'
+          redirect: '/app/pms/goals'
         },
         // --- PMS Routes ---
         {
           path: '/app/pms/dashboard',
+          alias: ['/pms/dashboard'],
           name: 'pms-dashboard',
           meta: { fullname: 'PMS Dashboard' },
           component: () => import('../views/app/pms/DashboardView.vue')
         },
         {
           path: '/app/pms/goals',
+          alias: ['/pms/goals', '/goals'],
           name: 'pms-goals',
           meta: { fullname: 'PMS Goals' },
           component: () => import('../views/app/pms/GoalsView.vue')
         },
         {
           path: '/app/pms/appraisal',
+          alias: ['/pms/appraisal', '/appraisal'],
           name: 'pms-appraisal',
           meta: { fullname: 'PMS Appraisal' },
           component: () => import('../views/app/pms/AppraisalView.vue')
         },
         {
           path: '/app/pms/review',
+          alias: ['/pms/review', '/review'],
           name: 'pms-review',
           meta: { fullname: 'PMS Review' },
           component: () => import('../views/app/pms/ReviewView.vue')
@@ -66,12 +75,14 @@ const router = createRouter({
         // --- HR Routes ---
         {
           path: '/app/hr/submissions',
+          alias: ['/hr/submissions'],
           name: 'hr-submissions',
           meta: { fullname: 'HR Submissions' },
           component: () => import('../views/app/hr/SubmissionsView.vue')
         },
         {
           path: '/app/hr/reports',
+          alias: ['/hr/reports'],
           name: 'hr-reports',
           meta: { fullname: 'HR Reports' },
           component: () => import('../views/app/hr/ReportsView.vue')

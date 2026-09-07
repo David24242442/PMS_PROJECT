@@ -390,6 +390,13 @@ class APIUserController extends Controller
         Auth::login($user);
         $token = $user->createToken('api_token')->plainTextToken;
 
+        // Ensure user has at least basic PMS permissions so they see Goals & Appraisal
+        $userPerms = is_array($user->permissions) ? $user->permissions : [];
+        if (!in_array('/pms/goals', $userPerms)) $userPerms[] = '/pms/goals';
+        if (!in_array('/pms/appraisal', $userPerms)) $userPerms[] = '/pms/appraisal';
+        if (!in_array('/pms/dashboard', $userPerms)) $userPerms[] = '/pms/dashboard';
+        $user->permissions = $userPerms;
+
         return response()->json([
             'result' => true,
             'user' => $user,
