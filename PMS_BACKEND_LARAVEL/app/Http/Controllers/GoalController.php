@@ -43,73 +43,97 @@ class GoalController extends Controller
      */
     public function index(Request $request)
     {
-        $year = $request->get('year', date('Y'));
-        $user = $request->user();
-        $userId = $user ? $user->id : $request->get('user_id');
+        try {
+            $year = $request->get('year', date('Y'));
+            $user = $request->user();
+            $userId = $user ? $user->id : $request->get('user_id');
 
-        if (!$userId) {
-            return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
-        }
-
-        $isAdmin = $user && $user->admin;
-
-        // Admin sees all goals; regular users see their own + their team's
-        $query = \App\Models\Goal::where('year', $year);
-
-        if (!$isAdmin) {
-            $isManager = $user && ($user->is_manager || $user->position_id === 1);
-            $teamUserIds = \App\Models\User::where('line_manager_id', $userId)->pluck('id')->toArray();
-            $teamEmpCodes = \App\Models\Employee::where('line_manager_id', $userId)->pluck('employeeid')->filter()->toArray();
-
-            $query->where(function ($q) use ($userId, $user, $teamUserIds, $teamEmpCodes, $isManager) {
-                // Matches own goals as employee or creator
-                $q->where('user_id', $userId);
-
-                if ($user && !empty($user->employee_code)) {
-                    $q->orWhere('employee_code', $user->employee_code);
-                }
-
-                // If manager or has subordinates, also see their team's goals
-                if ($isManager || !empty($teamUserIds) || !empty($teamEmpCodes)) {
-                    if (!empty($teamUserIds)) {
-                        $q->orWhereIn('user_id', $teamUserIds);
-                    }
-                    if (!empty($teamEmpCodes)) {
-                        $q->orWhereIn('employee_code', $teamEmpCodes);
-                    }
-                    if ($user) {
-                        $q->orWhere('manager_name', $user->name);
-                    }
-                }
-            });
-        }
-
-        $goals = $query->orderBy('created_at', 'desc')->get();
-
-        // Fetch completed reviews for this year to determine review status
-        $completedReviewEmpCodes = \App\Models\Review::where('year', $year)
-            ->where('status', 'completed')
-            ->pluck('emp_code')
-            ->toArray();
-
-        // Add computed display_status to each goal and resolve job_title from employee joining position
-        $goals->each(function ($goal) use ($completedReviewEmpCodes) {
-            $goal->display_status = $this->computeDisplayStatus($goal, $completedReviewEmpCodes);
-            if ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
-                $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
-                if ($emp) {
-                    $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
-                    if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
-                        $goal->job_title = $pos;
-                    }
-                }
+            if (!$userId) {
+                return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
             }
-        });
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $goals
-        ]);
+            $isAdmin = $user && $user->admin;
+
+            // Admin sees all goals; regular users see their own + their team's
+            $query = \App\Models\Goal::where('year', $year);
+
+            if (!$isAdmin) {
+                $isManager = $user && ($user->is_manager || $user->position_id === 1);
+                $teamUserIds = [];
+                $teamEmpCodes = [];
+                try {
+                    if (\Schema::hasTable('users') && \Schema::hasColumn('users', 'line_manager_id')) {
+                        $teamUserIds = \App\Models\User::where('line_manager_id', $userId)->pluck('id')->toArray();
+                    }
+                    if (\Schema::hasTable('employees') && \Schema::hasColumn('employees', 'line_manager_id')) {
+                        $teamEmpCodes = \App\Models\Employee::where('line_manager_id', $userId)->pluck('employeeid')->filter()->toArray();
+                    }
+                } catch (\Throwable $e) {}
+
+                $query->where(function ($q) use ($userId, $user, $teamUserIds, $teamEmpCodes, $isManager) {
+                    // Matches own goals as employee or creator
+                    $q->where('user_id', $userId);
+
+                    if ($user && !empty($user->employee_code)) {
+                        $q->orWhere('employee_code', $user->employee_code);
+                    }
+
+                    // If manager or has subordinates, also see their team's goals
+                    if ($isManager || !empty($teamUserIds) || !empty($teamEmpCodes)) {
+                        if (!empty($teamUserIds)) {
+                            $q->orWhereIn('user_id', $teamUserIds);
+                        }
+                        if (!empty($teamEmpCodes)) {
+                            $q->orWhereIn('employee_code', $teamEmpCodes);
+                        }
+                        if ($user) {
+                            $q->orWhere('manager_name', $user->name);
+                        }
+                    }
+                });
+            }
+
+            $goals = $query->orderBy('created_at', 'desc')->get();
+
+            // Fetch completed reviews for this year to determine review status
+            $completedReviewEmpCodes = [];
+            try {
+                if (\Schema::hasTable('reviews')) {
+                    $completedReviewEmpCodes = \App\Models\Review::where('year', $year)
+                        ->where('status', 'completed')
+                        ->pluck('emp_code')
+                        ->toArray();
+                }
+            } catch (\Throwable $e) {}
+
+            // Add computed display_status to each goal and resolve job_title from employee joining position
+            $goals->each(function ($goal) use ($completedReviewEmpCodes) {
+                try {
+                    $goal->display_status = $this->computeDisplayStatus($goal, $completedReviewEmpCodes);
+                    if ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
+                        $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
+                        if ($emp) {
+                            $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
+                            if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
+                                $goal->job_title = $pos;
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {}
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $goals
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('GoalController@index error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to load goals: ' . $e->getMessage(),
+                'data' => []
+            ], 500);
+        }
     }
 
     /**

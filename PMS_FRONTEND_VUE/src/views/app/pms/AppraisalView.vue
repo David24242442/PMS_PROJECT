@@ -13,6 +13,12 @@ const { loguser } = userstore;
 const route = useRoute();
 const router = useRouter();
 
+function range(start, end) {
+    const arr = [];
+    for (let i = start; i >= end; i--) arr.push(i);
+    return arr;
+}
+
 const currentYear = ref(new Date().getFullYear());
 const years = range(currentYear.value, currentYear.value - 5);
 const loading = ref(true);
@@ -37,12 +43,6 @@ const masterEmployees = ref([]);
 const filteredMasterEmployees = ref([]);
 const selectedCandidate = ref(null);
 watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
-
-function range(start, end) {
-    const arr = [];
-    for (let i = start; i >= end; i--) arr.push(i);
-    return arr;
-}
 
 // Performance Key Competencies (5 items, default 20% weight each = 100%)
 const defaultCompetencyList = [

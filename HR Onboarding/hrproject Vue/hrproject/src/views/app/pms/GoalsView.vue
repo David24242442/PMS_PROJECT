@@ -26,6 +26,12 @@ const draftId = ref(null); // Track if editing an existing draft
 const lastDraftSave = ref(null); // Timestamp of last auto-save
 const showDetailModal = ref(false);
 const selectedGoal = ref(null);
+function range(start, end) {
+    const arr = [];
+    for (let i = start; i >= end; i--) arr.push(i);
+    return arr;
+}
+
 const currentYear = ref(new Date().getFullYear());
 const years = range(currentYear.value, currentYear.value - 5);
 watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
@@ -61,12 +67,6 @@ const employeeGoal = computed(() => {
 const masterEmployees = ref([]);
 const filteredMasterEmployees = ref([]);
 const selectedCandidate = ref(null); // For AutoComplete v-model
-
-function range(start, end) {
-    const arr = [];
-    for (let i = start; i >= end; i--) arr.push(i);
-    return arr;
-}
 
 const getRecordId = (goal) => {
     if (!goal) return 'N/A';

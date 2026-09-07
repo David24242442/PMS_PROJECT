@@ -176,144 +176,158 @@ class EmployeeMasterController extends Controller
 
     public function getEmployees(Request $request)
     {
-        $user = $request->user();
-        $isAdmin = $user && $user->admin;
-
-        $hasJoiningDept = \Schema::hasColumn('employees', 'joiningdepartment');
-        $hasLocation = \Schema::hasColumn('employees', 'location');
-        $hasJoiningLocation = \Schema::hasColumn('employees', 'joininglocation');
-
-        $selectColumns = [
-            'employees.id as emp_id',
-            'employees.employeeid',
-            'employees.firstname',
-            'employees.surname',
-            'employees.department as emp_dept',
-            'employees.job_title as emp_position',
-            'employees.joiningposition',
-            'employees.joining_dept_id',
-            'employees.joining_branch_id',
-            'employees.line_manager_id', // Source of truth for standard staff
-            'employees.email as emp_email',
-            'users.id as user_id',
-            'users.department',
-            'users.location',
-            'users.email as user_email',
-        ];
-
-        if ($hasJoiningDept) $selectColumns[] = 'employees.joiningdepartment';
-        if ($hasLocation) $selectColumns[] = 'employees.location as emp_location';
-        else if ($hasJoiningLocation) $selectColumns[] = 'employees.joininglocation as emp_location';
-
-        $query = \App\Models\Employee::leftJoin('users', 'users.employee_code', '=', 'employees.employeeid')
-            ->select($selectColumns);
-
-        // Non-admin users only see their assigned team members
-        if (!$isAdmin && $user) {
-            $query->where('employees.line_manager_id', $user->id);
-        }
-
-        $employees = $query->orderBy('employees.firstname')->get();
-
-        $employees = $employees->map(function ($emp) use ($hasJoiningDept) {
-            // Resolve manager name if they have a line_manager_id in employees table
-            $managerName = null;
-            if ($emp->line_manager_id) {
-                $mgr = User::find($emp->line_manager_id);
-                $managerName = $mgr ? $mgr->name : 'Unknown';
-            }
-
-            // Fallback logic for Department: users table → employees.department → joiningdepartment → resolve joining_dept_id
-            $dept = $emp->department; // From users table
-            if (empty($dept) || $dept === 'N/A') {
-                $dept = $emp->emp_dept ?: ($emp->joiningdepartment ?? null);
-            }
-            if (empty($dept) || $dept === 'N/A') {
-                $dept = self::$deptLookup[$emp->joining_dept_id] ?? 'N/A';
-            }
-
-            // Fallback logic for Location: users table → employees.location → resolve joining_branch_id
-            $loc = $emp->location; // From users table
-            if (empty($loc) || $loc === 'N/A') {
-                $loc = $emp->emp_location ?? null;
-            }
-            if (empty($loc) || $loc === 'N/A') {
-                $loc = self::$branchLookup[$emp->joining_branch_id] ?? 'N/A';
-            }
-
-            // Fallback logic for Position: job_title → joiningposition
-            $position = $emp->emp_position;
-            if (empty($position) || $position === 'N/A') {
-                $position = $emp->joiningposition ?? 'N/A';
-            }
-
-            return [
-                'id' => $emp->emp_id,
-                'user_id' => $emp->user_id,
-                'employee_code' => $emp->employeeid,
-                'name' => trim($emp->firstname . ' ' . $emp->surname),
-                'firstname' => $emp->firstname,
-                'surname' => $emp->surname,
-                'email' => $emp->user_email ?: $emp->emp_email,
-                'location' => $loc,
-                'department' => $dept,
-                'position' => $position,
-                'joining_dept_id' => $emp->joining_dept_id,
-                'joining_branch_id' => $emp->joining_branch_id,
-                'line_manager_id' => $emp->line_manager_id,
-                'line_manager_name' => $managerName,
-                'full_string' => $emp->employeeid . ' - ' . trim($emp->firstname . ' ' . $emp->surname)
-            ];
-        });
-
-        // --- Central Database Fallback Logic ---
         try {
-            $localEmployeeIds = $employees->pluck('employee_code')->filter()->toArray();
-            
-            $centralQuery = \App\Models\CentralEmployee::query();
-            if (!empty($localEmployeeIds)) {
-                $centralQuery->whereNotIn('employeeid', $localEmployeeIds);
+            $user = $request->user();
+            $isAdmin = $user && $user->admin;
+
+            $hasJoiningDept = \Schema::hasColumn('employees', 'joiningdepartment');
+            $hasLocation = \Schema::hasColumn('employees', 'location');
+            $hasJoiningLocation = \Schema::hasColumn('employees', 'joininglocation');
+            $hasJobTitle = \Schema::hasColumn('employees', 'job_title');
+            $hasLineManager = \Schema::hasColumn('employees', 'line_manager_id');
+            $hasEmpDept = \Schema::hasColumn('employees', 'department');
+            $hasEmpEmail = \Schema::hasColumn('employees', 'email');
+            $hasUserLocation = \Schema::hasColumn('users', 'location');
+            $hasUserDept = \Schema::hasColumn('users', 'department');
+            $hasUserEmpCode = \Schema::hasColumn('users', 'employee_code');
+
+            $selectColumns = [
+                'employees.id as emp_id',
+                'employees.employeeid',
+                'employees.firstname',
+                'employees.surname',
+                'employees.joiningposition',
+                'employees.joining_dept_id',
+                'employees.joining_branch_id',
+            ];
+
+            if ($hasEmpDept) $selectColumns[] = 'employees.department as emp_dept';
+            if ($hasJobTitle) $selectColumns[] = 'employees.job_title as emp_position';
+            if ($hasLineManager) $selectColumns[] = 'employees.line_manager_id';
+            if ($hasEmpEmail) $selectColumns[] = 'employees.email as emp_email';
+            if ($hasJoiningDept) $selectColumns[] = 'employees.joiningdepartment';
+            if ($hasLocation) $selectColumns[] = 'employees.location as emp_location';
+            else if ($hasJoiningLocation) $selectColumns[] = 'employees.joininglocation as emp_location';
+
+            if ($hasUserEmpCode) {
+                $selectColumns[] = 'users.id as user_id';
+                if ($hasUserDept) $selectColumns[] = 'users.department';
+                if ($hasUserLocation) $selectColumns[] = 'users.location';
+                $selectColumns[] = 'users.email as user_email';
+
+                $query = \App\Models\Employee::leftJoin('users', 'users.employee_code', '=', 'employees.employeeid')
+                    ->select($selectColumns);
+            } else {
+                $query = \App\Models\Employee::select($selectColumns);
             }
 
-            // Note: Central DB doesn't have local 'line_manager_id', so if non-admin is filtering by line_manager_id, 
-            // we won't return central employees since they are not explicitly assigned to this manager yet.
-            // But if it's admin or a general search where manager filter isn't strictly applied to the central query:
-            if ($isAdmin || !$user) {
-                $centralEmployeesData = $centralQuery->get()->map(function ($emp) {
-                    $dept = self::$deptLookup[$emp->joining_dept_id ?? 0] ?? $emp->department ?? $emp->joiningdepartment ?? 'N/A';
-                    $loc = self::$branchLookup[$emp->joining_branch_id ?? 0] ?? $emp->location ?? $emp->joininglocation ?? 'N/A';
-                    $position = $emp->job_title ?? $emp->joiningposition ?? 'N/A';
-
-                    return [
-                        'id' => $emp->id,
-                        'user_id' => null,
-                        'employee_code' => $emp->employeeid,
-                        'name' => trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
-                        'firstname' => $emp->firstname ?? '',
-                        'surname' => $emp->surname ?? '',
-                        'email' => $emp->email ?? null,
-                        'location' => $loc,
-                        'department' => $dept,
-                        'position' => $position,
-                        'joining_dept_id' => $emp->joining_dept_id,
-                        'joining_branch_id' => $emp->joining_branch_id,
-                        'line_manager_id' => null,
-                        'line_manager_name' => null,
-                        'full_string' => $emp->employeeid . ' - ' . trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
-                        'is_central' => true
-                    ];
-                });
-
-                $employees = $employees->concat($centralEmployeesData)->values();
+            // Non-admin users only see their assigned team members if column exists
+            if (!$isAdmin && $user && $hasLineManager) {
+                $query->where('employees.line_manager_id', $user->id);
             }
-        } catch (\Exception $e) {
-            \Log::error('Central DB Fallback Error: ' . $e->getMessage());
+
+            $employees = $query->orderBy('employees.firstname')->get();
+
+            $employees = $employees->map(function ($emp) use ($hasJoiningDept, $hasLineManager) {
+                $managerName = null;
+                if ($hasLineManager && !empty($emp->line_manager_id)) {
+                    $mgr = User::find($emp->line_manager_id);
+                    $managerName = $mgr ? $mgr->name : 'Unknown';
+                }
+
+                $dept = $emp->department ?? null;
+                if (empty($dept) || $dept === 'N/A') {
+                    $dept = $emp->emp_dept ?: ($emp->joiningdepartment ?? null);
+                }
+                if (empty($dept) || $dept === 'N/A') {
+                    $dept = self::$deptLookup[$emp->joining_dept_id] ?? 'N/A';
+                }
+
+                $loc = $emp->location ?? null;
+                if (empty($loc) || $loc === 'N/A') {
+                    $loc = $emp->emp_location ?? null;
+                }
+                if (empty($loc) || $loc === 'N/A') {
+                    $loc = self::$branchLookup[$emp->joining_branch_id] ?? 'N/A';
+                }
+
+                $position = $emp->emp_position ?? null;
+                if (empty($position) || $position === 'N/A') {
+                    $position = $emp->joiningposition ?? 'N/A';
+                }
+
+                return [
+                    'id' => $emp->emp_id,
+                    'user_id' => $emp->user_id ?? null,
+                    'employee_code' => $emp->employeeid,
+                    'name' => trim($emp->firstname . ' ' . $emp->surname),
+                    'firstname' => $emp->firstname,
+                    'surname' => $emp->surname,
+                    'email' => $emp->user_email ?? ($emp->emp_email ?? null),
+                    'location' => $loc,
+                    'department' => $dept,
+                    'position' => $position,
+                    'joining_dept_id' => $emp->joining_dept_id,
+                    'joining_branch_id' => $emp->joining_branch_id,
+                    'line_manager_id' => $emp->line_manager_id ?? null,
+                    'line_manager_name' => $managerName,
+                    'full_string' => $emp->employeeid . ' - ' . trim($emp->firstname . ' ' . $emp->surname)
+                ];
+            });
+
+            // --- Central Database Fallback Logic ---
+            try {
+                $localEmployeeIds = $employees->pluck('employee_code')->filter()->toArray();
+                
+                $centralQuery = \App\Models\CentralEmployee::query();
+                if (!empty($localEmployeeIds)) {
+                    $centralQuery->whereNotIn('employeeid', $localEmployeeIds);
+                }
+
+                if ($isAdmin || !$user) {
+                    $centralEmployeesData = $centralQuery->get()->map(function ($emp) {
+                        $dept = self::$deptLookup[$emp->joining_dept_id ?? 0] ?? $emp->department ?? $emp->joiningdepartment ?? 'N/A';
+                        $loc = self::$branchLookup[$emp->joining_branch_id ?? 0] ?? $emp->location ?? $emp->joininglocation ?? 'N/A';
+                        $position = $emp->job_title ?? $emp->joiningposition ?? 'N/A';
+
+                        return [
+                            'id' => $emp->id,
+                            'user_id' => null,
+                            'employee_code' => $emp->employeeid,
+                            'name' => trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
+                            'firstname' => $emp->firstname ?? '',
+                            'surname' => $emp->surname ?? '',
+                            'email' => $emp->email ?? null,
+                            'location' => $loc,
+                            'department' => $dept,
+                            'position' => $position,
+                            'joining_dept_id' => $emp->joining_dept_id,
+                            'joining_branch_id' => $emp->joining_branch_id,
+                            'line_manager_id' => null,
+                            'line_manager_name' => null,
+                            'full_string' => $emp->employeeid . ' - ' . trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
+                            'is_central' => true
+                        ];
+                    });
+
+                    $employees = $employees->concat($centralEmployeesData)->values();
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('Central DB Fallback Notice: ' . $e->getMessage());
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $employees
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('EmployeeMasterController@getEmployees error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to load employees: ' . $e->getMessage(),
+                'data' => []
+            ], 500);
         }
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $employees
-        ]);
     }
 
     /**
