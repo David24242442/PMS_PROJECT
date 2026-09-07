@@ -12,13 +12,33 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
       // Suppress benign third-party browser extension errors (e.g. autofill / password managers)
-      window.addEventListener('error', function(e) {
-        if (e && (e.message && (e.message.includes('startTime') || e.message.includes('reportAllChanges')) || (e.filename === '' && e.lineno === 2))) {
-          e.stopImmediatePropagation();
-          e.preventDefault();
-          return true;
+      (function() {
+        function shouldSuppress(msg) {
+          if (!msg) return false;
+          var s = String(msg);
+          return s.indexOf('startTime') !== -1 || s.indexOf('reportAllChanges') !== -1 || s.indexOf('ResizeObserver') !== -1;
         }
-      }, true);
+        window.addEventListener('error', function(e) {
+          if (e && (shouldSuppress(e.message) || (e.error && shouldSuppress(e.error.message)) || (e.filename === '' && e.lineno === 2))) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(e) {
+          if (e && e.reason && shouldSuppress(e.reason.message || e.reason)) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+        var oldOnError = window.onerror;
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+          if (shouldSuppress(msg) || (lineNo === 2 && (!url || url === ''))) return true;
+          if (oldOnError) return oldOnError.apply(this, arguments);
+          return false;
+        };
+      })();
     </script>
   </head>
   <body>

@@ -23,19 +23,21 @@ if %errorlevel% neq 0 (
     exit /b %errorlevel%
 )
 
-:: 2. Clean and Transfer Frontend
-echo [2/3] Cleaning and Mirroring Frontend to Share...
-robocopy "%FRONTEND_SRC%\dist" "%FRONTEND_DEST%" /MIR /MT /R:2 /W:5 /NP
-if %errorlevel% geq 8 echo [ERROR] Frontend transfer failed with error %errorlevel%
+:: 2. Clean and Transfer Frontend to BOTH share folders
+echo [2/4] Mirroring Frontend to pms_frontend and PMS_FRONTEND_VUE on Share...
+robocopy "%FRONTEND_SRC%\dist" "%SHARE_PATH%\pms_frontend" /MIR /MT /R:2 /W:3 /NP
+robocopy "%FRONTEND_SRC%\dist" "%SHARE_PATH%\PMS_FRONTEND_VUE" /MIR /MT /R:2 /W:3 /NP
 
-:: 3. Clean and Transfer Backend
-echo [3/3] Cleaning and Mirroring Backend to Share...
-echo Transferring Laravel files (Mirroring source, excluding vendor/nodes)...
-robocopy "%BACKEND_SRC%" "%BACKEND_DEST%" /MIR /MT /R:2 /W:5 /NP /XD vendor node_modules .git storage public\storage /XF .env.local .env.development
+:: 3. Clean and Transfer Backend to BOTH share folders
+echo [3/4] Mirroring Backend to pms_backend and pms_backend_laravel on Share...
+robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend" /MIR /MT /R:2 /W:3 /NP /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
+robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend_laravel" /MIR /MT /R:2 /W:3 /NP /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
 
 echo.
 echo ===========================================
-echo   SUCCESS! PMS project replaced by HR Onboarding.
-echo   Files are ready at: %SHARE_PATH%
+echo   SUCCESS! Frontend and Backend deployed.
+echo   Staging share updated at: %SHARE_PATH%
+echo   - pms_frontend + PMS_FRONTEND_VUE
+echo   - pms_backend + pms_backend_laravel
 echo ===========================================
 pause

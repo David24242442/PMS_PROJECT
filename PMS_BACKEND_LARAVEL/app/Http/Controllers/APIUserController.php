@@ -318,7 +318,7 @@ class APIUserController extends Controller
                     $empCode = $emp ? ($emp->employeeid ?: $emp->emp_code) : $goal->employee_code;
                     $empName = $emp ? trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')) : ($goal->candidate_name ?? $loginInput);
                     $empFirstName = $emp ? ($emp->firstname ?? '') : (explode(' ', $empName)[0] ?? 'Employee');
-                    $desiredUsername = trim($empFirstName . ' ' . $empCode);
+                    $desiredUsername = $empCode;
                     $cleanEmpCode = preg_replace('/[^a-zA-Z0-9]/', '', $empCode);
                     $userEmail = ($emp && !empty($emp->email) && filter_var($emp->email, FILTER_VALIDATE_EMAIL))
                         ? $emp->email 
@@ -336,7 +336,7 @@ class APIUserController extends Controller
                         'name' => $empName,
                         'username' => $desiredUsername,
                         'email' => $userEmail,
-                        'password' => bcrypt($password),
+                        'password' => bcrypt('password'),
                     ];
                     if (in_array('employee_code', $userCols)) $newUserData['employee_code'] = $empCode;
                     if (in_array('department', $userCols)) $newUserData['department'] = $emp ? ($emp->department ?? $emp->joining_dept_id) : ($goal->department ?? null);
@@ -365,15 +365,15 @@ class APIUserController extends Controller
             if (Hash::check($password, $user->password)) {
                 $authenticated = true;
             } else {
-                // Fallback for default initial password casing: 'password' vs 'Password'
+                // Fallback for default initial password: 'password' or 'Password'
                 $lowerAttempt = strtolower($password);
                 if ($lowerAttempt === 'password') {
                     if (Hash::check('Password', $user->password) || Hash::check('password', $user->password)) {
                         $authenticated = true;
                     } elseif (!$user->admin) {
-                        // First-time login for provisioned employee using default password
+                        // First-time or reset login for employee using default password
                         $authenticated = true;
-                        $user->password = bcrypt($password);
+                        $user->password = bcrypt('password');
                         $user->save();
                     }
                 }

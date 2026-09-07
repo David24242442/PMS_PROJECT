@@ -25,16 +25,72 @@ class PMSDashboardController extends Controller
                 $totalEmployees = User::count();
             }
             $goalQuery = Goal::query();
+            $leaderboardUsers = null;
         } else {
-            // Regular user sees only their own data
-            $totalEmployees = 1;
-            $goalQuery = Goal::where('user_id', $user->id);
+            $isManager = $user->is_manager || $user->position_id === 1 || $user->admin;
+            if (!$isManager) {
+                try {
+                    $isManager = \Schema::hasTable('employees') && \Schema::hasColumn('employees', 'line_manager_id') && Employee::where('line_manager_id', $user->id)->exists();
+                } catch (\Throwable $e) {}
+            }
+
+            if ($isManager) {
+                $teamUserIds = [];
+                $teamEmpCodes = [];
+                try {
+                    if (\Schema::hasTable('users') && \Schema::hasColumn('users', 'line_manager_id')) {
+                        $teamUserIds = User::where('line_manager_id', $user->id)->pluck('id')->toArray();
+                    }
+                    if (\Schema::hasTable('employees') && \Schema::hasColumn('employees', 'line_manager_id')) {
+                        if (\Schema::hasColumn('employees', 'employeeid')) {
+                            $teamEmpCodes = Employee::where('line_manager_id', $user->id)->pluck('employeeid')->filter()->toArray();
+                        }
+                        if (empty($teamEmpCodes) && \Schema::hasColumn('employees', 'emp_code')) {
+                            $teamEmpCodes = Employee::where('line_manager_id', $user->id)->pluck('emp_code')->filter()->toArray();
+                        }
+                    }
+                } catch (\Throwable $e) {}
+
+                $hasCreatedBy = \Schema::hasColumn('goals', 'created_by');
+                $hasManagerName = \Schema::hasColumn('goals', 'manager_name');
+                $hasEmployeeCode = \Schema::hasColumn('goals', 'employee_code');
+
+                $goalQuery = Goal::where(function ($q) use ($user, $teamUserIds, $teamEmpCodes, $hasCreatedBy, $hasManagerName, $hasEmployeeCode) {
+                    $q->where('user_id', $user->id);
+                    if ($hasCreatedBy) {
+                        $q->orWhere('created_by', $user->id);
+                    }
+                    if ($hasManagerName && !empty($user->name)) {
+                        $q->orWhere('manager_name', $user->name)
+                          ->orWhere('manager_name', 'like', '%' . $user->name . '%');
+                    }
+                    if (!empty($teamUserIds)) {
+                        $q->orWhereIn('user_id', $teamUserIds);
+                    }
+                    if (!empty($teamEmpCodes) && $hasEmployeeCode) {
+                        $q->orWhereIn('employee_code', $teamEmpCodes);
+                    }
+                });
+
+                $totalEmployees = max(1, count($teamEmpCodes) ?: count($teamUserIds) ?: 1);
+                $leaderboardUsers = array_values(array_unique(array_merge([$user->id], $teamUserIds)));
+            } else {
+                $totalEmployees = 1;
+                $hasEmployeeCode = \Schema::hasColumn('goals', 'employee_code');
+                $goalQuery = Goal::where(function ($q) use ($user, $hasEmployeeCode) {
+                    $q->where('user_id', $user->id);
+                    if (!empty($user->employee_code) && $hasEmployeeCode) {
+                        $q->orWhere('employee_code', $user->employee_code);
+                    }
+                });
+                $leaderboardUsers = $user->id;
+            }
         }
 
         $totalGoals = (clone $goalQuery)->count();
         $completedGoals = (clone $goalQuery)->where('status', 'completed')->count();
         $pendingAppraisals = (clone $goalQuery)->where('status', 'submitted')->count();
-        $approvedAppraisals = (clone $goalQuery)->where('status', 'approved')->count();
+        $approvedAppraisals = (clone $goalQuery)->whereIn('status', ['approved', 'review_completed'])->count();
 
         if ($isAdmin) {
             $usersWithGoals = Goal::distinct('user_id')->count('user_id');
@@ -58,8 +114,8 @@ class PMSDashboardController extends Controller
             $counts[] = (clone $goalQuery)->whereDate('created_at', $date->toDateString())->count();
         }
 
-        // Top Employees — admin sees leaderboard, regular user sees own summary
-        $topEmployees = $isAdmin ? $this->buildLeaderboard(5) : $this->buildLeaderboard(5, $user->id);
+        // Top Employees — admin sees global leaderboard, manager sees team, employee sees own
+        $topEmployees = $this->buildLeaderboard(5, $leaderboardUsers);
 
         return response()->json([
             'status' => 'success',
@@ -100,7 +156,9 @@ class PMSDashboardController extends Controller
     private function buildLeaderboard($limit = null, $userId = null)
     {
         $query = Goal::with('user');
-        if ($userId) {
+        if (is_array($userId)) {
+            $query->whereIn('user_id', $userId);
+        } elseif ($userId) {
             $query->where('user_id', $userId);
         }
         $goals = $query->get();

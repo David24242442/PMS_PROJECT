@@ -33,6 +33,12 @@ const isManager = computed(() => {
 });
 const isEmployee = computed(() => !isManager.value);
 
+watch(currentStep, (val) => {
+    if (isEmployee.value && val !== 1) {
+        currentStep.value = 1;
+    }
+}, { immediate: true });
+
 // Read-only when appraisal is submitted (completed/submitted) and review is done
 const isReadOnly = computed(() => {
     return ['review_completed', 'completed', 'submitted'].includes(goalStatus.value);
@@ -620,12 +626,14 @@ onMounted(async () => {
                                     class="w-7 h-7 rounded-lg flex items-center justify-center font-black text-[11px] shadow-sm border transition-all">1</div>
                                 <span class="text-gray-200 font-bold text-[9px] uppercase tracking-wider">Competencies</span>
                             </div>
-                            <div class="w-6 h-px bg-white/20"></div>
-                            <div class="flex items-center gap-2 cursor-pointer" @click="currentStep = 2">
-                                <div :class="currentStep >= 2 ? 'step-active' : 'step-inactive'"
-                                    class="w-7 h-7 rounded-lg flex items-center justify-center font-black text-[11px] shadow-sm border transition-all">2</div>
-                                <span class="text-gray-200 font-bold text-[9px] uppercase tracking-wider">Ratings</span>
-                            </div>
+                            <template v-if="isManager">
+                                <div class="w-6 h-px bg-white/20"></div>
+                                <div class="flex items-center gap-2 cursor-pointer" @click="currentStep = 2">
+                                    <div :class="currentStep >= 2 ? 'step-active' : 'step-inactive'"
+                                        class="w-7 h-7 rounded-lg flex items-center justify-center font-black text-[11px] shadow-sm border transition-all">2</div>
+                                    <span class="text-gray-200 font-bold text-[9px] uppercase tracking-wider">Ratings</span>
+                                </div>
+                            </template>
                         </div>
                         <select v-model="currentYear" @change="fetchAppraisal" class="prof-input font-bold !py-1.5 !px-3 !text-xs !bg-gray-50 !rounded-lg">
                             <option v-for="year in years" :key="year" :value="year">FY {{ year }}</option>

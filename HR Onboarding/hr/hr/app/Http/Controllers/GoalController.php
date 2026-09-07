@@ -9,16 +9,101 @@ use Illuminate\Support\Str;
 class GoalController extends Controller
 {
     /**
+     * Ensure critical PMS database schema exists.
+     */
+    private function ensureSchema()
+    {
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+                \Illuminate\Support\Facades\Schema::table('goals', function ($table) {
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'created_by')) {
+                        $table->unsignedBigInteger('created_by')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'manager_name')) {
+                        $table->string('manager_name')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'appraisal_data')) {
+                        $table->longText('appraisal_data')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'employee_code')) {
+                        $table->string('employee_code')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'candidate_name')) {
+                        $table->string('candidate_name')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'department')) {
+                        $table->string('department')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'location')) {
+                        $table->string('location')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'job_title')) {
+                        $table->string('job_title')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'smart_criteria')) {
+                        $table->json('smart_criteria')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'quarterly_tracking')) {
+                        $table->json('quarterly_tracking')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'submitted_at')) {
+                        $table->timestamp('submitted_at')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'hr_comments')) {
+                        $table->text('hr_comments')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'overall_rating')) {
+                        $table->decimal('overall_rating', 3, 2)->nullable();
+                    }
+                });
+            }
+            if (\Illuminate\Support\Facades\Schema::hasTable('users')) {
+                \Illuminate\Support\Facades\Schema::table('users', function ($table) {
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'employee_code')) {
+                        $table->string('employee_code')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'line_manager_id')) {
+                        $table->unsignedBigInteger('line_manager_id')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'report_to')) {
+                        $table->string('report_to')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'is_manager')) {
+                        $table->boolean('is_manager')->default(0);
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'permissions')) {
+                        $table->text('permissions')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'appraisal_template')) {
+                        $table->longText('appraisal_template')->nullable();
+                    }
+                });
+            }
+        } catch (\Throwable $e) {
+            \Log::warning("GoalController ensureSchema warning: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Compute display_status for a goal.
      */
     private function computeDisplayStatus($goal, $completedReviewEmpCodes = null)
     {
         if ($completedReviewEmpCodes === null) {
             $year = $goal->year ?? date('Y');
-            $completedReviewEmpCodes = \App\Models\Review::where('year', $year)
-                ->where('status', 'completed')
-                ->pluck('emp_code')
-                ->toArray();
+            $completedReviewEmpCodes = [];
+            try {
+                if (\Illuminate\Support\Facades\Schema::hasTable('reviews') && 
+                    \Illuminate\Support\Facades\Schema::hasColumn('reviews', 'emp_code') && 
+                    \Illuminate\Support\Facades\Schema::hasColumn('reviews', 'status')) {
+                    $completedReviewEmpCodes = \App\Models\Review::where('year', $year)
+                        ->where('status', 'completed')
+                        ->pluck('emp_code')
+                        ->toArray();
+                }
+            } catch (\Throwable $e) {
+                $completedReviewEmpCodes = [];
+            }
         }
 
         if ($goal->status === 'draft') {
@@ -44,6 +129,8 @@ class GoalController extends Controller
     public function index(Request $request)
     {
         try {
+            $this->ensureSchema();
+
             $year = $request->get('year', date('Y'));
             $user = $request->user();
             $userId = $user ? $user->id : $request->get('user_id');
@@ -59,41 +146,59 @@ class GoalController extends Controller
 
             if (!$isAdmin) {
                 $userName = $user ? trim($user->name) : '';
+                $userUsername = $user ? trim($user->username ?? '') : '';
                 $userEmpCode = $user ? trim($user->employee_code ?? '') : '';
 
                 $teamUserIds = [];
                 $teamEmpCodes = [];
                 try {
-                    if (\Schema::hasTable('users') && \Schema::hasColumn('users', 'line_manager_id')) {
+                    if (\Illuminate\Support\Facades\Schema::hasTable('users') && \Illuminate\Support\Facades\Schema::hasColumn('users', 'line_manager_id')) {
                         $teamUserIds = \App\Models\User::where('line_manager_id', $userId)->pluck('id')->toArray();
                     }
-                    if (\Schema::hasTable('employees') && \Schema::hasColumn('employees', 'line_manager_id')) {
-                        $teamEmpCodes = \App\Models\Employee::where('line_manager_id', $userId)->pluck('employeeid')->filter()->toArray();
+                    if (\Illuminate\Support\Facades\Schema::hasTable('employees') && \Illuminate\Support\Facades\Schema::hasColumn('employees', 'line_manager_id')) {
+                        if (\Illuminate\Support\Facades\Schema::hasColumn('employees', 'employeeid')) {
+                            $teamEmpCodes = \App\Models\Employee::where('line_manager_id', $userId)->pluck('employeeid')->filter()->toArray();
+                        }
+                        if (empty($teamEmpCodes) && \Illuminate\Support\Facades\Schema::hasColumn('employees', 'emp_code')) {
+                            $teamEmpCodes = \App\Models\Employee::where('line_manager_id', $userId)->pluck('emp_code')->filter()->toArray();
+                        }
                     }
                 } catch (\Throwable $e) {}
 
-                $query->where(function ($q) use ($userId, $userName, $userEmpCode, $teamUserIds, $teamEmpCodes) {
+                $hasCreatedBy = \Illuminate\Support\Facades\Schema::hasColumn('goals', 'created_by');
+                $hasManagerName = \Illuminate\Support\Facades\Schema::hasColumn('goals', 'manager_name');
+                $hasEmployeeCode = \Illuminate\Support\Facades\Schema::hasColumn('goals', 'employee_code');
+
+                $query->where(function ($q) use ($userId, $userName, $userUsername, $userEmpCode, $teamUserIds, $teamEmpCodes, $hasCreatedBy, $hasManagerName, $hasEmployeeCode) {
                     // 1. Employee's own assigned goal
                     $q->where('user_id', $userId);
 
-                    if (!empty($userEmpCode)) {
+                    if (!empty($userEmpCode) && $hasEmployeeCode) {
                         $q->orWhere('employee_code', $userEmpCode);
                     }
 
                     // 2. Goals created or assigned by this user (as Line Manager / Creator)
-                    $q->orWhere('created_by', $userId);
+                    if ($hasCreatedBy) {
+                        $q->orWhere('created_by', $userId);
+                    }
 
-                    // 3. Goals where manager_name matches or contains this Line Manager's name
-                    if (!empty($userName)) {
-                        $q->orWhere('manager_name', $userName)
-                          ->orWhere('manager_name', 'like', '%' . $userName . '%');
+                    // 3. Goals where manager_name matches or contains this Line Manager's name/username
+                    if ($hasManagerName) {
+                        if (!empty($userName)) {
+                            $q->orWhere('manager_name', $userName)
+                              ->orWhere('manager_name', 'like', '%' . $userName . '%');
+                        }
+                        if (!empty($userUsername) && $userUsername !== $userName) {
+                            $q->orWhere('manager_name', $userUsername)
+                              ->orWhere('manager_name', 'like', '%' . $userUsername . '%');
+                        }
                     }
 
                     // 4. Subordinate goals in reporting line
                     if (!empty($teamUserIds)) {
                         $q->orWhereIn('user_id', $teamUserIds);
                     }
-                    if (!empty($teamEmpCodes)) {
+                    if (!empty($teamEmpCodes) && $hasEmployeeCode) {
                         $q->orWhereIn('employee_code', $teamEmpCodes);
                     }
                 });
@@ -104,7 +209,9 @@ class GoalController extends Controller
             // Fetch completed reviews for this year to determine review status
             $completedReviewEmpCodes = [];
             try {
-                if (\Schema::hasTable('reviews')) {
+                if (\Illuminate\Support\Facades\Schema::hasTable('reviews') && 
+                    \Illuminate\Support\Facades\Schema::hasColumn('reviews', 'emp_code') && 
+                    \Illuminate\Support\Facades\Schema::hasColumn('reviews', 'status')) {
                     $completedReviewEmpCodes = \App\Models\Review::where('year', $year)
                         ->where('status', 'completed')
                         ->pluck('emp_code')
@@ -117,7 +224,15 @@ class GoalController extends Controller
                 try {
                     $goal->display_status = $this->computeDisplayStatus($goal, $completedReviewEmpCodes);
                     if ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
-                        $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
+                        $emp = null;
+                        if (\Illuminate\Support\Facades\Schema::hasTable('employees')) {
+                            if (\Illuminate\Support\Facades\Schema::hasColumn('employees', 'employeeid')) {
+                                $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
+                            }
+                            if (!$emp && \Illuminate\Support\Facades\Schema::hasColumn('employees', 'emp_code')) {
+                                $emp = \App\Models\Employee::where('emp_code', $goal->employee_code)->first();
+                            }
+                        }
                         if ($emp) {
                             $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
                             if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
@@ -528,9 +643,9 @@ class GoalController extends Controller
                     }
 
                     // Provision or resolve login account for employee
-                    // Format: Username = Firstname + EmployeeCode (e.g. David SBP8637), Password = password
+                    // Username = EmployeeCode (e.g. SBPHD360), Password = password
                     $firstName = !empty($empData['firstname']) ? trim($empData['firstname']) : explode(' ', $candName)[0];
-                    $generatedUsername = trim($firstName . ' ' . $empCode);
+                    $generatedUsername = $empCode;
 
                     // Build a guaranteed valid, non-null, unique email
                     $cleanEmpCode = preg_replace('/[^a-zA-Z0-9]/', '', $empCode);

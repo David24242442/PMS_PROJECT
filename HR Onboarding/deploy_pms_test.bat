@@ -30,9 +30,8 @@ robocopy "%FRONTEND_SRC%\dist" "%SHARE_PATH%\PMS_FRONTEND_VUE" /MIR /MT /R:2 /W:
 
 :: 3. Clean and Transfer Backend (Mirror to both pms_backend and pms_backend_laravel)
 echo [3/3] Cleaning and Mirroring Backend to Share...
-echo Transferring Laravel files (Mirroring source, excluding vendor/nodes/storage)...
-robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend" /MIR /MT /R:2 /W:5 /NP /XD vendor node_modules .git storage public\storage /XF .env.local .env.development
-robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend_laravel" /MIR /MT /R:2 /W:5 /NP /XD vendor node_modules .git storage public\storage /XF .env.local .env.development
+robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend" /MIR /MT /R:2 /W:5 /NP /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
+robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend_laravel" /MIR /MT /R:2 /W:5 /NP /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
 
 echo.
 echo ===========================================

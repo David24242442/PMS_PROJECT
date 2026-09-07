@@ -266,6 +266,14 @@ const fetchGoals = async () => {
         });
         if (response.data.status === 'success') {
             goals.value = response.data.data;
+
+            // When an employee logs in, auto-open their assigned goal so they directly see the creation steps
+            if (isEmployee.value && goals.value.length > 0 && viewMode.value === 'list') {
+                const myGoal = goals.value.find(g => g.year === currentYear.value) || goals.value[0];
+                if (myGoal) {
+                    openEmployeeGoal(myGoal);
+                }
+            }
         }
     } catch (error) {
         console.error('Error fetching goals:', error);
@@ -1552,8 +1560,8 @@ const removeAttachment = (qIndex, fileIndex) => {
                 </div>
             </div>
 
-            <!-- Dashboard Stats & Table -->
-             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <!-- Dashboard Stats & Table (Manager only) -->
+            <div v-if="isManager" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 <!-- Total Goals -->
                 <div class="prof-card p-4 !bg-[#5830E0] text-white border-none shadow-lg !rounded-2xl relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform" @click="filterStatus = 'all'">
                     <div class="absolute -top-10 -right-10 w-24 h-24 bg-white/10 rounded-full"></div>
@@ -1620,8 +1628,8 @@ const removeAttachment = (qIndex, fileIndex) => {
                 </div>
             </div>
 
-            <!-- Goals List Section -->
-            <div class="prof-card mb-6 !rounded-2xl">
+            <!-- Goals List Section (Manager only) -->
+            <div v-if="isManager" class="prof-card mb-6 !rounded-2xl">
                  <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/30">
                     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div>
