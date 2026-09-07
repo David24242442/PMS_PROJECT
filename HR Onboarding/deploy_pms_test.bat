@@ -34,8 +34,28 @@ robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend" /MIR /MT /R:2 /W:5 /NP /XD v
 robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend_laravel" /MIR /MT /R:2 /W:5 /NP /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
 
 echo.
-echo ===========================================
-echo   SUCCESS! PMS project replaced by HR Onboarding.
-echo   Files are ready at: %SHARE_PATH%
-echo ===========================================
+echo ===============================================================================
+echo   SUCCESS! Frontend and Backend mirrored to Staging Share:
+echo   %SHARE_PATH%
+echo ===============================================================================
+echo.
+echo   ================== HOW TO APPLY CHANGES ON SERVER 20 ==================
+echo.
+echo   OPTION 1: Pull from Share to Server 20 (Run in CMD on Server 20):
+echo   -----------------------------------------------------------------------------
+echo   robocopy "%SHARE_PATH%\pms_frontend" "C:\xampp\htdocs\PMS\pms_frontend" /MIR /NP /R:2 /W:3
+echo   robocopy "%SHARE_PATH%\pms_backend" "C:\xampp\htdocs\PMS\pms_backend" /MIR /NP /R:2 /W:3 /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
+echo   cd /d "C:\xampp\htdocs\PMS\pms_backend" ^&^& php artisan optimize:clear
+echo.
+echo   OPTION 2: Pull from Git on Server 20 (if Git cloned):
+echo   -----------------------------------------------------------------------------
+echo   cd /d "C:\xampp\htdocs\PMS" ^&^& git pull origin main ^&^& cd pms_backend ^&^& php artisan optimize:clear
+echo.
+echo   OPTION 3: Trigger Route & DB Sync via Browser:
+echo   -----------------------------------------------------------------------------
+echo   Clear Routes: http://192.168.0.20:5050/pms_backend/api/run-route-clear
+echo   Sync Logins:  http://192.168.0.20:5050/pms_backend/api/sync-pms-users
+echo   Live App:     http://192.168.0.20:5050/pms_frontend/
+echo ===============================================================================
+echo.
 pause
