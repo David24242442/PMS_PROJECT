@@ -10,6 +10,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // Suppress benign third-party browser extension errors (e.g. autofill / password managers)
+      window.addEventListener('error', function(e) {
+        if (e && (e.message && (e.message.includes('startTime') || e.message.includes('reportAllChanges')) || (e.filename === '' && e.lineno === 2))) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          return true;
+        }
+      }, true);
+    </script>
   </head>
   <body>
     <script>if(localStorage.getItem('hr-theme')==='dark')document.body.classList.add('dark-mode');</script>

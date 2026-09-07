@@ -6,6 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>Melcom PMS</title>
+    <script>
+      // Suppress benign third-party browser extension errors (e.g. autofill / password managers)
+      window.addEventListener('error', function(e) {
+        if (e && (e.message && (e.message.includes('startTime') || e.message.includes('reportAllChanges')) || (e.filename === '' && e.lineno === 2))) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          return true;
+        }
+      }, true);
+    </script>
   </head>
   <body>
     <div id="app"></div>
