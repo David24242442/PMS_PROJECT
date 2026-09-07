@@ -369,7 +369,8 @@ const fetchAppraisal = async () => {
                         };
                     });
                 } else {
-                    const savedTpl = localStorage.getItem('pms_custom_competency_template');
+                    const storageKey = `pms_custom_competency_template_${loguser?.id || 'default'}`;
+                    const savedTpl = localStorage.getItem(storageKey);
                     if (savedTpl) {
                         const parsed = JSON.parse(savedTpl);
                         performanceCompetencies.value = defaultCompetencyList.map((def, idx) => {
@@ -477,7 +478,8 @@ const saveAppraisal = async (submit = false) => {
 
         // Cache customized template in localStorage AND backend server tied to this line manager
         if (isManager.value) {
-            localStorage.setItem('pms_custom_competency_template', JSON.stringify(appraisalData.competencies));
+            const storageKey = `pms_custom_competency_template_${loguser?.id || 'default'}`;
+            localStorage.setItem(storageKey, JSON.stringify(appraisalData.competencies));
             try {
                 await axios.post('pms/manager-template', {
                     template: appraisalData.competencies
@@ -534,7 +536,8 @@ const saveManagerTeamTemplate = async () => {
             descriptionText: c.descriptionText || (Array.isArray(c.descriptions) ? c.descriptions.join('\n') : c.descriptions)
         }));
 
-        localStorage.setItem('pms_custom_competency_template', JSON.stringify(compsToSave));
+        const storageKey = `pms_custom_competency_template_${loguser?.id || 'default'}`;
+        localStorage.setItem(storageKey, JSON.stringify(compsToSave));
 
         await axios.post('pms/manager-template', {
             template: compsToSave

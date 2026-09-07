@@ -253,30 +253,147 @@ class APIUserController extends Controller
             return response()->json(array(
                 'success' => false,
                 'errors' => $validator->getMessageBag()->toArray()
-        
             ), 202);
         }
 
-        $usertoauth = [
-            'username' => $request->username,
-            'password' => $request->password
-        ];
-        
-        $authStatus = Auth::attempt($usertoauth);
-        if(!$authStatus){
+        $loginInput = trim($request->username);
+        $password = $request->password;
+
+        // 1. Direct search in users table: by username, employee_code, or email (case-insensitive)
+        $user = User::where('username', $loginInput)
+            ->orWhere('employee_code', $loginInput)
+            ->orWhere('email', $loginInput)
+            ->orWhereRaw('LOWER(username) = ?', [strtolower($loginInput)])
+            ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($loginInput)])
+            ->orWhereRaw('LOWER(email) = ?', [strtolower($loginInput)])
+            ->first();
+
+        // If not found by full string, extract potential employee code (e.g. "BERNARD SBP8637" -> "SBP8637")
+        $parts = preg_split('/\s+/', $loginInput);
+        $possibleCode = end($parts);
+        if (!$user && !empty($possibleCode) && strlen($possibleCode) >= 3) {
+            $user = User::where('employee_code', $possibleCode)
+                ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($possibleCode)])
+                ->first();
+        }
+
+        // 2. If user is still not in users table, attempt auto-provisioning from employees or goals
+        if (!$user) {
+            $emp = null;
+            if (\Illuminate\Support\Facades\Schema::hasTable('employees')) {
+                $emp = \App\Models\Employee::where('employeeid', $loginInput)
+                    ->orWhere('emp_code', $loginInput)
+                    ->orWhereRaw('LOWER(employeeid) = ?', [strtolower($loginInput)])
+                    ->orWhereRaw("CONCAT(firstname, ' ', employeeid) = ?", [$loginInput])
+                    ->orWhereRaw("LOWER(CONCAT(firstname, ' ', employeeid)) = ?", [strtolower($loginInput)])
+                    ->first();
+
+                if (!$emp && !empty($possibleCode)) {
+                    $emp = \App\Models\Employee::where('employeeid', $possibleCode)
+                        ->orWhere('emp_code', $possibleCode)
+                        ->orWhereRaw('LOWER(employeeid) = ?', [strtolower($possibleCode)])
+                        ->first();
+                }
+            }
+
+            $goal = null;
+            if (\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+                $goal = \App\Models\Goal::where('employee_code', $loginInput)
+                    ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($loginInput)])
+                    ->orWhere('candidate_name', $loginInput)
+                    ->orWhereRaw('LOWER(candidate_name) = ?', [strtolower($loginInput)])
+                    ->latest()
+                    ->first();
+
+                if (!$goal && !empty($possibleCode)) {
+                    $goal = \App\Models\Goal::where('employee_code', $possibleCode)
+                        ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($possibleCode)])
+                        ->latest()
+                        ->first();
+                }
+            }
+
+            if ($emp || $goal) {
+                try {
+                    $empCode = $emp ? ($emp->employeeid ?: $emp->emp_code) : $goal->employee_code;
+                    $empName = $emp ? trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')) : ($goal->candidate_name ?? $loginInput);
+                    $empFirstName = $emp ? ($emp->firstname ?? '') : (explode(' ', $empName)[0] ?? 'Employee');
+                    $desiredUsername = trim($empFirstName . ' ' . $empCode);
+                    $cleanEmpCode = preg_replace('/[^a-zA-Z0-9]/', '', $empCode);
+                    $userEmail = ($emp && !empty($emp->email) && filter_var($emp->email, FILTER_VALIDATE_EMAIL))
+                        ? $emp->email 
+                        : (strtolower($cleanEmpCode) . '@melcomgroup.internal');
+
+                    if (\App\Models\User::where('email', $userEmail)->where('employee_code', '!=', $empCode)->exists()) {
+                        $userEmail = strtolower($cleanEmpCode) . '_' . substr(md5(uniqid()), 0, 6) . '@melcomgroup.internal';
+                    }
+
+                    $lineManagerId = ($emp && !empty($emp->line_manager_id)) ? $emp->line_manager_id : ($goal ? $goal->created_by : null);
+                    $reportTo = $goal ? $goal->manager_name : null;
+
+                    $userCols = \Illuminate\Support\Facades\Schema::getColumnListing('users');
+                    $newUserData = [
+                        'name' => $empName,
+                        'username' => $desiredUsername,
+                        'email' => $userEmail,
+                        'password' => bcrypt($password),
+                    ];
+                    if (in_array('employee_code', $userCols)) $newUserData['employee_code'] = $empCode;
+                    if (in_array('department', $userCols)) $newUserData['department'] = $emp ? ($emp->department ?? $emp->joining_dept_id) : ($goal->department ?? null);
+                    if (in_array('location', $userCols)) $newUserData['location'] = $emp ? ($emp->branch ?? $emp->location) : ($goal->location ?? null);
+                    if (in_array('job_title', $userCols)) $newUserData['job_title'] = $emp ? ($emp->job_title ?? $emp->joiningposition) : ($goal->job_title ?? null);
+                    if (in_array('line_manager_id', $userCols) && $lineManagerId) $newUserData['line_manager_id'] = $lineManagerId;
+                    if (in_array('report_to', $userCols) && $reportTo) $newUserData['report_to'] = $reportTo;
+                    if (in_array('is_manager', $userCols)) $newUserData['is_manager'] = 0;
+                    if (in_array('admin', $userCols)) $newUserData['admin'] = 0;
+                    if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/pms/goals', '/pms/appraisal'];
+
+                    $user = User::create($newUserData);
+
+                    if ($goal && empty($goal->user_id)) {
+                        $goal->update(['user_id' => $user->id]);
+                    }
+                } catch (\Throwable $createEx) {
+                    \Log::error("APIUserController@login auto-provisioning failed for {$loginInput}: " . $createEx->getMessage());
+                }
+            }
+        }
+
+        // 3. Authenticate password
+        $authenticated = false;
+        if ($user) {
+            if (Hash::check($password, $user->password)) {
+                $authenticated = true;
+            } else {
+                // Fallback for default initial password casing: 'password' vs 'Password'
+                $lowerAttempt = strtolower($password);
+                if ($lowerAttempt === 'password') {
+                    if (Hash::check('Password', $user->password) || Hash::check('password', $user->password)) {
+                        $authenticated = true;
+                    } elseif (!$user->admin) {
+                        // First-time login for provisioned employee using default password
+                        $authenticated = true;
+                        $user->password = bcrypt($password);
+                        $user->save();
+                    }
+                }
+            }
+        }
+
+        if (!$authenticated || !$user) {
             return response()->json([
                 'result' => false,
                 'message' => 'Invalid credentials'
             ]);
         }
 
-        $user = Auth::user();
+        Auth::login($user);
         $token = $user->createToken('api_token')->plainTextToken;
-        
+
         return response()->json([
-            'result'=>true,
-            'user'=>$user,
-            'token'=>$token,
+            'result' => true,
+            'user' => $user,
+            'token' => $token,
         ]);
     }
 

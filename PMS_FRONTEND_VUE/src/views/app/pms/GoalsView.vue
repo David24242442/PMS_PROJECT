@@ -432,7 +432,8 @@ const openAssignModal = async () => {
             });
             assignForm.value.weights = managerCompetencies.value.map(c => c.weight || 20);
         } else {
-            const savedTpl = localStorage.getItem('pms_custom_competency_template');
+            const storageKey = `pms_custom_competency_template_${loguser?.id || 'default'}`;
+            const savedTpl = localStorage.getItem(storageKey);
             if (savedTpl) {
                 const parsed = JSON.parse(savedTpl);
                 if (Array.isArray(parsed) && parsed.length > 0) {
@@ -499,7 +500,7 @@ const clearAssignSelectedEmployees = () => {
 };
 
 const assignTotalWeight = computed(() => {
-    return assignForm.value.weights.reduce((sum, w) => sum + (parseFloat(w) || 0), 0);
+    return Math.round(assignForm.value.weights.reduce((sum, w) => sum + (parseFloat(w) || 0), 0));
 });
 
 const submitAssignGoal = async () => {
@@ -534,8 +535,10 @@ const submitAssignGoal = async () => {
             manager_signature_name: loguser.name || ''
         };
 
-        // Also persist this customized template to line manager's template in DB
+        // Persist customized template to line manager's template in DB and scoped localStorage
         try {
+            const storageKey = `pms_custom_competency_template_${loguser?.id || 'default'}`;
+            localStorage.setItem(storageKey, JSON.stringify(templateComps));
             await axios.post('pms/manager-template', { template: templateComps });
         } catch (tErr) {
             console.warn('Could not auto-save manager template:', tErr);
@@ -555,10 +558,11 @@ const submitAssignGoal = async () => {
         const res = await axios.post('pms/goals/assign', payload);
         if (res.data.status === 'success') {
             showAssignModal.value = false;
+            filterStatus.value = 'assigned'; // Immediately switch to Assigned tab
             toast.success(res.data.message || 'Goals & appraisal templates assigned successfully!', { autoClose: 5000 });
             await showAlert(
                 'Assignment Successful!',
-                res.data.message || 'Goals & appraisal templates assigned successfully. Employee credentials format: Username = Firstname EmployeeCode, Password = Password.',
+                res.data.message || 'Goals & appraisal templates assigned successfully. Employee credentials format: Username = Firstname EmployeeCode (or EmployeeCode), Password = password.',
                 'success'
             );
             await fetchGoals();
@@ -2710,7 +2714,7 @@ const removeAttachment = (qIndex, fileIndex) => {
                         <i class="pi pi-key text-amber-600"></i>
                         <span>
                             <strong>Employee Credentials:</strong> Assigned employees can log into the portal using 
-                            <code>[FirstName] [EmployeeCode]</code> (e.g. <code>David H123</code>) with default password <code>Password</code>.
+                            <code>[FirstName] [EmployeeCode]</code> (e.g. <code>BERNARD SBP8637</code>) or their Employee Code (e.g. <code>SBP8637</code>) with password <code>password</code> (case-insensitive).
                         </span>
                     </div>
                 </div>
