@@ -43,7 +43,19 @@
                     settoken(data.token)
                     
                     loading.value = false
-                    router.push('/dashboard')
+                    
+                    // Dynamic Redirect Logic
+                    const userRole = data.user.attributes ? data.user.attributes.position_id : data.user.position_id;
+                    const isManager = !!(data.user.admin || data.user.is_manager || userRole === 4 || userRole === 3 || data.user.position_id === 3 || data.user.position_id === 4 || data.user.designation === 'Manager');
+                    
+                    let redirectUrl = '/pms/goals';
+                    if (!isManager) {
+                        redirectUrl = '/pms/goals';
+                    } else {
+                        redirectUrl = '/pms/goals';
+                    }
+                    
+                    router.push(redirectUrl)
                 }
                 else {
                     erreur.value = true
@@ -53,6 +65,15 @@
             .catch((error) => {
                 console.log(error)
                 loading.value = false
+                if (error.response) {
+                    // console.log(error.response.data);
+                    // console.log(error.response.status);
+                    // console.log(error.response.headers);
+                } else if (error.request) {
+                    console.log(error.request);
+                } else {
+                    console.log('Error', error.message);
+                }
             })
 
     }
@@ -62,225 +83,645 @@
 </script>
 
 <template>
-    <div class="login-wrapper" :style="`background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.7)), url(${bglogo})`">
-        <div class="login-container animate-fade-in">
-            <div class="login-card">
-                <div class="login-brand">
-                    <img :src="logoo" alt="MELCOM Logo" class="login-logo">
-                </div>
-                
-                <div class="login-header text-center">
-                    <h2 class="text-2xl font-black text-white uppercase tracking-tighter relative bottom-4">PMS</h2>
-                    <p class="text-white/60 text-xs font-bold uppercase tracking-widest mt-2">Enter credentials to proceed</p>
+    <div class="login-page">
+        <!-- Left: Image Panel -->
+        <div class="image-panel" :style="`background-image:url(${bglogo})`">
+            <div class="image-overlay"></div>
+            <div class="image-content">
+                <img :src="logoo" alt="Melcom Logo" class="panel-logo">
+                <div class="panel-divider"></div>
+                <h2 class="panel-title">Human Resources Portal</h2>
+                <p class="panel-subtitle">Performance Management System</p>
+            </div>
+            <div class="image-footer">
+                <p>Melcom Group &copy; {{ new Date().getFullYear() }}</p>
+            </div>
+        </div>
+
+        <!-- Right: Form Panel -->
+        <div class="form-panel">
+            <!-- Decorative background elements -->
+            <div class="form-bg-pattern"></div>
+            <div class="form-bg-glow"></div>
+
+            <div class="form-wrapper animate-fadeIn">
+                <!-- Top Brand Identity -->
+                <div class="brand-header">
+                    <img :src="logoo" alt="Melcom" class="brand-logo-img">
                 </div>
 
                 <form @submit.prevent="login" class="login-form">
-                    <div class="form-group">
-                        <label class="login-label">Employee ID / Username</label>
-                        <div class="login-input-wrap">
-                            <i class="pi pi-user text-primary/50"></i>
-                            <input type="text" v-model="username" placeholder="Enter your username" class="login-input" required>
+                    <!-- Welcome Section -->
+                    <div class="welcome-section">
+                        <div class="welcome-badge">
+                            <i class="pi pi-shield"></i>
+                            <span>Secure Portal</span>
                         </div>
+                        <h1 class="welcome-title">Welcome back</h1>
+                        <p class="welcome-sub">Sign in to continue to your <span>Performance Hub</span></p>
                     </div>
 
-                    <div class="form-group mt-sm">
-                        <label class="login-label">Access Password</label>
-                        <div class="login-input-wrap">
-                            <i class="pi pi-lock text-primary/50"></i>
-                            <input :type="showingpass ? 'text' : 'password'" v-model="password" @keydown="cancelErreur" placeholder="••••••••" class="login-input" required>
-                            <i :class="showingpass ? 'pi pi-eye-slash' : 'pi pi-eye'" class="login-eye" @click="showingpass = !showingpass"></i>
+                    <div class="fields-wrapper">
+                        <!-- Username -->
+                        <div class="field-group">
+                            <label for="username" class="login-label">Username</label>
+                            <div class="input-shell">
+                                <i class="pi pi-user field-icon"></i>
+                                <input
+                                    id="username"
+                                    type="text"
+                                    v-model="username"
+                                    placeholder="Enter your username"
+                                    required
+                                    @keydown="cancelErreur"
+                                    class="login-input"
+                                >
+                            </div>
                         </div>
-                    </div>
 
-                    <div v-if="erreur" class="login-error animate-pulse">
-                        <i class="pi pi-exclamation-circle mr-2"></i>
-                        Invalid credentials. Please verify and retry.
-                    </div>
+                        <!-- Password -->
+                        <div class="field-group">
+                            <label for="password" class="login-label">Password</label>
+                            <div class="input-shell">
+                                <i class="pi pi-lock field-icon"></i>
+                                <input
+                                    id="password"
+                                    :type="showingpass ? 'text' : 'password'"
+                                    v-model="password"
+                                    placeholder="Enter your password"
+                                    required
+                                    @keydown="cancelErreur"
+                                    class="login-input"
+                                >
+                                <button
+                                    type="button"
+                                    @click="showingpass = !showingpass"
+                                    class="pass-toggle"
+                                >
+                                    <i :class="showingpass ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+                                </button>
+                            </div>
+                        </div>
 
-                    <div class="login-actions mt-xl">
-                        <button type="submit" class="login-btn" :disabled="!password || !username || loading">
-                            <i v-if="loading" class="pi pi-spin pi-spinner mr-2"></i>
-                            <span v-else>Initialize Session</span>
+                        <!-- Error Alert -->
+                        <div v-if="erreur" class="error-alert animate-shake">
+                            <i class="pi pi-exclamation-circle"></i>
+                            <span>Invalid credentials. Please check your username and password.</span>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <button
+                            type="submit"
+                            class="login-button"
+                            :disabled="!password || !username || loading"
+                        >
+                            <div v-if="loading" class="btn-content">
+                                <i class="pi pi-spin pi-spinner"></i>
+                                <span>Authenticating...</span>
+                            </div>
+                            <div v-else class="btn-content">
+                                <span>Sign In</span>
+                                <i class="pi pi-arrow-right btn-arrow"></i>
+                            </div>
                         </button>
                     </div>
-
-                    <div class="login-footer mt-xl">
-                        <p class="text-[10px] text-white/40 uppercase tracking-widest font-black">&copy; 2025 MELCOM Performance Management System</p>
-                    </div>
                 </form>
+
+                <!-- Footer -->
+                <div class="login-footer">
+                    <div class="footer-line"></div>
+                    <p>Melcom Group &copy; {{ new Date().getFullYear() }}</p>
+                </div>
             </div>
         </div>
     </div>
 </template>
 
 <style scoped>
-.login-wrapper {
-    height: 100vh;
+.login-page {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    height: 100vh;
+    width: 100vw;
     overflow: hidden;
 }
 
-.login-container {
-    width: 100%;
-    max-width: 450px;
-    padding: var(--spacing-md);
+/* Left Image Panel */
+.image-panel {
+    flex: 1;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
-.login-card {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(25px);
-    -webkit-backdrop-filter: blur(25px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 40px;
-    padding: 60px 40px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+.image-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, rgba(15, 23, 42, 0.6) 0%, rgba(15, 23, 42, 0.85) 100%);
+}
+
+.image-content {
+    position: relative;
+    z-index: 10;
     text-align: center;
+    padding: 40px;
 }
 
-.login-brand {
-    margin-bottom: var(--spacing-xl);
-}
-
-.login-logo {
+.panel-logo {
     width: 200px;
-    filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+    height: auto;
+    margin: 0 auto 24px;
+    filter: brightness(0) invert(1);
+    opacity: 0.95;
 }
 
-.login-header {
-    margin-bottom: var(--spacing-xl);
+.panel-divider {
+    width: 40px;
+    height: 3px;
+    background: linear-gradient(90deg, #a855f7, #6366f1);
+    border-radius: 10px;
+    margin: 0 auto 20px;
+}
+
+.panel-title {
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+}
+
+.panel-subtitle {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+}
+
+.image-footer {
+    position: absolute;
+    bottom: 24px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    z-index: 10;
+}
+
+.image-footer p {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.3);
+    letter-spacing: 0.1em;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RIGHT FORM PANEL
+   ══════════════════════════════════════════════════════════════ */
+.form-panel {
+    width: 500px;
+    min-width: 500px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(165deg, #f8faff 0%, #f0f4ff 40%, #faf5ff 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Subtle dot pattern */
+.form-bg-pattern {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.04) 1px, transparent 0);
+    background-size: 28px 28px;
+    pointer-events: none;
+}
+
+/* Soft color glow */
+.form-bg-glow {
+    position: absolute;
+    top: -120px;
+    right: -80px;
+    width: 350px;
+    height: 350px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+.form-wrapper {
+    width: 100%;
+    padding: 56px 52px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 1;
+}
+
+/* Brand */
+.brand-header {
+    margin-bottom: 40px;
+}
+
+.brand-logo-img {
+    height: 42px;
+    width: auto;
+    object-fit: contain;
 }
 
 .login-form {
-    text-align: left;
+    width: 100%;
+}
+
+/* Welcome */
+.welcome-section {
+    margin-bottom: 32px;
+}
+
+.welcome-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 8px;
+    background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+    border: 1px solid rgba(129, 140, 248, 0.2);
+    border-radius: 20px;
+    margin-bottom: 16px;
+}
+
+.welcome-badge i {
+    font-size: 10px;
+    color: #6366f1;
+}
+
+.welcome-badge span {
+    font-size: 10px;
+    font-weight: 800;
+    color: #4f46e5;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.welcome-title {
+    font-size: 28px;
+    font-weight: 900;
+    color: #0f172a;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 8px;
+}
+
+.welcome-sub {
+    font-size: 13px;
+    color: #94a3b8;
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+.welcome-sub span {
+    color: #475569;
+    font-weight: 700;
+}
+
+/* Fields */
+.fields-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .login-label {
     display: block;
-    font-size: 10px;
-    font-weight: 900;
-    color: rgba(255, 255, 255, 0.7);
+    font-size: 11px;
+    font-weight: 800;
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    margin-bottom: 8px;
-    margin-left: 4px;
+    margin-left: 2px;
 }
 
-.login-input-wrap {
+.input-shell {
     position: relative;
-    display: flex;
-    align-items: center;
 }
 
-.login-input-wrap i:first-child {
+.field-icon {
     position: absolute;
-    left: 20px;
+    top: 50%;
+    left: 16px;
+    transform: translateY(-50%);
+    font-size: 13px;
+    color: #a5b4c8;
+    transition: color 0.2s ease;
+    pointer-events: none;
+}
+
+.input-shell:focus-within .field-icon {
+    color: #6366f1;
 }
 
 .login-input {
     width: 100%;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
-    padding: 16px 20px 16px 50px;
-    color: white;
+    padding: 15px 16px 15px 44px;
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    font-size: 13.5px;
     font-weight: 600;
-    font-size: 0.9rem;
-    transition: all 0.3s ease;
-}
-
-.login-input::placeholder {
-    color: rgba(255, 255, 255, 0.2);
-}
-
-.login-input:focus {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.1);
+    color: #1e293b;
+    transition: all 0.25s ease;
     outline: none;
 }
 
-.login-eye {
+.login-input:focus {
+    border-color: #818cf8;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1), 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.login-input::placeholder {
+    color: #c1cdd9;
+    font-weight: 500;
+    font-size: 13px;
+}
+
+.pass-toggle {
     position: absolute;
-    right: 20px;
-    color: rgba(255, 255, 255, 0.3);
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
     cursor: pointer;
-    transition: color 0.2s;
+    padding: 4px;
+    color: #c1cdd9;
+    transition: color 0.2s ease;
+    font-size: 13px;
 }
 
-.login-eye:hover {
-    color: white;
+.pass-toggle:hover {
+    color: #6366f1;
 }
 
-.login-error {
-    margin-top: var(--spacing-md);
-    padding: 12px;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
-    border-radius: 12px;
-    color: #f87171;
-    font-size: 0.8rem;
-    font-weight: 700;
+/* Error */
+.error-alert {
     display: flex;
     align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #fff5f5, #fef2f2);
+    border: 1px solid #fecaca;
+    border-radius: 12px;
 }
 
-.login-btn {
+.error-alert i {
+    font-size: 14px;
+    color: #ef4444;
+    flex-shrink: 0;
+}
+
+.error-alert span {
+    font-size: 12px;
+    font-weight: 600;
+    color: #dc2626;
+    line-height: 1.4;
+}
+
+/* Button */
+.login-button {
     width: 100%;
-    background: var(--color-primary);
+    padding: 15px 28px;
+    margin-top: 4px;
+    background: linear-gradient(135deg, #4f46e5 0%, #6d28d9 50%, #7c3aed 100%);
+    background-size: 200% 200%;
     color: white;
     border: none;
-    border-radius: 20px;
-    padding: 18px;
-    font-size: 0.9rem;
-    font-weight: 900;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    border-radius: 12px;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 10px 20px -5px rgba(124, 58, 237, 0.3);
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 16px -2px rgba(79, 70, 229, 0.3), 0 2px 4px rgba(0,0,0,0.06);
 }
 
-.login-btn:hover:not(:disabled) {
-    background: var(--color-primary-dark);
-    transform: translateY(-2px);
-    box-shadow: 0 15px 30px -5px rgba(124, 58, 237, 0.4);
+.login-button:hover {
+    background-position: 100% 0;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px -4px rgba(79, 70, 229, 0.4), 0 4px 8px rgba(0,0,0,0.08);
 }
 
-.login-btn:active:not(:disabled) {
+.login-button:active {
     transform: translateY(0);
 }
 
-.login-btn:disabled {
-    opacity: 0.5;
+.btn-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-content span {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.btn-content i {
+    font-size: 12px;
+}
+
+.btn-arrow {
+    transition: transform 0.3s ease;
+}
+
+.login-button:hover .btn-arrow {
+    transform: translateX(4px);
+}
+
+.login-button:disabled {
+    opacity: 0.35;
+    background: #94a3b8;
     cursor: not-allowed;
-    filter: grayscale(1);
+    box-shadow: none;
+    transform: none;
 }
 
+/* Footer */
 .login-footer {
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    padding-top: var(--spacing-xl);
+    margin-top: 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
 }
 
-.animate-fade-in {
-    animation: fadeIn 0.8s ease-out;
+.footer-line {
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, #c7d2fe, #ddd6fe);
+    border-radius: 1px;
 }
 
+.login-footer p {
+    font-size: 10px;
+    font-weight: 700;
+    color: #c1cdd9;
+    letter-spacing: 0.06em;
+}
+
+/* Animations */
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
+    from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
-.animate-pulse {
-    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
 }
 
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: .7; }
+.animate-fadeIn {
+    animation: fadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-shake {
+    animation: shake 0.2s ease-in-out 0s 2;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .login-page {
+        flex-direction: column;
+    }
+
+    .image-panel {
+        flex: none;
+        height: 220px;
+    }
+
+    .panel-logo {
+        width: 120px;
+        margin-bottom: 12px;
+    }
+
+    .panel-title {
+        font-size: 1.1rem;
+    }
+
+    .panel-divider {
+        margin-bottom: 12px;
+    }
+
+    .image-footer {
+        display: none;
+    }
+
+    .form-panel {
+        flex: 1;
+        width: 100%;
+        min-width: unset;
+    }
+
+    .form-bg-glow { display: none; }
+
+    .form-wrapper {
+        padding: 32px 28px;
+        max-width: 440px;
+    }
+}
+
+@media (max-width: 480px) {
+    .image-panel {
+        height: 160px;
+    }
+
+    .image-content {
+        padding: 20px;
+    }
+
+    .panel-logo {
+        width: 100px;
+    }
+
+    .panel-title {
+        font-size: 0.9rem;
+    }
+
+    .panel-subtitle {
+        font-size: 9px;
+    }
+
+    .form-wrapper {
+        padding: 28px 20px;
+    }
+
+    .welcome-title {
+        font-size: 24px;
+    }
+}
+
+/* Dark Mode Login */
+:global(body.dark-mode) .form-panel {
+    background: linear-gradient(165deg, #0f172a 0%, #1a1f3d 40%, #1e1b3a 100%) !important;
+}
+:global(body.dark-mode) .form-bg-pattern {
+    background-image: radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.06) 1px, transparent 0) !important;
+}
+:global(body.dark-mode) .form-bg-glow {
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%) !important;
+}
+:global(body.dark-mode) .welcome-badge {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1)) !important;
+    border-color: rgba(129, 140, 248, 0.2) !important;
+}
+:global(body.dark-mode) .welcome-title {
+    color: #f1f5f9 !important;
+}
+:global(body.dark-mode) .welcome-sub {
+    color: #64748b !important;
+}
+:global(body.dark-mode) .welcome-sub span {
+    color: #94a3b8 !important;
+}
+:global(body.dark-mode) .login-label {
+    color: #94a3b8 !important;
+}
+:global(body.dark-mode) .login-input {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+:global(body.dark-mode) .login-input:focus {
+    border-color: #818cf8 !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+}
+:global(body.dark-mode) .login-input::placeholder {
+    color: #475569 !important;
+}
+:global(body.dark-mode) .field-icon {
+    color: #475569 !important;
+}
+:global(body.dark-mode) .input-shell:focus-within .field-icon {
+    color: #818cf8 !important;
+}
+:global(body.dark-mode) .pass-toggle {
+    color: #475569 !important;
+}
+:global(body.dark-mode) .footer-line {
+    background: linear-gradient(90deg, #334155, #3b3566) !important;
+}
+:global(body.dark-mode) .login-footer p {
+    color: #475569 !important;
 }
 </style>

@@ -202,6 +202,10 @@ class APIUserController extends Controller
             'position_id' => $user->position_id
         ];
 
+        if (isset($user['permissions'])) {
+            $userDetails['permissions'] = is_array($user['permissions']) ? $user['permissions'] : json_decode($user['permissions'], true);
+        }
+
         $u = User::find($user['id']);
         $u->update($userDetails);
 
@@ -375,7 +379,7 @@ class APIUserController extends Controller
                 ];
                 if ($hasEmployeeCode) $newUserData['employee_code'] = $empCode;
                 if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'permissions')) {
-                    $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
+                    $newUserData['permissions'] = ['/pms/goals'];
                 }
                 if ($goal && !empty($goal->created_by) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'line_manager_id')) {
                     $newUserData['line_manager_id'] = $goal->created_by;
@@ -412,8 +416,13 @@ class APIUserController extends Controller
                         $updates['username'] = $loginInput;
                     }
                     if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'permissions')) {
-                        $currentPerms = is_array($user->permissions) ? $user->permissions : [];
-                        $updates['permissions'] = array_values(array_unique(array_merge($currentPerms, ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'])));
+                        $isUserMgr = ($user->admin || $user->is_manager || in_array($user->position_id, [3, 4]));
+                        if ($isUserMgr) {
+                            $currentPerms = is_array($user->permissions) ? $user->permissions : [];
+                            $updates['permissions'] = array_values(array_unique(array_merge($currentPerms, ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal', '/pms/review'])));
+                        } else {
+                            $updates['permissions'] = ['/pms/goals'];
+                        }
                     }
                     if (!empty($updates)) {
                         $user->update($updates);

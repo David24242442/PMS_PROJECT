@@ -528,20 +528,23 @@ class GoalController extends Controller
             $assignType = $request->input('assign_type', 'single'); // 'single' or 'all_team'
             $selectedEmployees = $request->input('employees', []);
             
-            $goalTitle = $request->input('title', 'Yearly SMART Goals FY ' . $year);
-            $description = $request->input('description', ['Define key performance indicators...']);
-            $purposes = $request->input('purposes', ['Establish business relevance and benefits...']);
-            $challenges = $request->input('challenges', ['Potential obstacles and mitigations']);
+            $goalTitle = trim($request->input('title', ''));
+            if (empty($goalTitle)) {
+                $goalTitle = 'Yearly SMART Goals FY ' . $year;
+            }
+            $description = $request->input('description', ['']);
+            $purposes = $request->input('purposes', ['']);
+            $challenges = $request->input('challenges', ['']);
             $category = $request->input('category', 'Operational');
             $target = $request->input('target', 100);
             $dueDate = $request->input('due_date', $year . '-12-31');
             $completionDate = $request->input('completion_date', null);
             $smartCriteria = $request->input('smart_criteria', [
-                'specific' => true,
-                'measurable' => true,
-                'attainable' => true,
-                'relevant' => true,
-                'time_bound' => true,
+                'specific' => false,
+                'measurable' => false,
+                'attainable' => false,
+                'relevant' => false,
+                'time_bound' => false,
             ]);
             $quarterlyTracking = $request->input('quarterly_tracking', null);
             $appraisalTemplate = $request->input('appraisal_data', null);
@@ -688,7 +691,7 @@ class GoalController extends Controller
                             if (in_array('location', $userCols)) $newUserData['location'] = $loc;
                             if (in_array('line_manager_id', $userCols)) $newUserData['line_manager_id'] = $user->id;
                             if (in_array('report_to', $userCols)) $newUserData['report_to'] = $user->name ?: $user->username;
-                            if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
+                            if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/pms/goals'];
 
                             $empUser = \App\Models\User::create($newUserData);
                         } catch (\Throwable $e) {
@@ -713,8 +716,9 @@ class GoalController extends Controller
                                 $updateData['employee_code'] = $empCode;
                             }
                             if (in_array('permissions', $userCols)) {
-                                $currentPerms = is_array($empUser->permissions) ? $empUser->permissions : [];
-                                $updateData['permissions'] = array_values(array_unique(array_merge($currentPerms, ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'])));
+                                if (!$empUser->admin && !$empUser->is_manager && !in_array($empUser->position_id, [3, 4])) {
+                                    $updateData['permissions'] = ['/pms/goals'];
+                                }
                             }
                             $empUser->update($updateData);
                         } catch (\Throwable $e) {

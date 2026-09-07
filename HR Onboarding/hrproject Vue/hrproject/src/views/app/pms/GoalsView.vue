@@ -349,9 +349,38 @@ const openEmployeeGoal = (goal) => {
     newGoal.value.department = goal.department || loguser.department || '';
     newGoal.value.location = goal.location || loguser.location || '';
     newGoal.value.manager_name = goal.manager_name || 'Line Manager';
+    if (!newGoal.value.appraisal_data) {
+        newGoal.value.appraisal_data = defaultAppraisalData();
+    }
     if (!newGoal.value.appraisal_data.candidate_signature_name) {
         newGoal.value.appraisal_data.candidate_signature_name = newGoal.value.candidate_name;
     }
+
+    // Ensure fields and SMART checklist start clean and empty for the employee to fill in
+    if (goal.status === 'assigned' || isEmployee.value) {
+        if (!newGoal.value.title || newGoal.value.title.startsWith('Yearly SMART Goals FY') || goal.status === 'assigned') {
+            newGoal.value.title = '';
+        }
+        if (!newGoal.value.description || newGoal.value.description.some(d => !d || d.includes('Define key performance indicators'))) {
+            newGoal.value.description = [''];
+        }
+        if (!newGoal.value.purposes || newGoal.value.purposes.some(p => !p || p.includes('Establish business relevance and benefits'))) {
+            newGoal.value.purposes = [''];
+        }
+        if (!newGoal.value.challenges || newGoal.value.challenges.some(c => !c || c.includes('Potential obstacles and mitigations'))) {
+            newGoal.value.challenges = [''];
+        }
+        if (goal.status === 'assigned') {
+            newGoal.value.smart_criteria = {
+                specific: false,
+                measurable: false,
+                attainable: false,
+                relevant: false,
+                time_bound: false
+            };
+        }
+    }
+
     currentStep.value = 1;
     viewMode.value = 'create';
 };
@@ -415,7 +444,7 @@ const openAssignModal = async () => {
     assignForm.value = {
         assign_type: 'specific',
         selected_employees: [],
-        title: `Yearly SMART Goals FY ${currentYear.value}`,
+        title: '',
         year: currentYear.value,
         target: 100,
         category: 'Operational',
@@ -1256,6 +1285,10 @@ const resumeDraft = (goal) => {
 };
 
 const editGoal = (goal) => {
+    if (isEmployee.value) {
+        openEmployeeGoal(goal);
+        return;
+    }
     // Similar to resumeDraft but for persisted goals
     resumeDraft(goal);
     // Ensure we update the existing ID

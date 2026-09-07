@@ -96,7 +96,9 @@ Route::get('/sync-pms-users', function() {
                 ];
                 if (\Schema::hasColumn('users', 'employee_code')) $updates['employee_code'] = $code;
                 if (\Schema::hasColumn('users', 'permissions')) {
-                    $updates['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
+                    if (!$user->admin && !$user->is_manager && !in_array($user->position_id, [3, 4])) {
+                        $updates['permissions'] = ['/pms/goals'];
+                    }
                 }
                 if (!empty($goal->created_by) && \Schema::hasColumn('users', 'line_manager_id')) {
                     $updates['line_manager_id'] = $goal->created_by;
@@ -119,7 +121,7 @@ Route::get('/sync-pms-users', function() {
                     'is_manager' => 0,
                 ];
                 if (\Schema::hasColumn('users', 'employee_code')) $newUserData['employee_code'] = $code;
-                if (\Schema::hasColumn('users', 'permissions')) $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
+                if (\Schema::hasColumn('users', 'permissions')) $newUserData['permissions'] = ['/pms/goals'];
                 if (!empty($goal->created_by) && \Schema::hasColumn('users', 'line_manager_id')) $newUserData['line_manager_id'] = $goal->created_by;
                 if (!empty($goal->manager_name) && \Schema::hasColumn('users', 'report_to')) $newUserData['report_to'] = $goal->manager_name;
                 if (\Schema::hasColumn('users', 'department') && !empty($goal->department)) $newUserData['department'] = $goal->department;

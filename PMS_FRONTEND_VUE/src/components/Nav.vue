@@ -10,6 +10,10 @@
     const router = useRouter()
     const route = useRoute()
 
+    const isManager = computed(() => {
+        return !!(loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.designation === 'Manager');
+    });
+
     const hasPendingAppraisals = ref(false);
 
     // State for Hover-based Sidebar Expand/Collapse
@@ -104,14 +108,14 @@
         <nav class="sidebar-menu">
             
             <!-- Dashboard (Global) -->
-            <router-link v-if="loguser?.permissions?.includes('/dashboard')" to="/dashboard" class="menu-item" :title="!isExpanded ? 'Dashboard' : ''">
+            <router-link v-if="isManager && loguser?.permissions?.includes('/dashboard')" to="/dashboard" class="menu-item" :title="!isExpanded ? 'Dashboard' : ''">
                 <div class="active-indicator"></div>
                 <span class="pi pi-th-large"></span>
                 <span class="link-name" v-show="isExpanded">Dashboard</span>
             </router-link>
 
             <!-- Onboarding Group -->
-            <div v-if="loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees')" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.onboarding && isExpanded }">
+            <div v-if="isManager && (loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees'))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.onboarding && isExpanded }">
                 <div class="menu-item" @click="toggleMenu('onboarding')" :title="!isExpanded ? 'Onboarding' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-briefcase"></span>
@@ -130,8 +134,8 @@
                 </div>
             </div>
 
-            <!-- PMS Group (Renamed to PMS, contains PMS Submissions) -->
-            <div v-if="loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.position_id === 1 || ['/pms/dashboard', '/pms/goals', '/pms/review', '/pms/appraisal', '/hr/submissions'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.pms && isExpanded }">
+            <!-- PMS Group (For Employees: ONLY Goals is visible) -->
+            <div v-if="isManager || loguser?.position_id === 1 || loguser?.permissions?.includes('/pms/goals')" class="menu-item-wrapper dropdown" :class="{ 'showMenu': (openMenus.pms || !isManager) && isExpanded }">
                 <div class="menu-item" @click="toggleMenu('pms')" :title="!isExpanded ? 'PMS' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-chart-bar"></span>
@@ -139,31 +143,31 @@
                     <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
                 </div>
                 <div class="sub-menu" v-show="isExpanded">
-                    <router-link v-if="loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.permissions?.includes('/pms/dashboard')" to="/pms/dashboard">
+                    <router-link v-if="isManager && (loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.permissions?.includes('/pms/dashboard'))" to="/pms/dashboard">
                         <span class="pi pi-home"></span>
                         Dashboard
                     </router-link>
-                    <router-link v-if="loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.position_id === 1 || loguser?.permissions?.includes('/pms/goals')" to="/pms/goals">
+                    <router-link to="/pms/goals">
                         <span class="pi pi-bullseye"></span>
                         Goals
                     </router-link>
-                    <router-link v-if="loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.position_id === 1 || loguser?.permissions?.includes('/pms/appraisal')" to="/pms/appraisal">
+                    <router-link v-if="isManager && (loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.permissions?.includes('/pms/appraisal'))" to="/pms/appraisal">
                         <span class="pi pi-file-edit"></span>
                         Appraisal
                     </router-link>
-                    <router-link v-if="loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.permissions?.includes('/pms/review')" to="/pms/review">
+                    <router-link v-if="isManager && (loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.permissions?.includes('/pms/review'))" to="/pms/review">
                         <span class="pi pi-check-circle"></span>
                         Review
                     </router-link>
-                    <router-link v-if="loguser?.admin || loguser?.permissions?.includes('/hr/submissions')" to="/hr/submissions">
+                    <router-link v-if="isManager && (loguser?.admin || loguser?.permissions?.includes('/hr/submissions'))" to="/hr/submissions">
                         <span class="pi pi-inbox"></span>
                         PMS Submissions
                     </router-link>
                 </div>
             </div>
 
-            <!-- Admin Group -->
-            <div v-if="['/users', '/pms/employee-master'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.admin && isExpanded }">
+            <!-- Admin Group - Manager / Admin Only -->
+            <div v-if="isManager && ['/users', '/pms/employee-master'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.admin && isExpanded }">
                 <div class="menu-item" @click="toggleMenu('admin')" :title="!isExpanded ? 'HR Admin' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-users"></span>

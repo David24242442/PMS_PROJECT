@@ -134,23 +134,7 @@ router.beforeEach((to, from, next) => {
   
   if (to.meta.requiresAuth === false && user) {
     // Dynamic Redirect Logic for already logged-in users visiting login
-    const userRole = user.attributes ? user.attributes.position_id : user.position_id;
-    const permissions = parsePermissions(user.permissions);
-    
-    let redirectUrl = '/pms/goals';
-    if (user.admin || userRole === 4 || user.is_manager) {
-        redirectUrl = '/pms/goals';
-    } else if (permissions.includes('/pms/goals')) {
-        redirectUrl = '/pms/goals';
-    } else if (permissions.includes('/pms/dashboard')) {
-        redirectUrl = '/pms/dashboard';
-    } else if (permissions.length > 0 && typeof permissions[0] === 'string' && permissions[0].startsWith('/') && permissions[0].length > 1) {
-        redirectUrl = permissions[0];
-    } else {
-        redirectUrl = '/pms/goals';
-    }
-    
-    next(redirectUrl);
+    next('/pms/goals');
     return;
   }
 
@@ -164,7 +148,7 @@ router.beforeEach((to, from, next) => {
   if (user) {
     const userRole = user.attributes ? user.attributes.position_id : user.position_id; 
     const permissions = parsePermissions(user.permissions);
-    const isManager = !!(user.admin || user.is_manager || userRole === 4 || userRole === 3 || user.position_id === 3 || user.position_id === 4);
+    const isManager = !!(user.admin || user.is_manager || userRole === 4 || userRole === 3 || user.position_id === 3 || user.position_id === 4 || user.designation === 'Manager');
     
     // HR Head (4) or Admin has full access to everything
     if (userRole === 4 || user.admin) {
@@ -173,25 +157,25 @@ router.beforeEach((to, from, next) => {
        return;
     }
 
-    // Core PMS routes accessible to all authenticated staff / employees
-    const staffPmsRoutes = ['/pms/goals', '/pms/appraisal', '/profile'];
-    if (staffPmsRoutes.includes(to.path)) {
-       next()
-       if (to.meta.fullname) document.title = to.meta.fullname;
-       return;
-    }
-
-    // Manager PMS routes
-    const managerPmsRoutes = ['/pms/dashboard', '/pms/review', '/pms/leaderboard'];
-    if (managerPmsRoutes.includes(to.path)) {
-       if (isManager || permissions.includes(to.path)) {
-          next()
+    // Assigned Employees: ONLY /pms/goals and /profile are allowed. All other routes redirect to /pms/goals.
+    if (!isManager) {
+       const allowedEmployeeRoutes = ['/pms/goals', '/profile'];
+       if (allowedEmployeeRoutes.includes(to.path)) {
+          next();
           if (to.meta.fullname) document.title = to.meta.fullname;
           return;
        } else {
-          next('/pms/goals')
+          next('/pms/goals');
           return;
        }
+    }
+
+    // Manager PMS routes
+    const managerPmsRoutes = ['/pms/dashboard', '/pms/goals', '/pms/appraisal', '/pms/review', '/pms/leaderboard', '/profile'];
+    if (managerPmsRoutes.includes(to.path)) {
+       next();
+       if (to.meta.fullname) document.title = to.meta.fullname;
+       return;
     }
 
     // Restricted Administrative / HR routes
@@ -205,7 +189,7 @@ router.beforeEach((to, from, next) => {
        if (to.path.startsWith('/employee/')) checkPath = '/employees';
 
        if (!permissions.includes(checkPath)) {
-          next('/pms/goals')
+          next('/pms/goals');
           return;
        }
     }

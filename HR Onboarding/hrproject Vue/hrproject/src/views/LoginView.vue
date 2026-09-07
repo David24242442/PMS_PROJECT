@@ -46,27 +46,11 @@
                     
                     // Dynamic Redirect Logic
                     const userRole = data.user.attributes ? data.user.attributes.position_id : data.user.position_id;
-                    let permissions = data.user.permissions || [];
-                    if (typeof permissions === 'string') {
-                        try {
-                            permissions = JSON.parse(permissions);
-                        } catch (e) {
-                            permissions = [];
-                        }
-                    }
-                    if (!Array.isArray(permissions)) {
-                        permissions = [];
-                    }
+                    const isManager = !!(data.user.admin || data.user.is_manager || userRole === 4 || userRole === 3 || data.user.position_id === 3 || data.user.position_id === 4 || data.user.designation === 'Manager');
                     
                     let redirectUrl = '/pms/goals';
-                    if (data.user.admin || userRole === 4 || data.user.is_manager) {
+                    if (!isManager) {
                         redirectUrl = '/pms/goals';
-                    } else if (permissions.includes('/pms/goals')) {
-                        redirectUrl = '/pms/goals';
-                    } else if (permissions.includes('/pms/dashboard')) {
-                        redirectUrl = '/pms/dashboard';
-                    } else if (permissions.length > 0 && typeof permissions[0] === 'string' && permissions[0].startsWith('/') && permissions[0].length > 1) {
-                        redirectUrl = permissions[0];
                     } else {
                         redirectUrl = '/pms/goals';
                     }
