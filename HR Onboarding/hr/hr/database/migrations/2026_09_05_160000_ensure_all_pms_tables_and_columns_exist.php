@@ -40,7 +40,6 @@ class EnsureAllPmsTablesAndColumnsExist extends Migration
                 $table->timestamp('submitted_at')->nullable();
                 $table->text('hr_comments')->nullable();
                 $table->decimal('overall_rating', 3, 2)->nullable();
-                $table->unsignedBigInteger('created_by')->nullable();
                 $table->timestamps();
             });
         } else {
@@ -88,21 +87,14 @@ class EnsureAllPmsTablesAndColumnsExist extends Migration
                 if (!Schema::hasColumn('goals', 'hr_comments')) {
                     $table->text('hr_comments')->nullable();
                 }
-                if (!Schema::hasColumn('goals', 'overall_rating')) {
-                    $table->decimal('overall_rating', 3, 2)->nullable();
-                }
                 if (!Schema::hasColumn('goals', 'created_by')) {
                     $table->unsignedBigInteger('created_by')->nullable();
                 }
+                if (!Schema::hasColumn('goals', 'overall_rating')) {
+                    $table->decimal('overall_rating', 3, 2)->nullable();
+                }
             });
         }
-
-        // Backfill created_by on goals from manager_name or user_id if null
-        try {
-            if (Schema::hasTable('goals') && Schema::hasColumn('goals', 'created_by') && Schema::hasColumn('goals', 'manager_name')) {
-                \Illuminate\Support\Facades\DB::statement("UPDATE goals g JOIN users u ON LOWER(TRIM(g.manager_name)) = LOWER(TRIM(u.name)) SET g.created_by = u.id WHERE g.created_by IS NULL");
-            }
-        } catch (\Throwable $e) {}
 
         // 2. Ensure 'users' table has all PMS fields
         if (Schema::hasTable('users')) {

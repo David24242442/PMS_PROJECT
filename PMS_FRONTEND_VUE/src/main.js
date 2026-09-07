@@ -16,21 +16,7 @@ import { definePreset } from '@primevue/themes';
 import 'primeicons/primeicons.css'
 import ConfirmationService from 'primevue/confirmationservice'
 
-// Determine API Base URL dynamically to support port 5050, localhost, and relative paths
-let apiBase = import.meta.env.VITE_API_BASE_URL;
-if (typeof window !== 'undefined' && window.location.origin) {
-    const origin = window.location.origin;
-    if (window.location.port === '5050' || window.location.hostname === '192.168.0.20' || window.location.hostname === 'localhost') {
-        apiBase = `${origin}/pms_backend/api/`;
-    }
-}
-if (!apiBase || apiBase === '/api/' || apiBase === '/') {
-    apiBase = (typeof window !== 'undefined' && window.location.origin)
-        ? `${window.location.origin}/pms_backend/api/`
-        : 'http://192.168.0.20:5050/pms_backend/api/';
-}
-if (!apiBase.endsWith('/')) apiBase += '/';
-axios.defaults.baseURL = apiBase;
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || '/api/';
 const imgburl = '/storage/';
 axios.defaults.headers.common['Accept'] = 'application/json';
 

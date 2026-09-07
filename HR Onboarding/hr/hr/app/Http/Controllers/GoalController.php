@@ -534,10 +534,10 @@ class GoalController extends Controller
 
                     // Build a guaranteed valid, non-null, unique email
                     $cleanEmpCode = preg_replace('/[^a-zA-Z0-9]/', '', $empCode);
-                    $fallbackEmail = strtolower($cleanEmpCode) . '@melcomgroup.internal';
+                    $fallbackEmail = strtolower($cleanEmpCode) . '@melcomgroup.com';
                     $userEmail = (!empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) ? $email : $fallbackEmail;
                     if (\App\Models\User::where('email', $userEmail)->where('employee_code', '!=', $empCode)->exists()) {
-                        $userEmail = strtolower($cleanEmpCode) . '_' . substr(md5(uniqid()), 0, 6) . '@melcomgroup.internal';
+                        $userEmail = strtolower($cleanEmpCode) . '_' . substr(md5(uniqid()), 0, 6) . '@melcomgroup.com';
                     }
 
                     $empUser = null;
@@ -560,17 +560,17 @@ class GoalController extends Controller
                             if (in_array('department', $userCols)) $newUserData['department'] = $dept;
                             if (in_array('location', $userCols)) $newUserData['location'] = $loc;
                             if (in_array('line_manager_id', $userCols)) $newUserData['line_manager_id'] = $user->id;
-                            if (in_array('report_to', $userCols)) $newUserData['report_to'] = $user->name;
+                            if (in_array('report_to', $userCols)) $newUserData['report_to'] = $user->name ?: $user->username;
                             if (in_array('is_manager', $userCols)) $newUserData['is_manager'] = 0;
                             if (in_array('admin', $userCols)) $newUserData['admin'] = 0;
-                            if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/pms/goals', '/pms/appraisal'];
+                            if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
 
                             $empUser = \App\Models\User::create($newUserData);
                         } catch (\Throwable $e) {
                             \Log::warning("Could not auto-create user for {$candName}: " . $e->getMessage());
                             // Fallback retry with uniquely generated email
                             try {
-                                $newUserData['email'] = strtolower($cleanEmpCode) . '_' . time() . '@melcomgroup.internal';
+                                $newUserData['email'] = strtolower($cleanEmpCode) . '_' . time() . '@melcomgroup.com';
                                 $empUser = \App\Models\User::create($newUserData);
                             } catch (\Throwable $e2) {
                                 \Log::error("Retry create user failed for {$candName}: " . $e2->getMessage());
@@ -578,15 +578,19 @@ class GoalController extends Controller
                         }
                     } else {
                         try {
-                            $updateData = [];
+                            $updateData = [
+                                'password' => bcrypt('password'), // Ensure login password is password
+                            ];
                             if (in_array('line_manager_id', $userCols)) $updateData['line_manager_id'] = $user->id;
-                            if (in_array('report_to', $userCols)) $updateData['report_to'] = $user->name;
+                            if (in_array('report_to', $userCols)) $updateData['report_to'] = $user->name ?: $user->username;
                             if (in_array('employee_code', $userCols) && empty($empUser->employee_code)) {
                                 $updateData['employee_code'] = $empCode;
                             }
-                            if (!empty($updateData)) {
-                                $empUser->update($updateData);
+                            if (in_array('permissions', $userCols)) {
+                                $currentPerms = is_array($empUser->permissions) ? $empUser->permissions : [];
+                                $updateData['permissions'] = array_values(array_unique(array_merge($currentPerms, ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'])));
                             }
+                            $empUser->update($updateData);
                         } catch (\Throwable $e) {
                             \Log::warning("Could not update manager for {$candName}: " . $e->getMessage());
                         }

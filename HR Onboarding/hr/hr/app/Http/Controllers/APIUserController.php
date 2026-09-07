@@ -322,10 +322,10 @@ class APIUserController extends Controller
                     $cleanEmpCode = preg_replace('/[^a-zA-Z0-9]/', '', $empCode);
                     $userEmail = ($emp && !empty($emp->email) && filter_var($emp->email, FILTER_VALIDATE_EMAIL))
                         ? $emp->email 
-                        : (strtolower($cleanEmpCode) . '@melcomgroup.internal');
+                        : (strtolower($cleanEmpCode) . '@melcomgroup.com');
 
                     if (\App\Models\User::where('email', $userEmail)->where('employee_code', '!=', $empCode)->exists()) {
-                        $userEmail = strtolower($cleanEmpCode) . '_' . substr(md5(uniqid()), 0, 6) . '@melcomgroup.internal';
+                        $userEmail = strtolower($cleanEmpCode) . '_' . substr(md5(uniqid()), 0, 6) . '@melcomgroup.com';
                     }
 
                     $lineManagerId = ($emp && !empty($emp->line_manager_id)) ? $emp->line_manager_id : ($goal ? $goal->created_by : null);
@@ -346,7 +346,7 @@ class APIUserController extends Controller
                     if (in_array('report_to', $userCols) && $reportTo) $newUserData['report_to'] = $reportTo;
                     if (in_array('is_manager', $userCols)) $newUserData['is_manager'] = 0;
                     if (in_array('admin', $userCols)) $newUserData['admin'] = 0;
-                    if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/pms/goals', '/pms/appraisal'];
+                    if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
 
                     $user = User::create($newUserData);
 
@@ -389,13 +389,6 @@ class APIUserController extends Controller
 
         Auth::login($user);
         $token = $user->createToken('api_token')->plainTextToken;
-
-        // Ensure user has at least basic PMS permissions so they see Goals & Appraisal
-        $userPerms = is_array($user->permissions) ? $user->permissions : [];
-        if (!in_array('/pms/goals', $userPerms)) $userPerms[] = '/pms/goals';
-        if (!in_array('/pms/appraisal', $userPerms)) $userPerms[] = '/pms/appraisal';
-        if (!in_array('/pms/dashboard', $userPerms)) $userPerms[] = '/pms/dashboard';
-        $user->permissions = $userPerms;
 
         return response()->json([
             'result' => true,

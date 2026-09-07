@@ -25,11 +25,7 @@ export const useUsersStore = defineStore('user', () => {
 
 
 
-    const isLoading = ref(false)
-    const setIsLoading = (val) => {
-        isLoading.value = !!val
-    }
-
-    return { loguser, authtoken, isLoading, setloguser, getloguser, settoken, getauthtoken, setIsLoading }
+    
+    return { loguser,  authtoken,  setloguser, getloguser, settoken, getauthtoken, /* getuserperms, hasperm */}
 
 })

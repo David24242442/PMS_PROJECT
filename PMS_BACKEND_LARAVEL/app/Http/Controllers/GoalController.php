@@ -59,6 +59,7 @@ class GoalController extends Controller
 
             if (!$isAdmin) {
                 $userName = $user ? trim($user->name) : '';
+                $userUsername = $user ? trim($user->username) : '';
                 $userEmpCode = $user ? trim($user->employee_code ?? '') : '';
 
                 $teamUserIds = [];
@@ -72,7 +73,7 @@ class GoalController extends Controller
                     }
                 } catch (\Throwable $e) {}
 
-                $query->where(function ($q) use ($userId, $userName, $userEmpCode, $teamUserIds, $teamEmpCodes) {
+                $query->where(function ($q) use ($userId, $userName, $userUsername, $userEmpCode, $teamUserIds, $teamEmpCodes) {
                     // 1. Employee's own assigned goal
                     $q->where('user_id', $userId);
 
@@ -83,10 +84,14 @@ class GoalController extends Controller
                     // 2. Goals created or assigned by this user (as Line Manager / Creator)
                     $q->orWhere('created_by', $userId);
 
-                    // 3. Goals where manager_name matches or contains this Line Manager's name
+                    // 3. Goals where manager_name matches or contains this Line Manager's name/username
                     if (!empty($userName)) {
                         $q->orWhere('manager_name', $userName)
                           ->orWhere('manager_name', 'like', '%' . $userName . '%');
+                    }
+                    if (!empty($userUsername) && $userUsername !== $userName) {
+                        $q->orWhere('manager_name', $userUsername)
+                          ->orWhere('manager_name', 'like', '%' . $userUsername . '%');
                     }
 
                     // 4. Subordinate goals in reporting line
@@ -521,7 +526,7 @@ class GoalController extends Controller
                     $email = $empData['email'] ?? null;
 
                     // Ensure manager is flagged as is_manager
-                    if (!$user->is_manager) {
+                    if (empty($user->is_manager)) {
                         try {
                             $user->update(['is_manager' => 1]);
                         } catch (\Throwable $mEx) {}
@@ -534,18 +539,22 @@ class GoalController extends Controller
 
                     // Build a guaranteed valid, non-null, unique email
                     $cleanEmpCode = preg_replace('/[^a-zA-Z0-9]/', '', $empCode);
-                    $fallbackEmail = strtolower($cleanEmpCode) . '@melcomgroup.internal';
+                    $fallbackEmail = strtolower($cleanEmpCode) . '@melcomgroup.com';
                     $userEmail = (!empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL)) ? $email : $fallbackEmail;
                     if (\App\Models\User::where('email', $userEmail)->where('employee_code', '!=', $empCode)->exists()) {
-                        $userEmail = strtolower($cleanEmpCode) . '_' . substr(md5(uniqid()), 0, 6) . '@melcomgroup.internal';
+                        $userEmail = strtolower($cleanEmpCode) . '_' . substr(md5(uniqid()), 0, 6) . '@melcomgroup.com';
                     }
 
                     $empUser = null;
                     if (in_array('employee_code', $userCols)) {
-                        $empUser = \App\Models\User::where('employee_code', $empCode)->first();
+                        $empUser = \App\Models\User::where('employee_code', $empCode)
+                            ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($empCode)])
+                            ->first();
                     }
                     if (!$empUser) {
-                        $empUser = \App\Models\User::where('username', $generatedUsername)->first();
+                        $empUser = \App\Models\User::where('username', $generatedUsername)
+                            ->orWhereRaw('LOWER(username) = ?', [strtolower($generatedUsername)])
+                            ->first();
                     }
 
                     if (!$empUser) {
@@ -560,17 +569,17 @@ class GoalController extends Controller
                             if (in_array('department', $userCols)) $newUserData['department'] = $dept;
                             if (in_array('location', $userCols)) $newUserData['location'] = $loc;
                             if (in_array('line_manager_id', $userCols)) $newUserData['line_manager_id'] = $user->id;
-                            if (in_array('report_to', $userCols)) $newUserData['report_to'] = $user->name;
+                            if (in_array('report_to', $userCols)) $newUserData['report_to'] = $user->name ?: $user->username;
                             if (in_array('is_manager', $userCols)) $newUserData['is_manager'] = 0;
                             if (in_array('admin', $userCols)) $newUserData['admin'] = 0;
-                            if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/pms/goals', '/pms/appraisal'];
+                            if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
 
                             $empUser = \App\Models\User::create($newUserData);
                         } catch (\Throwable $e) {
                             \Log::warning("Could not auto-create user for {$candName}: " . $e->getMessage());
                             // Fallback retry with uniquely generated email
                             try {
-                                $newUserData['email'] = strtolower($cleanEmpCode) . '_' . time() . '@melcomgroup.internal';
+                                $newUserData['email'] = strtolower($cleanEmpCode) . '_' . time() . '@melcomgroup.com';
                                 $empUser = \App\Models\User::create($newUserData);
                             } catch (\Throwable $e2) {
                                 \Log::error("Retry create user failed for {$candName}: " . $e2->getMessage());
@@ -578,15 +587,19 @@ class GoalController extends Controller
                         }
                     } else {
                         try {
-                            $updateData = [];
+                            $updateData = [
+                                'password' => bcrypt('password'), // Ensure login password is password
+                            ];
                             if (in_array('line_manager_id', $userCols)) $updateData['line_manager_id'] = $user->id;
-                            if (in_array('report_to', $userCols)) $updateData['report_to'] = $user->name;
+                            if (in_array('report_to', $userCols)) $updateData['report_to'] = $user->name ?: $user->username;
                             if (in_array('employee_code', $userCols) && empty($empUser->employee_code)) {
                                 $updateData['employee_code'] = $empCode;
                             }
-                            if (!empty($updateData)) {
-                                $empUser->update($updateData);
+                            if (in_array('permissions', $userCols)) {
+                                $currentPerms = is_array($empUser->permissions) ? $empUser->permissions : [];
+                                $updateData['permissions'] = array_values(array_unique(array_merge($currentPerms, ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'])));
                             }
+                            $empUser->update($updateData);
                         } catch (\Throwable $e) {
                             \Log::warning("Could not update manager for {$candName}: " . $e->getMessage());
                         }
@@ -618,7 +631,7 @@ class GoalController extends Controller
                         'performanceRating' => 0,
                         'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
                         'candidate_signature_name' => $candName,
-                        'manager_signature_name' => $user->name,
+                        'manager_signature_name' => $user->name ?: $user->username,
                         'signature_date' => date('Y-m-d')
                     ];
 
@@ -649,7 +662,7 @@ class GoalController extends Controller
                         'location' => $loc,
                         'department' => $dept,
                         'job_title' => $jobTitle,
-                        'manager_name' => $user->name,
+                        'manager_name' => $user->name ?: $user->username,
                         'smart_criteria' => $smartCriteria,
                         'quarterly_tracking' => $quarterlyTracking,
                         'appraisal_data' => $empAppraisalData,
@@ -744,16 +757,9 @@ class GoalController extends Controller
                 $goal = \App\Models\Goal::where(function ($q) use ($user) {
                     if (!empty($user->employee_code)) $q->where('employee_code', $user->employee_code);
                     $q->orWhere('user_id', $user->id);
-                })->latest()->first();
-                if ($goal) {
-                    if (!empty($goal->created_by)) {
-                        $manager = \App\Models\User::find($goal->created_by);
-                    }
-                    if (!$manager && !empty($goal->manager_name)) {
-                        $manager = \App\Models\User::where('name', $goal->manager_name)
-                            ->orWhere('name', 'like', '%' . trim($goal->manager_name) . '%')
-                            ->first();
-                    }
+                })->whereNotNull('manager_name')->latest()->first();
+                if ($goal && !empty($goal->manager_name)) {
+                    $manager = \App\Models\User::where('name', $goal->manager_name)->first();
                 }
             }
         }
@@ -800,11 +806,7 @@ class GoalController extends Controller
 
         // Also propagate updated template to any active unsubmitted assigned/draft goals for this manager
         try {
-            $activeGoals = \App\Models\Goal::where(function ($q) use ($user) {
-                    $q->where('created_by', $user->id)
-                      ->orWhere('manager_name', $user->name)
-                      ->orWhere('manager_name', 'like', '%' . trim($user->name) . '%');
-                })
+            $activeGoals = \App\Models\Goal::where('manager_name', $user->name)
                 ->whereIn('status', ['assigned', 'draft'])
                 ->get();
 

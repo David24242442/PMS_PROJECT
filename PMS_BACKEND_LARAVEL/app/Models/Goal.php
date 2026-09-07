@@ -9,33 +9,19 @@ class Goal extends Model
 {
     use HasFactory;
 
-    protected $fillable = [
-        'user_id',
-        'title',
-        'description',
-        'purposes',
-        'challenges',
-        'category',
-        'weight',
-        'target',
-        'actual',
-        'rating',
-        'status',
-        'due_date',
-        'completion_date',
-        'smart_criteria',
-        'quarterly_tracking',
-        'year',
-        'created_by',
-    ];
+    protected $guarded = [];
 
     protected $casts = [
-        'weight' => 'decimal:2',
-        'rating' => 'integer',
-        'due_date' => 'date',
-        'completion_date' => 'date',
+        'description' => 'array',
+        'purposes' => 'array',
+        'challenges' => 'array',
         'smart_criteria' => 'array',
         'quarterly_tracking' => 'array',
+        'appraisal_data' => 'array',
+        'due_date' => 'date',
+        'completion_date' => 'date',
+        'weight' => 'decimal:2',
+        'rating' => 'integer',
     ];
 
     public function user()

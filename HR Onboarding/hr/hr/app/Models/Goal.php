@@ -24,6 +24,17 @@ class Goal extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function getProgressPercentageAttribute()
+    {
+        if (!$this->target || $this->target == 0) return 0;
+        return min(100, round(($this->actual / $this->target) * 100));
     }
 }
