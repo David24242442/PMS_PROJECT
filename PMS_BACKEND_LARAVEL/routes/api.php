@@ -45,6 +45,106 @@ Route::get('/run-migrate', function() {
     }
 });
 
+Route::get('/sync-pms-users', function() {
+    try {
+        // 1. Ensure columns exist
+        if (\Schema::hasTable('users')) {
+            \Schema::table('users', function ($table) {
+                if (!\Schema::hasColumn('users', 'employee_code')) $table->string('employee_code')->nullable();
+                if (!\Schema::hasColumn('users', 'permissions')) $table->text('permissions')->nullable();
+                if (!\Schema::hasColumn('users', 'line_manager_id')) $table->unsignedBigInteger('line_manager_id')->nullable();
+                if (!\Schema::hasColumn('users', 'report_to')) $table->string('report_to')->nullable();
+                if (!\Schema::hasColumn('users', 'is_manager')) $table->boolean('is_manager')->default(0);
+            });
+        }
+        if (\Schema::hasTable('goals')) {
+            \Schema::table('goals', function ($table) {
+                if (!\Schema::hasColumn('goals', 'created_by')) $table->unsignedBigInteger('created_by')->nullable();
+                if (!\Schema::hasColumn('goals', 'manager_name')) $table->string('manager_name')->nullable();
+                if (!\Schema::hasColumn('goals', 'appraisal_data')) $table->longText('appraisal_data')->nullable();
+                if (!\Schema::hasColumn('goals', 'employee_code')) $table->string('employee_code')->nullable();
+            });
+        }
+
+        $goals = \App\Models\Goal::all();
+        $synced = [];
+
+        foreach ($goals as $goal) {
+            $code = trim($goal->employee_code ?? '');
+            if (empty($code)) continue;
+
+            $cleanCode = preg_replace('/[^a-zA-Z0-9]/', '', $code);
+            $fallbackEmail = strtolower($cleanCode) . '@melcomgroup.com';
+
+            // Find existing user
+            $user = null;
+            if (\Schema::hasColumn('users', 'employee_code')) {
+                $user = \App\Models\User::where('employee_code', $code)->orWhere('employee_code', $cleanCode)->first();
+            }
+            if (!$user) {
+                $user = \App\Models\User::where('username', $code)
+                    ->orWhere('username', 'like', '%' . $code)
+                    ->orWhere('email', $fallbackEmail)
+                    ->orWhere('name', $goal->candidate_name)
+                    ->first();
+            }
+
+            if ($user) {
+                $updates = [
+                    'username' => $code,
+                    'password' => bcrypt('password'),
+                ];
+                if (\Schema::hasColumn('users', 'employee_code')) $updates['employee_code'] = $code;
+                if (\Schema::hasColumn('users', 'permissions')) {
+                    $updates['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
+                }
+                if (!empty($goal->created_by) && \Schema::hasColumn('users', 'line_manager_id')) {
+                    $updates['line_manager_id'] = $goal->created_by;
+                }
+                if (!empty($goal->manager_name) && \Schema::hasColumn('users', 'report_to')) {
+                    $updates['report_to'] = $goal->manager_name;
+                }
+                $user->update($updates);
+                \App\Models\Goal::where('employee_code', $code)->orWhere('employee_code', $cleanCode)->update(['user_id' => $user->id]);
+                $synced[] = "Updated user for {$code} ({$goal->candidate_name}) -> username: {$code}, password: password";
+            } else {
+                $newUserData = [
+                    'name' => $goal->candidate_name,
+                    'username' => $code,
+                    'email' => $fallbackEmail,
+                    'password' => bcrypt('password'),
+                    'position_id' => 1,
+                    'user_id' => $goal->created_by ?? 1,
+                    'admin' => 0,
+                    'is_manager' => 0,
+                ];
+                if (\Schema::hasColumn('users', 'employee_code')) $newUserData['employee_code'] = $code;
+                if (\Schema::hasColumn('users', 'permissions')) $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
+                if (!empty($goal->created_by) && \Schema::hasColumn('users', 'line_manager_id')) $newUserData['line_manager_id'] = $goal->created_by;
+                if (!empty($goal->manager_name) && \Schema::hasColumn('users', 'report_to')) $newUserData['report_to'] = $goal->manager_name;
+                if (\Schema::hasColumn('users', 'department') && !empty($goal->department)) $newUserData['department'] = $goal->department;
+                if (\Schema::hasColumn('users', 'location') && !empty($goal->location)) $newUserData['location'] = $goal->location;
+
+                $user = \App\Models\User::create($newUserData);
+                \App\Models\Goal::where('employee_code', $code)->orWhere('employee_code', $cleanCode)->update(['user_id' => $user->id]);
+                $synced[] = "Created user for {$code} ({$goal->candidate_name}) -> username: {$code}, password: password";
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Synced PMS users successfully!',
+            'count' => count($synced),
+            'details' => $synced
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ], 500);
+    }
+});
+
 Route::get('/run-storage-link', function() {
     try {
         \Illuminate\Support\Facades\Artisan::call('storage:link');

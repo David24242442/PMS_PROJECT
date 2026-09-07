@@ -164,7 +164,7 @@ router.beforeEach((to, from, next) => {
   if (user) {
     const userRole = user.attributes ? user.attributes.position_id : user.position_id; 
     const permissions = parsePermissions(user.permissions);
-    const isManager = !!(user.admin || user.is_manager || userRole === 4 || user.position_id === 1);
+    const isManager = !!(user.admin || user.is_manager || userRole === 4 || userRole === 3 || user.position_id === 3 || user.position_id === 4);
     
     // HR Head (4) or Admin has full access to everything
     if (userRole === 4 || user.admin) {

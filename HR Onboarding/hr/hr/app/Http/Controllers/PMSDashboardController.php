@@ -27,7 +27,7 @@ class PMSDashboardController extends Controller
             $goalQuery = Goal::query();
             $leaderboardUsers = null;
         } else {
-            $isManager = $user->is_manager || $user->position_id === 1 || $user->admin;
+            $isManager = $user->is_manager || $user->position_id === 3 || $user->position_id === 4 || $user->admin;
             if (!$isManager) {
                 try {
                     $isManager = \Schema::hasTable('employees') && \Schema::hasColumn('employees', 'line_manager_id') && Employee::where('line_manager_id', $user->id)->exists();

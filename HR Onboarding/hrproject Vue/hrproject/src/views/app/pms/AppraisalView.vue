@@ -29,7 +29,7 @@ const goalId = ref(route.query.goal_id || null);
 const goalStatus = ref('');
 
 const isManager = computed(() => {
-    return !!(loguser?.admin || loguser?.is_manager || loguser?.position_id === 1 || loguser?.designation === 'Manager');
+    return !!(loguser?.admin || loguser?.is_manager || loguser?.position_id === 3 || loguser?.position_id === 4 || loguser?.designation === 'Manager');
 });
 const isEmployee = computed(() => !isManager.value);
 

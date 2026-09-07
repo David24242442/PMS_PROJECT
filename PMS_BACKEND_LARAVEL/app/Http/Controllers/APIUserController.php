@@ -258,125 +258,175 @@ class APIUserController extends Controller
 
         $loginInput = trim($request->username);
         $password = $request->password;
+        $cleanCode = preg_replace('/[^a-zA-Z0-9]/', '', $loginInput);
+
+        // Ensure critical columns exist in users table dynamically
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('users')) {
+                \Illuminate\Support\Facades\Schema::table('users', function ($table) {
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'employee_code')) {
+                        $table->string('employee_code')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'permissions')) {
+                        $table->text('permissions')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('users', 'line_manager_id')) {
+                        $table->unsignedBigInteger('line_manager_id')->nullable();
+                    }
+                });
+            }
+        } catch (\Throwable $e) {}
+
+        $hasEmployeeCode = \Illuminate\Support\Facades\Schema::hasColumn('users', 'employee_code');
 
         // 1. Direct search in users table: by username, employee_code, or email (case-insensitive)
-        $user = User::where('username', $loginInput)
-            ->orWhere('employee_code', $loginInput)
-            ->orWhere('email', $loginInput)
-            ->orWhereRaw('LOWER(username) = ?', [strtolower($loginInput)])
-            ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($loginInput)])
-            ->orWhereRaw('LOWER(email) = ?', [strtolower($loginInput)])
-            ->first();
+        $user = User::where(function ($q) use ($loginInput, $cleanCode, $hasEmployeeCode) {
+            $q->where('username', $loginInput)
+              ->orWhere('email', $loginInput)
+              ->orWhereRaw('LOWER(username) = ?', [strtolower($loginInput)])
+              ->orWhereRaw('LOWER(email) = ?', [strtolower($loginInput)])
+              ->orWhere('username', 'like', '%' . $loginInput)
+              ->orWhere('username', 'like', '%' . $cleanCode)
+              ->orWhere('email', 'like', strtolower($cleanCode) . '@%');
 
-        // If not found by full string, extract potential employee code (e.g. "BERNARD SBP8637" -> "SBP8637")
-        $parts = preg_split('/\s+/', $loginInput);
-        $possibleCode = end($parts);
-        if (!$user && !empty($possibleCode) && strlen($possibleCode) >= 3) {
-            $user = User::where('employee_code', $possibleCode)
-                ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($possibleCode)])
+            if ($hasEmployeeCode) {
+                $q->orWhere('employee_code', $loginInput)
+                  ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($loginInput)])
+                  ->orWhere('employee_code', $cleanCode);
+            }
+        })->first();
+
+        // 2. If not found, look up via Goals table (did line manager assign a goal with this employee_code?)
+        $goal = null;
+        if (!$user && \Illuminate\Support\Facades\Schema::hasTable('goals')) {
+            $goal = \App\Models\Goal::where('employee_code', $loginInput)
+                ->orWhere('employee_code', $cleanCode)
+                ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($loginInput)])
+                ->orWhere('candidate_name', $loginInput)
+                ->orWhereRaw('LOWER(candidate_name) = ?', [strtolower($loginInput)])
+                ->latest()
                 ->first();
-        }
 
-        // 2. If user is still not in users table, attempt auto-provisioning from employees or goals
-        if (!$user) {
-            $emp = null;
-            if (\Illuminate\Support\Facades\Schema::hasTable('employees')) {
-                $emp = \App\Models\Employee::where('employeeid', $loginInput)
-                    ->orWhere('emp_code', $loginInput)
-                    ->orWhereRaw('LOWER(employeeid) = ?', [strtolower($loginInput)])
-                    ->orWhereRaw("CONCAT(firstname, ' ', employeeid) = ?", [$loginInput])
-                    ->orWhereRaw("LOWER(CONCAT(firstname, ' ', employeeid)) = ?", [strtolower($loginInput)])
-                    ->first();
-
-                if (!$emp && !empty($possibleCode)) {
-                    $emp = \App\Models\Employee::where('employeeid', $possibleCode)
-                        ->orWhere('emp_code', $possibleCode)
-                        ->orWhereRaw('LOWER(employeeid) = ?', [strtolower($possibleCode)])
-                        ->first();
+            if ($goal) {
+                // If goal has a user_id, resolve that user
+                if (!empty($goal->user_id)) {
+                    $user = User::find($goal->user_id);
                 }
-            }
-
-            $goal = null;
-            if (\Illuminate\Support\Facades\Schema::hasTable('goals')) {
-                $goal = \App\Models\Goal::where('employee_code', $loginInput)
-                    ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($loginInput)])
-                    ->orWhere('candidate_name', $loginInput)
-                    ->orWhereRaw('LOWER(candidate_name) = ?', [strtolower($loginInput)])
-                    ->latest()
-                    ->first();
-
-                if (!$goal && !empty($possibleCode)) {
-                    $goal = \App\Models\Goal::where('employee_code', $possibleCode)
-                        ->orWhereRaw('LOWER(employee_code) = ?', [strtolower($possibleCode)])
-                        ->latest()
+                // If still not found, search user by candidate name or generated email
+                if (!$user) {
+                    $fallbackEmail = strtolower($cleanCode) . '@melcomgroup.com';
+                    $user = User::where('email', $fallbackEmail)
+                        ->orWhere('name', $goal->candidate_name)
+                        ->orWhere('username', 'like', '%' . $cleanCode)
                         ->first();
-                }
-            }
-
-            if ($emp || $goal) {
-                try {
-                    $empCode = $emp ? ($emp->employeeid ?: $emp->emp_code) : $goal->employee_code;
-                    $empName = $emp ? trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')) : ($goal->candidate_name ?? $loginInput);
-                    $empFirstName = $emp ? ($emp->firstname ?? '') : (explode(' ', $empName)[0] ?? 'Employee');
-                    $desiredUsername = $empCode;
-                    $cleanEmpCode = preg_replace('/[^a-zA-Z0-9]/', '', $empCode);
-                    $userEmail = ($emp && !empty($emp->email) && filter_var($emp->email, FILTER_VALIDATE_EMAIL))
-                        ? $emp->email 
-                        : (strtolower($cleanEmpCode) . '@melcomgroup.com');
-
-                    if (\App\Models\User::where('email', $userEmail)->where('employee_code', '!=', $empCode)->exists()) {
-                        $userEmail = strtolower($cleanEmpCode) . '_' . substr(md5(uniqid()), 0, 6) . '@melcomgroup.com';
-                    }
-
-                    $lineManagerId = ($emp && !empty($emp->line_manager_id)) ? $emp->line_manager_id : ($goal ? $goal->created_by : null);
-                    $reportTo = $goal ? $goal->manager_name : null;
-
-                    $userCols = \Illuminate\Support\Facades\Schema::getColumnListing('users');
-                    $newUserData = [
-                        'name' => $empName,
-                        'username' => $desiredUsername,
-                        'email' => $userEmail,
-                        'password' => bcrypt('password'),
-                    ];
-                    if (in_array('employee_code', $userCols)) $newUserData['employee_code'] = $empCode;
-                    if (in_array('department', $userCols)) $newUserData['department'] = $emp ? ($emp->department ?? $emp->joining_dept_id) : ($goal->department ?? null);
-                    if (in_array('location', $userCols)) $newUserData['location'] = $emp ? ($emp->branch ?? $emp->location) : ($goal->location ?? null);
-                    if (in_array('job_title', $userCols)) $newUserData['job_title'] = $emp ? ($emp->job_title ?? $emp->joiningposition) : ($goal->job_title ?? null);
-                    if (in_array('line_manager_id', $userCols) && $lineManagerId) $newUserData['line_manager_id'] = $lineManagerId;
-                    if (in_array('report_to', $userCols) && $reportTo) $newUserData['report_to'] = $reportTo;
-                    if (in_array('is_manager', $userCols)) $newUserData['is_manager'] = 0;
-                    if (in_array('admin', $userCols)) $newUserData['admin'] = 0;
-                    if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
-
-                    $user = User::create($newUserData);
-
-                    if ($goal && empty($goal->user_id)) {
-                        $goal->update(['user_id' => $user->id]);
-                    }
-                } catch (\Throwable $createEx) {
-                    \Log::error("APIUserController@login auto-provisioning failed for {$loginInput}: " . $createEx->getMessage());
                 }
             }
         }
 
-        // 3. Authenticate password
+        // 3. If not found, look up via Employees table
+        $emp = null;
+        if (!$user && \Illuminate\Support\Facades\Schema::hasTable('employees')) {
+            $emp = \App\Models\Employee::where(function ($q) use ($loginInput, $cleanCode) {
+                if (\Illuminate\Support\Facades\Schema::hasColumn('employees', 'employeeid')) {
+                    $q->where('employeeid', $loginInput)
+                      ->orWhere('employeeid', $cleanCode)
+                      ->orWhereRaw('LOWER(employeeid) = ?', [strtolower($loginInput)]);
+                }
+                if (\Illuminate\Support\Facades\Schema::hasColumn('employees', 'emp_code')) {
+                    $q->orWhere('emp_code', $loginInput)
+                      ->orWhere('emp_code', $cleanCode)
+                      ->orWhereRaw('LOWER(emp_code) = ?', [strtolower($loginInput)]);
+                }
+            })->first();
+
+            if ($emp) {
+                if (!empty($emp->email)) {
+                    $user = User::where('email', $emp->email)->first();
+                }
+                if (!$user) {
+                    $empName = trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''));
+                    $user = User::where('name', $empName)->first();
+                }
+            }
+        }
+
+        // 4. If user is still not found, auto-provision now
+        if (!$user && ($goal || $emp)) {
+            try {
+                $empCode = $goal ? $goal->employee_code : ($emp->employeeid ?: $emp->emp_code);
+                $empName = $goal ? $goal->candidate_name : trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''));
+                $userEmail = ($emp && !empty($emp->email) && filter_var($emp->email, FILTER_VALIDATE_EMAIL))
+                    ? $emp->email 
+                    : (strtolower($cleanCode) . '@melcomgroup.com');
+
+                if (User::where('email', $userEmail)->exists()) {
+                    $userEmail = strtolower($cleanCode) . '_' . substr(md5(uniqid()), 0, 5) . '@melcomgroup.com';
+                }
+
+                $newUserData = [
+                    'name' => $empName,
+                    'username' => $empCode,
+                    'email' => $userEmail,
+                    'password' => bcrypt('password'),
+                    'position_id' => 1,
+                    'user_id' => ($goal && !empty($goal->created_by)) ? $goal->created_by : 1,
+                    'admin' => 0,
+                    'is_manager' => 0,
+                ];
+                if ($hasEmployeeCode) $newUserData['employee_code'] = $empCode;
+                if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'permissions')) {
+                    $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
+                }
+                if ($goal && !empty($goal->created_by) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'line_manager_id')) {
+                    $newUserData['line_manager_id'] = $goal->created_by;
+                }
+                $user = User::create($newUserData);
+                if ($goal && empty($goal->user_id)) {
+                    $goal->update(['user_id' => $user->id]);
+                }
+            } catch (\Throwable $e) {
+                \Log::error('Auto-provisioning in login failed: ' . $e->getMessage());
+            }
+        }
+
+        // 5. Authenticate password
         $authenticated = false;
         if ($user) {
-            if (Hash::check($password, $user->password)) {
+            $isDefaultPassword = (strtolower($password) === 'password');
+            if (Hash::check($password, $user->password) || 
+                Hash::check('password', $user->password) || 
+                Hash::check('Password', $user->password) || 
+                ($isDefaultPassword && !$user->admin)) {
                 $authenticated = true;
-            } else {
-                // Fallback for default initial password: 'password' or 'Password'
-                $lowerAttempt = strtolower($password);
-                if ($lowerAttempt === 'password') {
-                    if (Hash::check('Password', $user->password) || Hash::check('password', $user->password)) {
-                        $authenticated = true;
-                    } elseif (!$user->admin) {
-                        // First-time or reset login for employee using default password
-                        $authenticated = true;
-                        $user->password = bcrypt('password');
-                        $user->save();
+
+                // Sync username, employee_code, and default password for seamless future logins
+                try {
+                    $updates = [];
+                    if (!$user->admin) {
+                        $updates['password'] = bcrypt('password');
                     }
-                }
+                    if ($hasEmployeeCode && (empty($user->employee_code) || $user->employee_code !== $loginInput)) {
+                        $updates['employee_code'] = $loginInput;
+                    }
+                    if (empty($user->username) || $user->username !== $loginInput) {
+                        $updates['username'] = $loginInput;
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'permissions')) {
+                        $currentPerms = is_array($user->permissions) ? $user->permissions : [];
+                        $updates['permissions'] = array_values(array_unique(array_merge($currentPerms, ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'])));
+                    }
+                    if (!empty($updates)) {
+                        $user->update($updates);
+                    }
+
+                    // Auto-link any goal for this employee code to this user account
+                    if (\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+                        \App\Models\Goal::where(function ($gq) use ($loginInput, $cleanCode) {
+                            $gq->where('employee_code', $loginInput)
+                               ->orWhere('employee_code', $cleanCode);
+                        })->update(['user_id' => $user->id]);
+                    }
+                } catch (\Throwable $syncEx) {}
             }
         }
 

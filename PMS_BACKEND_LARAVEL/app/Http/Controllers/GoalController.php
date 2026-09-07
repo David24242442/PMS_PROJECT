@@ -657,27 +657,37 @@ class GoalController extends Controller
 
                     $empUser = null;
                     if (in_array('employee_code', $userCols)) {
-                        $empUser = \App\Models\User::where('employee_code', $empCode)->first();
+                        $empUser = \App\Models\User::where('employee_code', $empCode)
+                            ->orWhere('employee_code', $cleanEmpCode)
+                            ->first();
                     }
                     if (!$empUser) {
-                        $empUser = \App\Models\User::where('username', $generatedUsername)->first();
+                        $empUser = \App\Models\User::where('username', $generatedUsername)
+                            ->orWhere('username', $empCode)
+                            ->orWhere('username', 'like', '%' . $empCode)
+                            ->orWhere('email', $userEmail)
+                            ->orWhere('email', $fallbackEmail)
+                            ->orWhere('name', $candName)
+                            ->first();
                     }
 
                     if (!$empUser) {
                         try {
                             $newUserData = [
                                 'name' => $candName,
-                                'username' => $generatedUsername,
+                                'username' => $empCode,
                                 'email' => $userEmail,
                                 'password' => bcrypt('password'),
+                                'position_id' => 1,
+                                'user_id' => $user->id,
+                                'is_manager' => 0,
+                                'admin' => 0,
                             ];
                             if (in_array('employee_code', $userCols)) $newUserData['employee_code'] = $empCode;
                             if (in_array('department', $userCols)) $newUserData['department'] = $dept;
                             if (in_array('location', $userCols)) $newUserData['location'] = $loc;
                             if (in_array('line_manager_id', $userCols)) $newUserData['line_manager_id'] = $user->id;
                             if (in_array('report_to', $userCols)) $newUserData['report_to'] = $user->name ?: $user->username;
-                            if (in_array('is_manager', $userCols)) $newUserData['is_manager'] = 0;
-                            if (in_array('admin', $userCols)) $newUserData['admin'] = 0;
                             if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal'];
 
                             $empUser = \App\Models\User::create($newUserData);
@@ -695,10 +705,11 @@ class GoalController extends Controller
                         try {
                             $updateData = [
                                 'password' => bcrypt('password'), // Ensure login password is password
+                                'username' => $empCode,
                             ];
                             if (in_array('line_manager_id', $userCols)) $updateData['line_manager_id'] = $user->id;
                             if (in_array('report_to', $userCols)) $updateData['report_to'] = $user->name ?: $user->username;
-                            if (in_array('employee_code', $userCols) && empty($empUser->employee_code)) {
+                            if (in_array('employee_code', $userCols)) {
                                 $updateData['employee_code'] = $empCode;
                             }
                             if (in_array('permissions', $userCols)) {
@@ -843,7 +854,7 @@ class GoalController extends Controller
         }
 
         // 3. If current user is a manager or admin and no specific employee_code requested, return their own template
-        if (!$manager && ($user->admin || $user->is_manager || $user->position_id === 1)) {
+        if (!$manager && ($user->admin || $user->is_manager || $user->position_id === 3 || $user->position_id === 4)) {
             $manager = $user;
         }
 
