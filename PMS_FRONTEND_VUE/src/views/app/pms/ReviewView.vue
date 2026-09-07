@@ -10,7 +10,7 @@ const { loguser } = userstore;
 const currentYear = ref(new Date().getFullYear());
 const loading = ref(true);
 const saving = ref(false);
-watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
+watch(loading, (val) => userstore?.setIsLoading?.(val), { immediate: true });
 
 
 const goals = ref([]);

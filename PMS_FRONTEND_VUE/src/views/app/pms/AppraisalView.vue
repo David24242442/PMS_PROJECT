@@ -42,7 +42,7 @@ const isReadOnly = computed(() => {
 const masterEmployees = ref([]);
 const filteredMasterEmployees = ref([]);
 const selectedCandidate = ref(null);
-watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
+watch(loading, (val) => userstore?.setIsLoading?.(val), { immediate: true });
 
 // Performance Key Competencies (5 items, default 20% weight each = 100%)
 const defaultCompetencyList = [

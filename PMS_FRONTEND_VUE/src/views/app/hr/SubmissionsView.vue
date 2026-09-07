@@ -15,7 +15,7 @@ _darkObserver.observe(document.body, { attributes: true, attributeFilter: ['clas
 
 const submissions = ref([]);
 const loading = ref(true);
-watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
+watch(loading, (val) => userstore?.setIsLoading?.(val), { immediate: true });
 const selectedAppraisal = ref(null);
 const showActionModal = ref(false);
 const actionData = ref({ status: 'approved', hr_comments: '', overall_rating: 4.0 });
@@ -261,7 +261,7 @@ const clearAllFilters = () => {
 
 const fetchSubmissions = async () => {
     loading.value = true;
-    userstore.setIsLoading(true);
+    userstore?.setIsLoading?.(true);
     try {
         const response = await axios.get('pms/appraisals/all', {
             params: { year: currentYear.value }
@@ -273,7 +273,7 @@ const fetchSubmissions = async () => {
         console.error('Error fetching submissions:', error);
     } finally {
         loading.value = false;
-        userstore.setIsLoading(false);
+        userstore?.setIsLoading?.(false);
     }
 };
 

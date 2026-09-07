@@ -34,7 +34,7 @@ function range(start, end) {
 
 const currentYear = ref(new Date().getFullYear());
 const years = range(currentYear.value, currentYear.value - 5);
-watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
+watch(loading, (val) => userstore?.setIsLoading?.(val), { immediate: true });
 
 // Role definitions
 const isManager = computed(() => {
@@ -259,7 +259,7 @@ const quarterColors = {
 
 const fetchGoals = async () => {
     loading.value = true;
-    userstore.setIsLoading(true);
+    userstore?.setIsLoading?.(true);
     try {
         const response = await axios.get('pms/goals', {
             params: { year: currentYear.value }
@@ -271,7 +271,7 @@ const fetchGoals = async () => {
         console.error('Error fetching goals:', error);
     } finally {
         loading.value = false;
-        userstore.setIsLoading(false);
+        userstore?.setIsLoading?.(false);
     }
 };
 
