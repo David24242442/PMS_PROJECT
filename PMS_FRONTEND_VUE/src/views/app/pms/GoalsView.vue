@@ -2453,21 +2453,21 @@ const downloadAttachment = (file) => {
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 bg-indigo-50/30 align-middle">
-                                        <!-- SELF RATING: Enabled for employee -->
+                                        <!-- SELF RATING: Enabled for employee (pure numbers) -->
                                         <select v-model.number="comp.selfRating" :disabled="isFormReadOnly" class="prof-input !py-1.5 !px-2 w-full !text-center font-black text-xs !rounded-lg border-indigo-200 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600/20">
                                             <option :value="0">— Select —</option>
-                                            <option :value="1">1 - Unsatisfactory</option>
-                                            <option :value="2">2 - Partly Meeting</option>
-                                            <option :value="3">3 - Meeting Expectations</option>
-                                            <option :value="4">4 - Exceeding Expectations</option>
-                                            <option :value="5">5 - Outstanding</option>
+                                            <option :value="1">1</option>
+                                            <option :value="2">2</option>
+                                            <option :value="3">3</option>
+                                            <option :value="4">4</option>
+                                            <option :value="5">5</option>
                                         </select>
                                     </td>
                                     <td class="px-4 py-3 bg-slate-50/60 align-middle text-center">
-                                        <!-- MANAGER RATING: Locked showing '--' (as requested) -->
+                                        <!-- MANAGER RATING: Locked showing '--' for employee -->
                                         <div class="flex items-center justify-center">
                                             <div class="py-1.5 px-4 bg-slate-100/90 rounded-lg border border-slate-200 text-slate-400 font-black text-xs tracking-widest cursor-not-allowed select-none" title="Manager Rating is provided by your Line Manager during review">
-                                                <span v-if="comp.managerRating && comp.managerRating > 0">{{ comp.managerRating }}</span>
+                                                <span v-if="comp.managerRating && comp.managerRating > 0 && isManager">{{ comp.managerRating }}</span>
                                                 <span v-else>--</span>
                                             </div>
                                         </div>
@@ -2827,7 +2827,7 @@ const downloadAttachment = (file) => {
                 <div class="flex-1 overflow-y-auto bg-slate-200 p-8 md:p-12 lg:p-20 flex flex-col items-center custom-scrollbar scroll-smooth">
                     
                     <div id="protocol-report" class="w-full max-w-[210mm] print:m-0 print:shadow-none print:w-full no-scrollbar">
-                        <PrintableHardCopyDossier :goal="selectedGoal" :employees="masterEmployees" />
+                        <PrintableHardCopyDossier :goal="selectedGoal" :employees="masterEmployees" :showReviewPage="isManager" />
                     </div>
                 </div>
 
@@ -2848,7 +2848,7 @@ const downloadAttachment = (file) => {
                             <div class="inline-flex w-24 h-24 rounded-3xl bg-red-500/10 text-red-500 items-center justify-center mb-6 shadow-2xl shadow-red-500/20 border border-red-500/20">
                                 <i class="pi pi-file-pdf text-4xl"></i>
                             </div>
-                            <h2 class="text-xl font-black text-white uppercase tracking-tight mb-2">Goal Dossier</h2>
+                            <h2 class="text-xl font-black text-white uppercase tracking-tight mb-2">{{ isManager ? 'Goal, Appraisal & Review Dossier' : 'Goal & Appraisal Dossier' }}</h2>
                             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ getDossierId(selectedGoal) }} // VERIFIED DOCUMENT</p>
                         </div>
 

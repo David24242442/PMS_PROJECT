@@ -259,7 +259,12 @@
                         <td class="cell-label">Overall Final Rating:</td>
                         <td class="cell-value">
                             <span class="rating-highlight-blue">
-                                {{ norm.managerOverallScore.toFixed(2) }} / 5.00 ({{ norm.managerOverallPercentage }}%)
+                                <template v-if="canViewReviewPage">
+                                    {{ norm.managerOverallScore.toFixed(2) }} / 5.00 ({{ norm.managerOverallPercentage }}%)
+                                </template>
+                                <template v-else>
+                                    {{ norm.selfAvgScore > 0 ? (norm.selfAvgScore.toFixed(2) + ' / 5.00 (Self Score)') : '--' }}
+                                </template>
                             </span>
                         </td>
                     </tr>
@@ -296,8 +301,8 @@
                         </td>
                         <td class="cell-center font-bold text-blue">{{ comp.weight }}%</td>
                         <td class="cell-center font-bold">{{ comp.selfRating || '0' }}</td>
-                        <td class="cell-center font-black text-darkblue">{{ comp.managerRating || '0' }}</td>
-                        <td class="cell-center font-black">{{ getCompWeightedScore(comp) }}</td>
+                        <td class="cell-center font-black text-darkblue">{{ canViewReviewPage ? (comp.managerRating || '0') : '--' }}</td>
+                        <td class="cell-center font-black">{{ canViewReviewPage ? getCompWeightedScore(comp) : '--' }}</td>
                     </tr>
                 </tbody>
                 <tfoot>
@@ -307,8 +312,8 @@
                         </td>
                         <td class="cell-center font-black text-blue">{{ totalWeight }}%</td>
                         <td class="cell-center font-bold">{{ norm.selfAvgScore.toFixed(2) }}</td>
-                        <td class="cell-center font-black text-darkblue">{{ norm.managerOverallScore.toFixed(2) }}</td>
-                        <td class="cell-center font-black rating-final-cell">{{ norm.managerOverallScore.toFixed(2) }}</td>
+                        <td class="cell-center font-black text-darkblue">{{ canViewReviewPage ? norm.managerOverallScore.toFixed(2) : '--' }}</td>
+                        <td class="cell-center font-black rating-final-cell">{{ canViewReviewPage ? norm.managerOverallScore.toFixed(2) : '--' }}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -340,30 +345,30 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 5 }">
+                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 5 }">
                             <td class="scale-cell-band font-bold">5 - Out Standing / Exceptional</td>
                             <td>High Potential</td>
-                            <td>{{ norm.ratingComments[5] || '' }}</td>
+                            <td>{{ canViewReviewPage ? (norm.ratingComments[5] || '') : '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 4 }">
+                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 4 }">
                             <td class="scale-cell-band font-bold">4 - Exceeding Expectations</td>
                             <td>High Potential</td>
-                            <td>{{ norm.ratingComments[4] || '' }}</td>
+                            <td>{{ canViewReviewPage ? (norm.ratingComments[4] || '') : '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 3 }">
+                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 3 }">
                             <td class="scale-cell-band font-bold">3 - Meeting Expectations</td>
                             <td>Good Potential</td>
-                            <td>{{ norm.ratingComments[3] || '' }}</td>
+                            <td>{{ canViewReviewPage ? (norm.ratingComments[3] || '') : '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 2 }">
+                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 2 }">
                             <td class="scale-cell-band font-bold">2 - Partly Meeting Expectations</td>
                             <td>Low Potential</td>
-                            <td>{{ norm.ratingComments[2] || '' }}</td>
+                            <td>{{ canViewReviewPage ? (norm.ratingComments[2] || '') : '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 1 }">
+                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 1 }">
                             <td class="scale-cell-band font-bold">1 - Below Expectations / Unsatisfactory</td>
                             <td>Below Potential</td>
-                            <td>{{ norm.ratingComments[1] || '' }}</td>
+                            <td>{{ canViewReviewPage ? (norm.ratingComments[1] || '') : '' }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -373,14 +378,14 @@
             <div class="page-footer">
                 <span>Page 02 &bull; Yearly Performance Assessment</span>
                 <span>Melcom HR Performance Management System</span>
-                <span>Overall: {{ norm.managerOverallScore.toFixed(2) }} / 5.00 ({{ norm.managerOverallPercentage }}%)</span>
+                <span>Overall: {{ canViewReviewPage ? (norm.managerOverallScore.toFixed(2) + ' / 5.00 (' + norm.managerOverallPercentage + '%)') : (norm.selfAvgScore > 0 ? norm.selfAvgScore.toFixed(2) + ' / 5.00 (Self Score)' : '--') }}</span>
             </div>
         </div>
 
         <!-- ════════════════════════════════════════════════════════════════ -->
         <!-- PAGE 3: END-OF-YEAR REVIEW (EXECUTIVE SUMMARY) & AUTHORIZATION -->
         <!-- ════════════════════════════════════════════════════════════════ -->
-        <div class="hardcopy-page" id="hardcopy-page-3">
+        <div v-if="canViewReviewPage" class="hardcopy-page" id="hardcopy-page-3">
             <!-- Header Title -->
             <div class="review-main-header">
                 End-Of-Year Review ( Executive Summary )
@@ -536,8 +541,11 @@
                                     <span class="auth-label">Rating:</span>
                                     <span class="auth-val font-bold text-blue">{{ norm.auth.line_manager_rating }}</span>
                                 </div>
+                                <div class="auth-field" style="margin-top: 18px;">
+                                    <span class="auth-label">Signature:</span>
+                                </div>
                                 <div class="auth-sig-box">
-                                    <span class="sig-font-large">{{ norm.auth.line_manager_signature }}</span>
+                                    <!-- Blank for manual physical signing -->
                                 </div>
                                 <div class="auth-field">
                                     <span class="auth-label">Date:</span>
@@ -560,8 +568,11 @@
                                     <span class="auth-label">Designation:</span>
                                     <span class="auth-val">{{ norm.auth.hod_designation }}</span>
                                 </div>
+                                <div class="auth-field" style="margin-top: 4px;">
+                                    <span class="auth-label">Signature:</span>
+                                </div>
                                 <div class="auth-sig-box">
-                                    <span class="sig-font-large">{{ norm.auth.hod_signature }}</span>
+                                    <!-- Blank for manual physical signing -->
                                 </div>
                                 <div class="auth-field">
                                     <span class="auth-label">Date:</span>
@@ -580,8 +591,11 @@
                                     <span class="auth-label">Director:</span>
                                     <span class="auth-val"><strong>{{ norm.auth.director_name }}</strong></span>
                                 </div>
-                                <div class="auth-sig-box" style="margin-top: 24px;">
-                                    <span class="sig-font-large">{{ norm.auth.director_signature }}</span>
+                                <div class="auth-field" style="margin-top: 18px;">
+                                    <span class="auth-label">Signature:</span>
+                                </div>
+                                <div class="auth-sig-box">
+                                    <!-- Blank for manual physical signing -->
                                 </div>
                                 <div class="auth-field">
                                     <span class="auth-label">Date:</span>
@@ -606,6 +620,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import axios from '@/helpers/pms_axios';
+import { useUsersStore } from '@/stores/user';
+
+const userstore = useUsersStore();
 
 const props = defineProps({
     goal: {
@@ -616,7 +633,32 @@ const props = defineProps({
     employees: {
         type: Array,
         default: () => []
+    },
+    showReviewPage: {
+        type: Boolean,
+        default: undefined
     }
+});
+
+const canViewReviewPage = computed(() => {
+    if (props.showReviewPage !== undefined) {
+        return props.showReviewPage;
+    }
+    const loguser = userstore.loguser;
+    if (!loguser) return false;
+    const role = (loguser.role || '').toLowerCase();
+    const isMgr = !!(
+        loguser.admin || 
+        loguser.is_manager || 
+        loguser.position_id === 3 || 
+        loguser.position_id === 4 || 
+        loguser.designation === 'Manager' ||
+        role === 'manager' || 
+        role === 'line manager' || 
+        role === 'admin' ||
+        loguser.permissions?.includes('/pms/review')
+    );
+    return isMgr;
 });
 
 const localEmployees = ref([]);
