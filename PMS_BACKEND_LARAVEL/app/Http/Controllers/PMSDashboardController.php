@@ -99,6 +99,221 @@ class PMSDashboardController extends Controller
             $completionRate = $totalGoals > 0 ? round(($completedGoals / $totalGoals) * 100, 1) : 0;
         }
 
+        // Fetch all goals matching the user's scope
+        $allGoals = (clone $goalQuery)->with('user')->get();
+
+        $deptMap = [];
+        $managerMap = [];
+        $ratingTiers = [
+            'tier5' => ['tier' => 5, 'label' => 'Outstanding (4.5 - 5.0)', 'short' => 'Outstanding', 'count' => 0, 'color' => '#10b981'],
+            'tier4' => ['tier' => 4, 'label' => 'Exceeds (3.5 - 4.4)', 'short' => 'Exceeds', 'count' => 0, 'color' => '#3b82f6'],
+            'tier3' => ['tier' => 3, 'label' => 'Meets (2.5 - 3.4)', 'short' => 'Meets', 'count' => 0, 'color' => '#6366f1'],
+            'tier2' => ['tier' => 2, 'label' => 'Needs Imp. (1.5 - 2.4)', 'short' => 'Needs Imp.', 'count' => 0, 'color' => '#f59e0b'],
+            'tier1' => ['tier' => 1, 'label' => 'Unacceptable (< 1.5)', 'short' => 'Unacceptable', 'count' => 0, 'color' => '#ef4444'],
+            'unrated' => ['tier' => 0, 'label' => 'Pending / Unrated', 'short' => 'Unrated', 'count' => 0, 'color' => '#94a3b8']
+        ];
+        $competencyScores = [];
+        $underperformingStaff = [];
+        $pendingBottlenecks = [];
+        $totalOrgRating = 0;
+        $totalOrgRatedCount = 0;
+
+        $statusCounts = [
+            'assigned' => 0,
+            'in_progress' => 0,
+            'submitted' => 0,
+            'appraisal_completed' => 0,
+            'review_completed' => 0,
+            'draft' => 0
+        ];
+
+        foreach ($allGoals as $goal) {
+            $statusKey = $goal->status ?: 'draft';
+            if (isset($statusCounts[$statusKey])) {
+                $statusCounts[$statusKey]++;
+            }
+
+            // Extract rating from appraisal_data competencies or overall_rating
+            $rating = 0;
+            $appData = is_array($goal->appraisal_data) ? $goal->appraisal_data : json_decode($goal->appraisal_data ?? '{}', true);
+            $competencies = $appData['competencies'] ?? [];
+            if (!empty($competencies) && is_array($competencies)) {
+                $ratedComps = array_filter($competencies, fn($c) => floatval($c['managerRating'] ?? 0) > 0);
+                if (count($ratedComps) > 0) {
+                    $sum = array_sum(array_map(fn($c) => floatval($c['managerRating']), $ratedComps));
+                    $rating = $sum / count($ratedComps);
+                }
+                // Track per competency scores
+                foreach ($competencies as $comp) {
+                    $cTitle = trim($comp['title'] ?? 'Competency');
+                    $cRating = floatval($comp['managerRating'] ?? 0);
+                    if ($cRating > 0 && !empty($cTitle)) {
+                        if (!isset($competencyScores[$cTitle])) {
+                            $competencyScores[$cTitle] = ['total' => 0, 'count' => 0];
+                        }
+                        $competencyScores[$cTitle]['total'] += $cRating;
+                        $competencyScores[$cTitle]['count']++;
+                    }
+                }
+            }
+
+            if ($rating == 0 && !empty($goal->overall_rating)) {
+                $rating = floatval($goal->overall_rating);
+            }
+
+            if ($rating > 0) {
+                $totalOrgRating += $rating;
+                $totalOrgRatedCount++;
+            }
+
+            // Rating tier classification
+            if ($rating >= 4.5) {
+                $ratingTiers['tier5']['count']++;
+            } elseif ($rating >= 3.5) {
+                $ratingTiers['tier4']['count']++;
+            } elseif ($rating >= 2.5) {
+                $ratingTiers['tier3']['count']++;
+            } elseif ($rating >= 1.5) {
+                $ratingTiers['tier2']['count']++;
+            } elseif ($rating > 0) {
+                $ratingTiers['tier1']['count']++;
+            } else {
+                $ratingTiers['unrated']['count']++;
+            }
+
+            $candidateName = trim($goal->candidate_name ?: ($goal->user->name ?? 'Employee #' . $goal->id));
+            $empCode = $goal->employee_code ?: ($goal->user->employee_code ?? '');
+            $dept = trim($goal->department ?: ($goal->user->department ?? 'General')) ?: 'General';
+            $mgrName = trim($goal->manager_name ?: 'Unassigned') ?: 'Unassigned';
+
+            // Underperforming staff check (Needs improvement: 0 < rating < 3.0)
+            if ($rating > 0 && $rating < 3.0) {
+                $underperformingStaff[] = [
+                    'id' => $goal->id,
+                    'name' => $candidateName,
+                    'employee_code' => $empCode,
+                    'department' => $dept,
+                    'manager_name' => $mgrName,
+                    'rating' => round($rating, 1),
+                    'status' => $goal->status,
+                    'job_title' => $goal->job_title ?: ($goal->user->position_id ?? 'Staff')
+                ];
+            }
+
+            // Pending review bottleneck
+            if ($goal->status === 'submitted') {
+                $pendingBottlenecks[] = [
+                    'id' => $goal->id,
+                    'name' => $candidateName,
+                    'employee_code' => $empCode,
+                    'department' => $dept,
+                    'manager_name' => $mgrName,
+                    'submitted_at' => $goal->updated_at ? $goal->updated_at->format('Y-m-d') : null
+                ];
+            }
+
+            // Department Grouping
+            if (!isset($deptMap[$dept])) {
+                $deptMap[$dept] = [
+                    'department' => $dept,
+                    'total_goals' => 0,
+                    'completed_goals' => 0,
+                    'total_rating' => 0,
+                    'rated_count' => 0,
+                    'employees' => []
+                ];
+            }
+            $deptMap[$dept]['total_goals']++;
+            if (in_array($goal->status, ['completed', 'approved', 'review_completed'])) {
+                $deptMap[$dept]['completed_goals']++;
+            }
+            if ($rating > 0) {
+                $deptMap[$dept]['total_rating'] += $rating;
+                $deptMap[$dept]['rated_count']++;
+            }
+            $deptMap[$dept]['employees'][$candidateName] = true;
+
+            // Manager Grouping
+            if (!isset($managerMap[$mgrName])) {
+                $managerMap[$mgrName] = [
+                    'manager_name' => $mgrName,
+                    'total_goals' => 0,
+                    'reviewed_goals' => 0,
+                    'pending_reviews' => 0,
+                    'total_rating' => 0,
+                    'rated_count' => 0,
+                    'employees' => []
+                ];
+            }
+            $managerMap[$mgrName]['total_goals']++;
+            if (in_array($goal->status, ['completed', 'approved', 'review_completed'])) {
+                $managerMap[$mgrName]['reviewed_goals']++;
+            }
+            if ($goal->status === 'submitted') {
+                $managerMap[$mgrName]['pending_reviews']++;
+            }
+            if ($rating > 0) {
+                $managerMap[$mgrName]['total_rating'] += $rating;
+                $managerMap[$mgrName]['rated_count']++;
+            }
+            $managerMap[$mgrName]['employees'][$candidateName] = true;
+        }
+
+        // Finalize Department Stats
+        $departmentStats = [];
+        $laggingDepartments = [];
+        foreach ($deptMap as $d) {
+            $avgRat = $d['rated_count'] > 0 ? round($d['total_rating'] / $d['rated_count'], 1) : 0;
+            $compRate = $d['total_goals'] > 0 ? round(($d['completed_goals'] / $d['total_goals']) * 100, 1) : 0;
+            $empCnt = count($d['employees']);
+            $item = [
+                'department' => $d['department'],
+                'total_goals' => $d['total_goals'],
+                'completed_goals' => $d['completed_goals'],
+                'completion_rate' => $compRate,
+                'avg_rating' => $avgRat,
+                'employee_count' => $empCnt
+            ];
+            $departmentStats[] = $item;
+            if ($compRate < 50 || ($avgRat > 0 && $avgRat < 3.0)) {
+                $laggingDepartments[] = $item;
+            }
+        }
+        usort($departmentStats, fn($a, $b) => $b['avg_rating'] <=> $a['avg_rating'] ?: $b['total_goals'] <=> $a['total_goals']);
+
+        // Finalize Line Manager Stats
+        $lineManagerStats = [];
+        foreach ($managerMap as $m) {
+            $avgRat = $m['rated_count'] > 0 ? round($m['total_rating'] / $m['rated_count'], 1) : 0;
+            $revRate = $m['total_goals'] > 0 ? round(($m['reviewed_goals'] / $m['total_goals']) * 100, 1) : 0;
+            $lineManagerStats[] = [
+                'manager_name' => $m['manager_name'],
+                'total_goals' => $m['total_goals'],
+                'reviewed_goals' => $m['reviewed_goals'],
+                'pending_reviews' => $m['pending_reviews'],
+                'review_rate' => $revRate,
+                'avg_rating' => $avgRat,
+                'team_size' => count($m['employees'])
+            ];
+        }
+        usort($lineManagerStats, fn($a, $b) => $b['total_goals'] <=> $a['total_goals']);
+
+        // Finalize Competency Gaps
+        $competencyGaps = [];
+        foreach ($competencyScores as $title => $data) {
+            $avg = $data['count'] > 0 ? round($data['total'] / $data['count'], 1) : 0;
+            $competencyGaps[] = [
+                'competency' => $title,
+                'avg_score' => $avg,
+                'evaluations_count' => $data['count'],
+                'status' => $avg >= 4.0 ? 'strong' : ($avg >= 3.0 ? 'satisfactory' : 'needs_attention')
+            ];
+        }
+        // Lowest score first so areas needing improvement appear at the top
+        usort($competencyGaps, fn($a, $b) => $a['avg_score'] <=> $b['avg_score']);
+
+        $orgAvgRating = $totalOrgRatedCount > 0 ? round($totalOrgRating / $totalOrgRatedCount, 1) : 0.0;
+
         // Recent Goals
         $recentGoals = (clone $goalQuery)->with('user')
             ->orderBy('updated_at', 'desc')
@@ -126,12 +341,24 @@ class PMSDashboardController extends Controller
                     'completed_goals' => $completedGoals,
                     'pending_appraisals' => $pendingAppraisals,
                     'approved_appraisals' => $approvedAppraisals,
-                    'completion_rate' => $completionRate
+                    'completion_rate' => $completionRate,
+                    'org_avg_rating' => $orgAvgRating,
+                    'needs_improvement_count' => count($underperformingStaff)
                 ],
                 'weekly_progress' => [
                     'labels' => $days,
                     'data' => $counts
                 ],
+                'department_stats' => $departmentStats,
+                'rating_distribution' => array_values($ratingTiers),
+                'line_manager_stats' => $lineManagerStats,
+                'needs_improvement' => [
+                    'underperforming_staff' => $underperformingStaff,
+                    'competency_gaps' => $competencyGaps,
+                    'lagging_departments' => $laggingDepartments,
+                    'pending_bottlenecks' => $pendingBottlenecks
+                ],
+                'status_distribution' => $statusCounts,
                 'recent_goals' => $recentGoals,
                 'top_employees' => $topEmployees
             ]
