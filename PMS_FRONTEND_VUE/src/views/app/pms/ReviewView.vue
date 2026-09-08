@@ -407,35 +407,41 @@ onMounted(fetchGoals);
 const prevStep = () => { if (currentStep.value > 1) currentStep.value--; };
 const nextStep = () => { if (currentStep.value < totalSteps) currentStep.value++; };
 
-const downloadFile = async (url, filename) => {
-    if (!url) return;
-    try {
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.20:5050/pms_backend/api';
-
-        // Convert storage paths to the backend file-serving endpoint
-        let downloadUrl = url;
-        if (!url.startsWith('http')) {
-            // e.g. /storage/attachments/file.xlsx → /api/file/attachments/file.xlsx
-            const cleaned = url.replace(/^\/?storage\//, '');
-            const parts = cleaned.split('/');
-            const folder = parts.slice(0, -1).join('/') || 'attachments';
-            const file = parts[parts.length - 1];
-            downloadUrl = `${baseUrl}/file/${folder}/${encodeURIComponent(file)}`;
-        }
-
-        const response = await axios.get(downloadUrl, { responseType: 'blob' });
-        const blob = new Blob([response.data]);
-        const blobUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = filename || url.split('/').pop() || 'download';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobUrl);
-    } catch (error) {
-        console.error('Download failed:', error);
+const resolveFileUrl = (url) => {
+    if (!url) return '';
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.20:5050/pms_backend/api';
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
     }
+    const cleaned = url.replace(/^\/?storage\//, '');
+    const parts = cleaned.split('/');
+    const folder = parts.slice(0, -1).join('/') || 'attachments';
+    const file = parts[parts.length - 1];
+    return `${baseUrl}/file/${folder}/${encodeURIComponent(file)}`;
+};
+
+const viewFile = (url) => {
+    if (!url) return;
+    const viewUrl = resolveFileUrl(url);
+    window.open(viewUrl, '_blank');
+};
+
+const downloadFile = (url, filename) => {
+    if (!url) return;
+    let downloadUrl = resolveFileUrl(url);
+    downloadUrl += (downloadUrl.includes('?') ? '&' : '?') + 'download=1';
+
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.setAttribute('download', filename || url.split('/').pop() || 'download');
+    link.setAttribute('target', '_blank');
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+        if (document.body.contains(link)) {
+            document.body.removeChild(link);
+        }
+    }, 2000);
 };
 
 </script>
@@ -797,9 +803,34 @@ const downloadFile = async (url, filename) => {
                                     <label class="text-[9px] font-bold text-gray-500 uppercase mb-1 block">Evidence</label>
                                     <div class="space-y-2 mb-3 min-h-[40px]">
                                         <div v-for="(file, fIndex) in parseList(quarter.attachments)" :key="fIndex" class="flex items-center justify-between p-2 bg-gray-50 rounded-lg border">
-                                            <div class="flex items-center gap-2 overflow-hidden flex-1"><i class="pi pi-file text-xs text-[#1A237E]"></i><p class="truncate text-[10px] font-bold text-gray-700">{{ file.file_name || file.name }}</p></div><div class="flex items-center gap-1"><button @click="downloadFile(file.path || file.url || ('/storage/' + (file.file_path || file.file_name || file.name || file)), file.name || 'file')" class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center text-white hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer" title="Download Attachment"><i class="pi pi-download text-xs"></i></button></div>
+                                            <div class="flex items-center gap-2 overflow-hidden flex-1 cursor-pointer" @click="viewFile(file.path || file.url || ('/storage/' + (file.file_path || file.file_name || file.name || file)))" title="Click to view file">
+                                                <i class="pi pi-file text-xs text-[#1A237E]"></i>
+                                                <p class="truncate text-[10px] font-bold text-gray-700 hover:text-blue-600 transition-colors">{{ file.file_name || file.name }}</p>
+                                            </div>
+                                            <div class="flex items-center gap-1">
+                                                <button @click="viewFile(file.path || file.url || ('/storage/' + (file.file_path || file.file_name || file.name || file)))" class="w-7 h-7 rounded-md bg-white border border-gray-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-all cursor-pointer" title="Preview File in New Tab">
+                                                    <i class="pi pi-eye text-xs"></i>
+                                                </button>
+                                                <button @click="downloadFile(file.path || file.url || ('/storage/' + (file.file_path || file.file_name || file.name || file)), file.file_name || file.name || 'file')" class="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center text-white hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer" title="Download Attachment">
+                                                    <i class="pi pi-download text-xs"></i>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div v-if="quarter.evidence && (quarter.evidence.includes('/') || quarter.evidence.includes('http'))" class="flex items-center justify-between p-2 bg-blue-50/50 rounded-lg border border-blue-100 mt-1 mb-1"><div class="flex items-center gap-2 overflow-hidden flex-1"><i class="pi pi-file-o text-xs text-[#1A237E]"></i><p class="truncate text-[10px] font-bold text-gray-700">Flat Evidence File</p></div><button @click="downloadFile(quarter.evidence.startsWith('http') ? quarter.evidence : ('/storage/' + quarter.evidence), quarter.evidence.split('/').pop() || 'evidence')" class="w-6 h-6 rounded-md bg-white border flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm cursor-pointer" title="Download Evidence"><i class="pi pi-download text-[9px]"></i></button></div><div v-if="!parseList(quarter.attachments)?.length && (!quarter.evidence || (!quarter.evidence.includes('/') && !quarter.evidence.includes('http')))" class="text-[9px] text-gray-400 font-semibold uppercase tracking-wider py-4 text-center border-2 border-dashed border-gray-100 rounded-lg">No files uploaded</div>
+                                        <div v-if="quarter.evidence && (quarter.evidence.includes('/') || quarter.evidence.includes('http'))" class="flex items-center justify-between p-2 bg-blue-50/50 rounded-lg border border-blue-100 mt-1 mb-1">
+                                            <div class="flex items-center gap-2 overflow-hidden flex-1 cursor-pointer" @click="viewFile(quarter.evidence.startsWith('http') ? quarter.evidence : ('/storage/' + quarter.evidence))" title="Click to view file">
+                                                <i class="pi pi-file-o text-xs text-[#1A237E]"></i>
+                                                <p class="truncate text-[10px] font-bold text-gray-700 hover:text-blue-600 transition-colors">Flat Evidence File</p>
+                                            </div>
+                                            <div class="flex items-center gap-1">
+                                                <button @click="viewFile(quarter.evidence.startsWith('http') ? quarter.evidence : ('/storage/' + quarter.evidence))" class="w-6 h-6 rounded-md bg-white border flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-all shadow-sm cursor-pointer" title="Preview Evidence">
+                                                    <i class="pi pi-eye text-[9px]"></i>
+                                                </button>
+                                                <button @click="downloadFile(quarter.evidence.startsWith('http') ? quarter.evidence : ('/storage/' + quarter.evidence), quarter.evidence.split('/').pop() || 'evidence')" class="w-6 h-6 rounded-md bg-white border flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm cursor-pointer" title="Download Evidence">
+                                                    <i class="pi pi-download text-[9px]"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div v-if="!parseList(quarter.attachments)?.length && (!quarter.evidence || (!quarter.evidence.includes('/') && !quarter.evidence.includes('http')))" class="text-[9px] text-gray-400 font-semibold uppercase tracking-wider py-4 text-center border-2 border-dashed border-gray-100 rounded-lg">No files uploaded</div>
                                     </div>
                                 </div>
                             </div>

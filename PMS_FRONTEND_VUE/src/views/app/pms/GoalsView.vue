@@ -1490,6 +1490,38 @@ const removeAttachment = (qIndex, fileIndex) => {
     newGoal.value.quarterly_tracking[qIndex].attachments.splice(fileIndex, 1);
 };
 
+const resolveAttachmentUrl = (file) => {
+    if (!file) return '';
+    const url = file.path || file.url || ('/storage/' + (file.file_path || file.file_name || file.name || file));
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.20:5050/pms_backend/api';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const cleaned = url.replace(/^\/?storage\//, '');
+    const parts = cleaned.split('/');
+    const folder = parts.slice(0, -1).join('/') || 'attachments';
+    const fileName = parts[parts.length - 1];
+    return `${baseUrl}/file/${folder}/${encodeURIComponent(fileName)}`;
+};
+
+const viewAttachment = (file) => {
+    const url = resolveAttachmentUrl(file);
+    if (url) window.open(url, '_blank');
+};
+
+const downloadAttachment = (file) => {
+    let url = resolveAttachmentUrl(file);
+    if (!url) return;
+    url += (url.includes('?') ? '&' : '?') + 'download=1';
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', file.name || file.file_name || 'attachment');
+    link.setAttribute('target', '_blank');
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+    }, 2000);
+};
+
 </script>
 
 <template>
@@ -2312,17 +2344,25 @@ const removeAttachment = (qIndex, fileIndex) => {
                                 
                                 <div class="space-y-2 mb-3 min-h-[40px]">
                                     <div v-for="(file, fIndex) in quarter.attachments" :key="fIndex" class="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100 group/file hover:bg-white hover:shadow-sm transition-all">
-                                        <div class="flex items-center gap-2 overflow-hidden">
-                                            <div class="w-7 h-7 rounded-lg bg-[#E8EAF6] text-[#1A237E] flex items-center justify-center">
+                                        <div class="flex items-center gap-2 overflow-hidden flex-1 cursor-pointer" @click="viewAttachment(file)" title="Click to view file">
+                                            <div class="w-7 h-7 rounded-lg bg-[#E8EAF6] text-[#1A237E] flex items-center justify-center flex-shrink-0">
                                                 <i class="pi pi-file text-xs"></i>
                                             </div>
                                             <div class="overflow-hidden">
-                                                <p class="truncate max-w-[80px] text-[10px] font-bold text-gray-700">{{ file.file_name || file.name }}</p>
+                                                <p class="truncate max-w-[130px] text-[10px] font-bold text-gray-700 hover:text-blue-600 transition-colors">{{ file.file_name || file.name }}</p>
                                             </div>
                                         </div>
-                                        <button v-if="!isFormReadOnly" @click="removeAttachment(index, fIndex)" class="w-5 h-5 rounded-full flex items-center justify-center text-gray-300 hover:text-white hover:bg-red-500 transition-all">
-                                            <i class="pi pi-times text-[7px]"></i>
-                                        </button>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" @click="viewAttachment(file)" class="w-6 h-6 rounded-md bg-white border border-gray-200 flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-all cursor-pointer" title="Preview File">
+                                                <i class="pi pi-eye text-[9px]"></i>
+                                            </button>
+                                            <button type="button" @click="downloadAttachment(file)" class="w-6 h-6 rounded-md bg-white border border-gray-200 flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white transition-all cursor-pointer" title="Download File">
+                                                <i class="pi pi-download text-[9px]"></i>
+                                            </button>
+                                            <button v-if="!isFormReadOnly" type="button" @click="removeAttachment(index, fIndex)" class="w-6 h-6 rounded-md bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-white hover:bg-red-500 hover:border-red-500 transition-all cursor-pointer" title="Remove File">
+                                                <i class="pi pi-times text-[8px]"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                     <div v-if="uploading[index]" class="mt-4 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100/50">
                                         <div class="flex items-center justify-between mb-2">

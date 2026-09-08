@@ -170,7 +170,9 @@ Route::get('/run-route-clear', function() {
 });
 
 Route::get('/file/{folder}/{filename}', function($folder, $filename) {
-    set_time_limit(30); // Prevent timeout
+    @set_time_limit(0);
+    @ini_set('max_execution_time', '0');
+    @ignore_user_abort(true);
     $path = $folder . '/' . $filename;
     
     // 1) Direct Candidates (current backend storage)
@@ -207,6 +209,12 @@ Route::get('/file/{folder}/{filename}', function($folder, $filename) {
 
     foreach ($paths as $filePath) {
         if (file_exists($filePath)) {
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            if (request()->has('download')) {
+                return response()->download($filePath, $filename);
+            }
             return response()->file($filePath);
         }
     }
@@ -221,6 +229,12 @@ Route::get('/file/{folder}/{filename}', function($folder, $filename) {
 
         foreach ($files as $file) {
             if (!$file->isDir() && $file->getFilename() === $filename) {
+                while (ob_get_level() > 0) {
+                    ob_end_clean();
+                }
+                if (request()->has('download')) {
+                    return response()->download($file->getRealPath(), $filename);
+                }
                 return response()->file($file->getRealPath());
             }
         }
@@ -237,7 +251,7 @@ Route::get('/file/{folder}/{filename}', function($folder, $filename) {
         ];
 
         foreach ($server17Urls as $url) {
-            $response = \Illuminate\Support\Facades\Http::timeout(5)->get($url);
+            $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url);
             if ($response->successful()) {
                 $contentType = $response->header('Content-Type') ?: 'application/octet-stream';
 
@@ -248,7 +262,15 @@ Route::get('/file/{folder}/{filename}', function($folder, $filename) {
                 }
                 file_put_contents($localDir . '/' . $filename, $response->body());
 
-                return response($response->body(), 200)->header('Content-Type', $contentType);
+                while (ob_get_level() > 0) {
+                    ob_end_clean();
+                }
+
+                $resp = response($response->body(), 200)->header('Content-Type', $contentType);
+                if (request()->has('download')) {
+                    $resp->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
+                }
+                return $resp;
             }
         }
     } catch (\Exception $e) {
