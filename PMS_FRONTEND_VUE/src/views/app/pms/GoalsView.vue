@@ -52,9 +52,9 @@ const stepTransition = ref('slide-next');
 const isFormReadOnly = computed(() => {
     if (isManager.value) {
         // Managers can edit assigned, in_progress, and draft goals at will
-        return ['review_completed', 'completed'].includes(newGoal.value.status);
+        return ['review_completed', 'completed'].includes(newGoal.value.status) || newGoal.value.display_status === 'review_completed';
     }
-    return ['submitted', 'review_completed', 'completed'].includes(newGoal.value.status);
+    return ['submitted', 'review_completed', 'completed'].includes(newGoal.value.status) || newGoal.value.display_status === 'review_completed';
 });
 
 // Single employee assigned goal computed
@@ -871,6 +871,13 @@ const getSmartScore = (goal) => {
     if (!goal.smart_criteria) return 0;
     const criteria = goal.smart_criteria;
     return Object.values(criteria).filter(v => v === true).length;
+};
+
+const isGoalReviewCompleted = (goal) => {
+    if (!goal) return false;
+    return goal.display_status === 'review_completed' || 
+           goal.status === 'review_completed' || 
+           (goal.status === 'completed' && goal.display_status !== 'appraisal_completed');
 };
 
 const canProceedToStep2 = computed(() => {
@@ -1865,15 +1872,15 @@ const downloadAttachment = (file) => {
                                 </td>
                                 <td class="px-6 py-4 text-right whitespace-nowrap">
                                     <div class="flex items-center justify-end gap-2">
-                                        <!-- Fill / Edit Button -->
-                                        <button v-if="isManager || goal.status === 'assigned' || goal.status === 'draft'" @click="editGoal(goal)" 
+                                        <!-- Fill / Edit Button (Hidden if review is completed) -->
+                                        <button v-if="!isGoalReviewCompleted(goal) && (isManager || goal.status === 'assigned' || goal.status === 'draft')" @click="editGoal(goal)" 
                                             class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer"
                                             :title="isManager ? 'Edit SMART Goal' : (goal.status === 'assigned' ? 'Fill Goal' : 'Edit')">
                                             <i class="pi pi-pencil text-[9px]"></i> {{ isManager ? 'Edit Goal' : (goal.status === 'assigned' ? 'Fill Goal' : 'Edit') }}
                                         </button>
 
-                                        <!-- Edit Appraisal Step 1 Button (Manager) -->
-                                        <button v-if="isManager" @click="router.push({ path: '/pms/appraisal', query: { goal_id: goal.id, employee_code: goal.candidate_code || goal.employee_code, step: 1 } })" 
+                                        <!-- Edit Appraisal Step 1 Button (Manager - Hidden if review is completed) -->
+                                        <button v-if="isManager && !isGoalReviewCompleted(goal)" @click="router.push({ path: '/pms/appraisal', query: { goal_id: goal.id, employee_code: goal.candidate_code || goal.employee_code, step: 1 } })" 
                                             class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white rounded-lg border border-teal-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer"
                                             title="Edit Appraisal Template & Key Competencies (Step 1)">
                                             <i class="pi pi-file-edit text-[9px]"></i> Edit Appraisal (Step 1)
