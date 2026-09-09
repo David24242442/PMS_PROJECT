@@ -15,6 +15,86 @@
     let loaded = ref(false)
     let loading = ref(true)
 
+    // ── Sorting ──
+    const sortBy = ref('newest')
+
+    const sortOptions = [
+        { value: 'newest', label: 'Newest First (Created Date)' },
+        { value: 'oldest', label: 'Oldest First (Created Date)' },
+        { value: 'name_asc', label: 'First Name (A to Z)' },
+        { value: 'name_desc', label: 'First Name (Z to A)' },
+        { value: 'surname_asc', label: 'Surname (A to Z)' },
+        { value: 'surname_desc', label: 'Surname (Z to A)' },
+        { value: 'empid_asc', label: 'Employee ID (Ascending)' },
+        { value: 'empid_desc', label: 'Employee ID (Descending)' },
+        { value: 'email_asc', label: 'Email (A to Z)' },
+        { value: 'email_desc', label: 'Email (Z to A)' },
+        { value: 'status_asc', label: 'Status (Ascending)' },
+        { value: 'status_desc', label: 'Status (Descending)' },
+        { value: 'joining_desc', label: 'Date of Joining (Newest First)' },
+        { value: 'joining_asc', label: 'Date of Joining (Oldest First)' },
+    ]
+
+    const onSortChange = () => {
+        current_page.value = 1
+        fetchData()
+    }
+
+    const toggleSort = (column) => {
+        switch (column) {
+            case 'employeeid':
+                sortBy.value = sortBy.value === 'empid_asc' ? 'empid_desc' : 'empid_asc'
+                break
+            case 'firstname':
+                sortBy.value = sortBy.value === 'name_asc' ? 'name_desc' : 'name_asc'
+                break
+            case 'surname':
+                sortBy.value = sortBy.value === 'surname_asc' ? 'surname_desc' : 'surname_asc'
+                break
+            case 'email':
+                sortBy.value = sortBy.value === 'email_asc' ? 'email_desc' : 'email_asc'
+                break
+            case 'status':
+                sortBy.value = sortBy.value === 'status_asc' ? 'status_desc' : 'status_asc'
+                break
+            case 'created_at':
+                sortBy.value = sortBy.value === 'newest' ? 'oldest' : 'newest'
+                break
+            case 'joiningdate':
+                sortBy.value = sortBy.value === 'joining_desc' ? 'joining_asc' : 'joining_desc'
+                break
+        }
+        current_page.value = 1
+        fetchData()
+    }
+
+    const getSortIcon = (column) => {
+        switch (column) {
+            case 'employeeid':
+                if (sortBy.value === 'empid_asc') return 'pi pi-sort-amount-up-alt sort-icon active'
+                if (sortBy.value === 'empid_desc') return 'pi pi-sort-amount-down sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            case 'firstname':
+                if (sortBy.value === 'name_asc') return 'pi pi-sort-alpha-down sort-icon active'
+                if (sortBy.value === 'name_desc') return 'pi pi-sort-alpha-up-alt sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            case 'surname':
+                if (sortBy.value === 'surname_asc') return 'pi pi-sort-alpha-down sort-icon active'
+                if (sortBy.value === 'surname_desc') return 'pi pi-sort-alpha-up-alt sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            case 'email':
+                if (sortBy.value === 'email_asc') return 'pi pi-sort-alpha-down sort-icon active'
+                if (sortBy.value === 'email_desc') return 'pi pi-sort-alpha-up-alt sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            case 'status':
+                if (sortBy.value === 'status_asc') return 'pi pi-sort-amount-up-alt sort-icon active'
+                if (sortBy.value === 'status_desc') return 'pi pi-sort-amount-down sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            default:
+                return 'pi pi-sort-alt sort-icon'
+        }
+    }
+
     // ── Dynamic Column Picker ──
     const showColumnPicker = ref(false)
 
@@ -74,6 +154,10 @@
     const applyColumns = () => {
         extraColumns.value = [...pendingSelection.value]
         showColumnPicker.value = false
+    }
+
+    const removeColumn = (key) => {
+        extraColumns.value = extraColumns.value.filter(k => k !== key)
     }
 
     const optionalColumns = allColumns.filter(c => !c.default)
@@ -214,6 +298,7 @@
             ...(searchdata.columnFilters || [])
         ]
         payload.filters = allFilters
+        payload.sort_by = sortBy.value
 
         axios.post(`fetchemployees?page=${current_page.value}&per_page=${per_page.value}`, payload)
             .then(res => {
@@ -480,7 +565,8 @@
 
         exportingDump.value = true
 
-        axios.post(`fetchemployeesdumpforexport`,searchdata)
+        const payload = { ...searchdata, sort_by: sortBy.value }
+        axios.post(`fetchemployeesdumpforexport`, payload)
             .then(res => {
                 const data = res.data
                 
@@ -665,11 +751,24 @@
         <div id='divtoscroll'>
             <div style="display: flex; flex-direction: column;">
 
-                <div class="my-4">
-                    <strong >Total count:</strong> {{ totalcount }}
-                    <span v-if="hasColumnFilters" style="margin-left: 10px; color: var(--primary); font-size: 0.875rem;">
-                        (Showing {{ filteredEmps.length }} of {{ emps.length }} on page)
-                    </span>
+                <div class="my-4 toolbar-row">
+                    <div>
+                        <strong>Total count:</strong> {{ totalcount }}
+                        <span v-if="hasColumnFilters" style="margin-left: 10px; color: var(--primary); font-size: 0.875rem;">
+                            (Showing {{ filteredEmps.length }} of {{ emps.length }} on page)
+                        </span>
+                    </div>
+
+                    <div class="sort-toolbar-group">
+                        <label for="emp-sort-select" class="sort-label">
+                            <i class="pi pi-sort-alt"></i> Sort By:
+                        </label>
+                        <select id="emp-sort-select" v-model="sortBy" @change="onSortChange" class="sort-select">
+                            <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">
+                                {{ opt.label }}
+                            </option>
+                        </select>
+                    </div>
 
                     <Button
                         severity="info"
@@ -677,7 +776,7 @@
                         label="Export"
                         @click="exportDump"
                         :disabled="exportingDump"
-                        class="ms-3"
+                        class="ms-2"
                         >
                     </Button>
 
@@ -687,22 +786,34 @@
                         label="Export Checklist"
                         @click="exportChecklist"
                         :disabled="exportingChecklist"
-                        class="ms-3"
+                        class="ms-2"
                         v-if="loguser.position_id == 4"
                         >
                     </Button>
-
-                    
-                    
                 </div>
 
                 <div id='tableheader' >
-                    <span>Employee ID</span>
-                    <span>First Name</span>
-                    <span>Surname</span>
-                    <span>Email</span>
+                    <span class="sortable-th" @click="toggleSort('employeeid')" title="Click to sort by Employee ID">
+                        <span>Employee ID</span>
+                        <i :class="getSortIcon('employeeid')"></i>
+                    </span>
+                    <span class="sortable-th" @click="toggleSort('firstname')" title="Click to sort by First Name">
+                        <span>First Name</span>
+                        <i :class="getSortIcon('firstname')"></i>
+                    </span>
+                    <span class="sortable-th" @click="toggleSort('surname')" title="Click to sort by Surname">
+                        <span>Surname</span>
+                        <i :class="getSortIcon('surname')"></i>
+                    </span>
+                    <span class="sortable-th" @click="toggleSort('email')" title="Click to sort by Email">
+                        <span>Email</span>
+                        <i :class="getSortIcon('email')"></i>
+                    </span>
                     <span>Mobile No</span>
-                    <span>Status</span>
+                    <span class="sortable-th" @click="toggleSort('status')" title="Click to sort by Status">
+                        <span>Status</span>
+                        <i :class="getSortIcon('status')"></i>
+                    </span>
                     <span>Created By</span>
                     <span v-for="key in extraColumns" :key="'h-'+key" class="extra-col-header">
                         {{ getColumnDef(key)?.label }}
@@ -958,6 +1069,74 @@
     }
     #tableheader > span.actions-col-header {
         overflow: visible;
+    }
+
+    /* ── Sorting Controls ── */
+    .toolbar-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .sort-toolbar-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+        background: var(--surface-card, #ffffff);
+        padding: 5px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+    .sort-label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-secondary, #64748b);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+    }
+    .sort-select {
+        padding: 5px 10px;
+        font-size: 0.825rem;
+        font-weight: 500;
+        border: 1px solid var(--border-color, #cbd5e1);
+        border-radius: 4px;
+        background: var(--surface-ground, #f8fafc);
+        color: var(--text-color, #1e293b);
+        outline: none;
+        cursor: pointer;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .sort-select:focus {
+        border-color: var(--primary, #4f46e5);
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+    }
+    .sortable-th {
+        cursor: pointer;
+        user-select: none;
+        display: inline-flex !important;
+        align-items: center;
+        gap: 6px;
+        transition: color 0.15s ease;
+    }
+    .sortable-th:hover {
+        color: var(--primary, #4f46e5) !important;
+    }
+    .sort-icon {
+        font-size: 0.75rem;
+        opacity: 0.45;
+        transition: opacity 0.15s ease, transform 0.15s ease, color 0.15s ease;
+    }
+    .sortable-th:hover .sort-icon {
+        opacity: 0.85;
+    }
+    .sort-icon.active {
+        opacity: 1 !important;
+        color: var(--primary, #4f46e5) !important;
+        font-weight: bold;
     }
 
     /* Column Filter Row */

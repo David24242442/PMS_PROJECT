@@ -1,22 +1,239 @@
 <script setup>
-    import { ref, reactive, computed, onMounted } from 'vue'
+    import { ref, reactive, computed, onMounted, watch } from 'vue'
     import { log, calculateAge, toastt} from '@/helpers/essential'
     import { mstatus,  bankaccounttype, relations, depts, regions, branchs, qualtypes, banks, familyrelation, countries, conttypes, idtypes, findidtypes, findcompany, genders, companies, findregion, findconttypes, findgender, findmarital, findbranch, finddept, findcountry, statuses, findstatus} from '@/data/masterdata'
     
     import { useRouter } from 'vue-router';
-    import axios from 'axios';
+    import axios from '@/helpers/pms_axios';
     import { useUsersStore } from '@/stores/user';
     const userstore = useUsersStore()
     const router = useRouter()
-    const { loguser, getloguser, authtoken, getauthtoken } = userstore
-    
-    const bearer = `Bearer ${authtoken}`;
-    axios.defaults.headers.common['Authorization'] = bearer
+    const { loguser } = userstore
 
     const emps = ref([])
     let searchdata = reactive({filters:[]})
     let loaded = ref(false)
     let loading = ref(true)
+
+    // ── Sorting ──
+    const sortBy = ref('newest')
+
+    const sortOptions = [
+        { value: 'newest', label: 'Newest First (Created Date)' },
+        { value: 'oldest', label: 'Oldest First (Created Date)' },
+        { value: 'name_asc', label: 'First Name (A to Z)' },
+        { value: 'name_desc', label: 'First Name (Z to A)' },
+        { value: 'surname_asc', label: 'Surname (A to Z)' },
+        { value: 'surname_desc', label: 'Surname (Z to A)' },
+        { value: 'empid_asc', label: 'Employee ID (Ascending)' },
+        { value: 'empid_desc', label: 'Employee ID (Descending)' },
+        { value: 'email_asc', label: 'Email (A to Z)' },
+        { value: 'email_desc', label: 'Email (Z to A)' },
+        { value: 'status_asc', label: 'Status (Ascending)' },
+        { value: 'status_desc', label: 'Status (Descending)' },
+        { value: 'joining_desc', label: 'Date of Joining (Newest First)' },
+        { value: 'joining_asc', label: 'Date of Joining (Oldest First)' },
+    ]
+
+    const onSortChange = () => {
+        current_page.value = 1
+        fetchData()
+    }
+
+    const toggleSort = (column) => {
+        switch (column) {
+            case 'employeeid':
+                sortBy.value = sortBy.value === 'empid_asc' ? 'empid_desc' : 'empid_asc'
+                break
+            case 'firstname':
+                sortBy.value = sortBy.value === 'name_asc' ? 'name_desc' : 'name_asc'
+                break
+            case 'surname':
+                sortBy.value = sortBy.value === 'surname_asc' ? 'surname_desc' : 'surname_asc'
+                break
+            case 'email':
+                sortBy.value = sortBy.value === 'email_asc' ? 'email_desc' : 'email_asc'
+                break
+            case 'status':
+                sortBy.value = sortBy.value === 'status_asc' ? 'status_desc' : 'status_asc'
+                break
+            case 'created_at':
+                sortBy.value = sortBy.value === 'newest' ? 'oldest' : 'newest'
+                break
+            case 'joiningdate':
+                sortBy.value = sortBy.value === 'joining_desc' ? 'joining_asc' : 'joining_desc'
+                break
+        }
+        current_page.value = 1
+        fetchData()
+    }
+
+    const getSortIcon = (column) => {
+        switch (column) {
+            case 'employeeid':
+                if (sortBy.value === 'empid_asc') return 'pi pi-sort-amount-up-alt sort-icon active'
+                if (sortBy.value === 'empid_desc') return 'pi pi-sort-amount-down sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            case 'firstname':
+                if (sortBy.value === 'name_asc') return 'pi pi-sort-alpha-down sort-icon active'
+                if (sortBy.value === 'name_desc') return 'pi pi-sort-alpha-up-alt sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            case 'surname':
+                if (sortBy.value === 'surname_asc') return 'pi pi-sort-alpha-down sort-icon active'
+                if (sortBy.value === 'surname_desc') return 'pi pi-sort-alpha-up-alt sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            case 'email':
+                if (sortBy.value === 'email_asc') return 'pi pi-sort-alpha-down sort-icon active'
+                if (sortBy.value === 'email_desc') return 'pi pi-sort-alpha-up-alt sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            case 'status':
+                if (sortBy.value === 'status_asc') return 'pi pi-sort-amount-up-alt sort-icon active'
+                if (sortBy.value === 'status_desc') return 'pi pi-sort-amount-down sort-icon active'
+                return 'pi pi-sort-alt sort-icon'
+            default:
+                return 'pi pi-sort-alt sort-icon'
+        }
+    }
+
+    // ── Dynamic Column Picker ──
+    const showColumnPicker = ref(false)
+
+    // All columns: default (always-on) + optional (onboarding fields)
+    const allColumns = [
+        // Default columns (checked & locked)
+        { key: 'employeeid', label: 'Employee ID', group: 'Default', default: true },
+        { key: 'firstname', label: 'First Name', group: 'Default', default: true },
+        { key: 'surname', label: 'Surname', group: 'Default', default: true },
+        { key: 'email', label: 'Email', group: 'Default', default: true },
+        { key: 'mobileno', label: 'Mobile No', group: 'Default', default: true },
+        { key: 'status', label: 'Status', group: 'Default', default: true, formatter: (v) => findstatus(v) },
+        { key: '_creator', label: 'Created By', group: 'Default', default: true },
+        // Position Details
+        { key: 'company', label: 'Joining Company', group: 'Position Details', formatter: (v) => findcompany(v) },
+        { key: 'contracttype', label: 'Contract Category', group: 'Position Details', formatter: (v) => findconttypes(v) },
+        { key: 'joining_branch_id', label: 'Joining Location', group: 'Position Details', formatter: (v) => findbranch(v) },
+        { key: 'joining_dept_id', label: 'Joining Department', group: 'Position Details', formatter: (v) => finddept(v) },
+        { key: 'joiningposition', label: 'Joining Position', group: 'Position Details' },
+        { key: 'joiningdate', label: 'Date of Joining', group: 'Position Details' },
+        // Personal Info
+        { key: 'middlename', label: 'Middle Name', group: 'Personal Info' },
+        { key: 'citizenship', label: 'Citizenship', group: 'Personal Info', formatter: (v) => findcountry(v) },
+        { key: 'ghcardno', label: 'GH Card / ID No', group: 'Personal Info' },
+        { key: 'daddress', label: 'Residential Address', group: 'Personal Info' },
+        { key: 'hdaddress', label: 'Permanent Address', group: 'Personal Info' },
+        { key: 'hometown', label: 'Hometown', group: 'Personal Info' },
+        { key: 'altnumber', label: 'Alternate Phone', group: 'Personal Info' },
+        { key: 'gender', label: 'Gender', group: 'Personal Info', formatter: (v) => findgender(v) },
+        { key: 'dob', label: 'Date of Birth', group: 'Personal Info' },
+        { key: 'socialsecurityno', label: 'Social Security No', group: 'Personal Info' },
+        { key: 'maritalstatus', label: 'Marital Status', group: 'Personal Info', formatter: (v) => findmarital(v) },
+        { key: 'fathersname', label: "Father's Name", group: 'Personal Info' },
+        { key: 'mothersname', label: "Mother's Name", group: 'Personal Info' },
+        { key: 'anyotherinfo', label: 'Other Information', group: 'Personal Info' },
+    ]
+
+    // Which optional column keys are currently visible
+    const extraColumns = ref([])
+
+    // Temp selection state while picker is open
+    const pendingSelection = ref([])
+
+    const openColumnPicker = () => {
+        pendingSelection.value = [...extraColumns.value]
+        showColumnPicker.value = true
+    }
+
+    const togglePendingCol = (key) => {
+        if (pendingSelection.value.includes(key)) {
+            pendingSelection.value = pendingSelection.value.filter(k => k !== key)
+        } else {
+            pendingSelection.value.push(key)
+        }
+    }
+
+    const applyColumns = () => {
+        extraColumns.value = [...pendingSelection.value]
+        showColumnPicker.value = false
+    }
+
+    const removeColumn = (key) => {
+        extraColumns.value = extraColumns.value.filter(k => k !== key)
+    }
+
+    const optionalColumns = allColumns.filter(c => !c.default)
+
+    const groupedOptionalColumns = computed(() => {
+        const groups = {}
+        optionalColumns.forEach(col => {
+            if (!groups[col.group]) groups[col.group] = []
+            groups[col.group].push(col)
+        })
+        return groups
+    })
+
+    const getColumnDef = (key) => allColumns.find(c => c.key === key)
+
+    const getExtraValue = (emp, key) => {
+        const col = getColumnDef(key)
+        const val = emp[key]
+        if (val == null || val === '') return '—'
+        return col?.formatter ? col.formatter(val) : val
+    }
+
+    // Column filters (server-side with debounce)
+    const columnFilters = reactive({
+        employeeid: '',
+        firstname: '',
+        surname: '',
+        email: '',
+        mobileno: '',
+        status: '',
+        creator: ''
+    })
+
+    const hasColumnFilters = computed(() => {
+        return Object.values(columnFilters).some(v => v !== '')
+    })
+
+    const clearColumnFilters = () => {
+        Object.keys(columnFilters).forEach(k => columnFilters[k] = '')
+    }
+
+    // Debounce timer for column filters
+    let columnFilterTimer = null
+    watch(() => ({ ...columnFilters }), () => {
+        clearTimeout(columnFilterTimer)
+        columnFilterTimer = setTimeout(() => {
+            // Build server-side filters from column filters
+            const serverFilters = []
+            const filterMap = {
+                employeeid: 'employeeid',
+                firstname: 'firstname',
+                surname: 'surname',
+                email: 'email',
+                mobileno: 'mobileno',
+                status: 'status',
+                creator: 'creator'
+            }
+            for (const [key, attr] of Object.entries(filterMap)) {
+                if (columnFilters[key] !== '' && columnFilters[key] !== null) {
+                    serverFilters.push({
+                        cond: 'a',
+                        attr: attr,
+                        op: key === 'status' ? 'is' : 'cont',
+                        val: columnFilters[key]
+                    })
+                }
+            }
+            // Merge column filters into searchdata.filters (preserve any existing advanced filters)
+            searchdata.columnFilters = serverFilters
+            current_page.value = 1
+            fetchData()
+        }, 400)
+    }, { deep: true })
+
+    // filteredEmps now just returns emps directly (filtering is server-side)
+    const filteredEmps = computed(() => emps.value)
 
     let current_page = ref(1)
     let last_page = ref(null)
@@ -29,16 +246,19 @@
         fetchData()
     })
     const viewemp = (id) => {
+        // toastt(`${id}`)
         router.push({ name: 'employee', params: { empid: id } })
     }
     
     const colorinvalid = (elem) =>{
-        elem.classList.add('border-red-500')
+        
+        elem.style = 'border:2px solid red'
         if(elem.nextElementSibling) elem.nextElementSibling.innerText = elem.validationMessage
         elem.addEventListener('input', function(e){
-            elem.classList.remove('border-red-500')
+            elem.style = 'revert'
             if(elem.nextElementSibling) elem.nextElementSibling.innerText = ''
         },{once:true})
+        
     }
 
     const filter = () => {
@@ -64,12 +284,23 @@
     const selectchange = (e) => {
         current_page.value = 1
         last_page.value = 1
+
         fetchData()
     }
 
     const fetchData = () => {
         loading.value = true
-        axios.post(`fetchemployees?page=${current_page.value}&per_page=${per_page.value}`,searchdata)
+
+        // Merge advanced filters and column filters
+        const payload = { ...searchdata }
+        const allFilters = [
+            ...(searchdata.filters || []),
+            ...(searchdata.columnFilters || [])
+        ]
+        payload.filters = allFilters
+        payload.sort_by = sortBy.value
+
+        axios.post(`fetchemployees?page=${current_page.value}&per_page=${per_page.value}`, payload)
             .then(res => {
                 const data = res.data
                 emps.value = data.data
@@ -85,7 +316,6 @@
             })
             .catch((error) => {
                 console.log(error)
-                loading.value = false
             })
     }
 
@@ -143,22 +373,70 @@
     /* Directive Creation Stop */
 
     const fil = {
-        firstname:{ type:'text', inp: 'inp' },
-        surname:{ type:'text', inp: 'inp' },
-        creator:{ type:'text', inp: 'inp' },
-        joiningposition:{ type:'text', inp: 'inp' },
-        dob:{ type:'date', inp: 'inp' },
-        joiningdate:{ type:'date', inp: 'inp' },
-        joining_branch_id:{ type:'text', inp: 'sel', list: branchs, id: 'id' },
-        company:{ type:'text', inp: 'sel', list: companies, id: 'id' },
-        contracttype:{ type:'text', inp: 'sel', list: conttypes, id: 'code' },
-        gender:{ type:'text', inp: 'sel', list: genders, id: 'id' },
-        citizenship:{ type:'text', inp: 'sel', list: countries, id: 'code' },
-        joining_dept_id:{ type:'text', inp: 'sel', list: depts, id: 'id' },
+        firstname:{
+            type:'text',
+            inp: 'inp'
+        },
+        surname:{
+            type:'text',
+            inp: 'inp'
+        },
+        creator:{
+            type:'text',
+            inp: 'inp'
+        },
+        joiningposition:{
+            type:'text',
+            inp: 'inp'
+        },
+        dob:{
+            type:'date',
+            inp: 'inp'
+        },
+        joiningdate:{
+            type:'date',
+            inp: 'inp'
+        },
+        joining_branch_id:{
+            type:'text',
+            inp: 'sel',
+            list: branchs,
+            id: 'id'
+        },
+        company:{
+            type:'text',
+            inp: 'sel',
+            list: companies,
+            id: 'id'
+        },
+        contracttype:{
+            type:'text',
+            inp: 'sel',
+            list: conttypes,
+            id: 'code'
+        },
+        gender:{
+            type:'text',
+            inp: 'sel',
+            list: genders,
+            id: 'id'
+        },
+        citizenship:{
+            type:'text',
+            inp: 'sel',
+            list: countries,
+            id: 'code'
+        },
+        joining_dept_id:{
+            type:'text',
+            inp: 'sel',
+            list: depts,
+            id: 'id'
+        },
     }
     const addfilter = () => {
         searchdata.filters.push({
-            'cond': 'a',
+            'cond': '',
             'attr': '',
             'op': 'is',
             'val': null,
@@ -173,13 +451,24 @@
 
     const  exportToCsv = (data, filename = 'export.csv') =>{
         try {
-            if (!Array.isArray(data) || !data.length) throw new Error('Input must be a non-empty array');
+            // Validate input
+            if (!Array.isArray(data) || !data.length) {
+                throw new Error('Input must be a non-empty array');
+            }
+
+            // Get headers from the first object's keys
             const headers = Object.keys(data[0]);
+            
+            // Create CSV rows
             const csvRows = [
+                // Add headers row
                 headers.join(','),
+                // Add data rows
                 ...data.map(row => {
                     return headers.map(header => {
+                        // Handle special characters and ensure proper CSV formatting
                         const cell = row[header]?.toString() ?? '';
+                        // Escape quotes and wrap in quotes if contains comma or newline
                         if (cell.includes(',') || cell.includes('\n') || cell.includes('"')) {
                             return `"${cell.replace(/"/g, '""')}"`;
                         }
@@ -187,14 +476,17 @@
                     }).join(',');
                 })
             ];
+
+            // Create blob and download link
             const csvContent = csvRows.join('\n');
             const blob = new Blob(["\uFEFF" +csvContent], { type: 'text/csv;charset=utf-8;' });
             
-            if (navigator.msSaveBlob) { 
+            if (navigator.msSaveBlob) { // IE 10+
                 navigator.msSaveBlob(blob, filename);
             } else {
             const link = document.createElement('a');
             if (link.download !== undefined) {
+                // Create URL for blob
                 const url = URL.createObjectURL(blob);
                 link.setAttribute('href', url);
                 link.setAttribute('download', filename);
@@ -273,7 +565,8 @@
 
         exportingDump.value = true
 
-        axios.post(`fetchemployeesdumpforexport`,searchdata)
+        const payload = { ...searchdata, sort_by: sortBy.value }
+        axios.post(`fetchemployeesdumpforexport`, payload)
             .then(res => {
                 const data = res.data
                 
@@ -314,7 +607,7 @@
             })  
     }
 
-    const changestatus = (id, event) => {
+    const changestatus = (id, $event) => {
         
         const selectedValue = event.target.value
         const selectedText = event.target.options[event.target.selectedIndex].text
@@ -329,83 +622,65 @@
             }).then(res => {
                 
                 const data = res.data
+
                 toastt('Status successfully updated')
+
                 log(data)
                 
             }).catch((error) => {
                 toastt('Error. Please Try again', 'error')
                 log(error)
+                
             })
     }
+
+
 </script>
 <template>
-    <div class="h-full">
-        <!-- Page Header -->
-        <div class="mb-lg">
-            <h1 class="text-2xl font-bold text-gray-800">Employee Management</h1>
-            <p class="text-gray-500 mt-1 mb-md">Search and manage employee records</p>
-        </div>
+    <div >
         
-        <!-- Filter Section -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-            <form @submit.prevent="filter">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 items-end">
+        <h2>Employees list</h2>
+        
+        <div>
+            <form @submit.prevent="filter" >
+
+                <div id='filter' >
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Search Employee</label>
-                        <input type="text" v-model="searchdata.employeeinfo" v-uppercase class="form-control" placeholder="Name or Staff ID">
+                        <label for="">Employee Info</label>
+                        <input type="text" v-model="searchdata.employeeinfo" v-uppercase>
                     </div>
 
-                     <div class="col-span-2">
-                         <label class="block text-sm font-bold text-gray-700 mb-2">Joining Date Range</label>
-                         <div class="flex gap-4 items-center">
-                            <input type="date" v-model="searchdata.createdfrom" class="form-control">
-                            <span class="text-gray-400">to</span>
-                            <input type="date" v-model="searchdata.createdto" class="form-control">
-                         </div>
+                    <div style="text-align: center;">
+                        <label for="">Creation Date</label>
+                        <span>
+                            <input type="date" v-model="searchdata.createdfrom" style="margin-right: 10px;">
+                            <input type="date" v-model="searchdata.createdto">
+                        </span>
                     </div>
+
+                    <span v-if="!searchdata.filters.length" class="filterspan">
+                        <Button :loading="loading" label="Filter" @click="filter" :disabled="loading"></Button>
+                        <Button
+                            class="!bg-green-900 !border-0"
+                            @click="addfilter"
+                        >Add Advanced Filters</Button>
+                    </span>
+                        
                 </div>
                 
-                 <!-- Action Buttons & Badges -->
-                <div class="flex justify-between items-center bg-gray-50 rounded-lg p-3 border border-gray-100">
-                    <div class="flex gap-2">
-                         <button type="submit" class="btn btn-primary px-4 py-2 rounded-lg text-sm font-medium shadow-sm flex items-center gap-2" :disabled="loading">
-                             <i v-if="loading" class="pi pi-spin pi-spinner"></i>
-                             <span v-else>Filter Records</span>
-                         </button>
-                         <button type="button" @click="addfilter" class="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-                            <i class="pi pi-sort-amount-down mr-1"></i> Advanced Filters
-                         </button>
-                    </div>
-
-                    <div class="flex gap-2">
-                        <button type="button" @click="exportDump" :disabled="exportingDump" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium shadow-sm hover:bg-green-700 transition-colors flex items-center gap-2">
-                            <i v-if="exportingDump" class="pi pi-spin pi-spinner"></i>
-                            <i v-else class="pi pi-file-excel"></i>
-                            Export Data
-                        </button>
-                         <button v-if="loguser.position_id == 4" type="button" @click="exportChecklist" :disabled="exportingChecklist" class="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium shadow-sm hover:bg-orange-600 transition-colors flex items-center gap-2">
-                            <i v-if="exportingChecklist" class="pi pi-spin pi-spinner"></i>
-                            <i v-else class="pi pi-check-circle"></i>
-                            Checklist
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Advanced Filters Section -->
-                <div id='advfilter' class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-100" v-if="searchdata.filters.length">
-                    <h4 class="text-sm font-bold text-gray-700 mb-3 border-b border-gray-200 pb-2">Advanced Filtering</h4>
+                <div id='advfilter' class="bg-gray-100 my-5 p-5" v-if="searchdata.filters.length">
                     
-                    <div v-for="(filter, index) in searchdata.filters" :key="index" class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-3 items-end">
+                    <div v-for="(filter, index) in searchdata.filters" :key="index" class="inline">
                         <div>
-                             <label class="block text-xs font-bold text-gray-500 uppercase">Logic</label>
-                            <select v-model="filter.cond" required class="form-control text-sm">
+                            <label>Condition*:</label>
+                            <select v-model="filter.cond" required>
                                 <option value="a">AND</option>
                                 <option value="o">OR</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase">Field</label>
-                            <select v-model="filter.attr" @change="attrchange(index)" required class="form-control text-sm">
+                            <label>Attribute *:</label>
+                            <select v-model="filter.attr" @change="attrchange(index)" required>
                                 <option value="firstname" >Firstname</option>
                                 <option value="surname">Surname</option>
                                 <option value="citizenship">Citizenship</option>
@@ -420,9 +695,10 @@
                                 <option value="creator">Creator</option>
                             </select>
                         </div>
+
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase">Operator</label>
-                             <select v-model="filter.op" class="form-control text-sm">
+                            <label>Operator *:</label>
+                            <select v-model="filter.op">
                                 <option value='is'>Is</option>
                                 <option value="isnot">Is Not</option>
                                 <option value="gt">Greater Than</option>
@@ -432,122 +708,752 @@
                                 <option value="cont">Contains</option>
                             </select>
                         </div>
-                        <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase" v-if="fil[filter.attr]">Value</label>
-                            <div v-if="fil[filter.attr]">
-                                 <select v-if="fil[filter.attr]?.inp == 'sel'" v-model="filter.val" required class="form-control text-sm">
-                                    <option value=""></option>
-                                    <option v-for="l in fil[filter.attr]?.list" :key="l[fil[filter.attr]?.id]" :value="l[fil[filter.attr]?.id]">
-                                        {{  l.name }}
-                                    </option>
-                                </select>
-                                <input v-if="fil[filter.attr]?.inp == 'inp'" :type="fil[filter.attr]?.type" v-model="filter.val" v-uppercase required class="form-control text-sm">
-                            </div>
+
+                        <div >
+                            <label v-if="fil[filter.attr]">Value *:</label>
+                            <select v-if="fil[filter.attr]?.inp == 'sel'" v-model="filter.val" required>
+                                <option value=""></option>
+                                <option
+                                    v-for="l in fil[filter.attr]?.list"
+                                    :key="l[fil[filter.attr]?.id]"
+                                    :value="l[fil[filter.attr]?.id]"
+                                >
+                                    {{  l.name }}
+                                </option>
+                            </select>
+                            <input v-if="fil[filter.attr]?.inp == 'inp'" :type="fil[filter.attr]?.type" v-model="filter.val" v-uppercase required>
                         </div>
-                        <div>
-                            <button type="button" @click="removefilter(index)" class="text-red-500 hover:text-red-700 p-2 rounded hover:bg-red-50 transition-colors" title="Remove Condition">
-                                <i class="pi pi-trash"></i>
-                            </button>
-                        </div>
+                        
+                        <span>
+                            <Button
+                                style="width: 34px; height: 34px;"
+                                class="!bg-red-600 !border-0"
+                                @click="removefilter(index)"
+                                icon="pi pi-minus"
+                            ></Button>
+                            
+                        </span>
                     </div>
+
+                    <span class="filterspan">
+                        <Button
+                            class="!bg-green-900 !border-0"
+                            @click="addfilter"
+                        >Add Condition</Button>
+                        <Button :loading="loading" label="Filter" @click="filter" :disabled="loading"></Button>
+                    </span>
+                    
                 </div>
+                
             </form>
         </div>
 
-        <!-- Employee Table -->
-        <div class="card bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-             <div class="card-header bg-white border-b border-gray-100 p-4 flex justify-between items-center">
-                <span class="font-bold text-gray-800">Results: {{ totalcount }} employees</span>
+        <div id='divtoscroll'>
+            <div style="display: flex; flex-direction: column;">
+
+                <div class="my-4 toolbar-row">
+                    <div>
+                        <strong>Total count:</strong> {{ totalcount }}
+                        <span v-if="hasColumnFilters" style="margin-left: 10px; color: var(--primary); font-size: 0.875rem;">
+                            (Showing {{ filteredEmps.length }} of {{ emps.length }} on page)
+                        </span>
+                    </div>
+
+                    <div class="sort-toolbar-group">
+                        <label for="emp-sort-select" class="sort-label">
+                            <i class="pi pi-sort-alt"></i> Sort By:
+                        </label>
+                        <select id="emp-sort-select" v-model="sortBy" @change="onSortChange" class="sort-select">
+                            <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">
+                                {{ opt.label }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <Button
+                        severity="info"
+                        :loading="exportingDump"
+                        label="Export"
+                        @click="exportDump"
+                        :disabled="exportingDump"
+                        class="ms-2"
+                        >
+                    </Button>
+
+                    <Button
+                        severity="warn"
+                        :loading="exportingChecklist"
+                        label="Export Checklist"
+                        @click="exportChecklist"
+                        :disabled="exportingChecklist"
+                        class="ms-2"
+                        v-if="loguser.position_id == 4"
+                        >
+                    </Button>
+                </div>
+
+                <div id='tableheader' >
+                    <span class="sortable-th" @click="toggleSort('employeeid')" title="Click to sort by Employee ID">
+                        <span>Employee ID</span>
+                        <i :class="getSortIcon('employeeid')"></i>
+                    </span>
+                    <span class="sortable-th" @click="toggleSort('firstname')" title="Click to sort by First Name">
+                        <span>First Name</span>
+                        <i :class="getSortIcon('firstname')"></i>
+                    </span>
+                    <span class="sortable-th" @click="toggleSort('surname')" title="Click to sort by Surname">
+                        <span>Surname</span>
+                        <i :class="getSortIcon('surname')"></i>
+                    </span>
+                    <span class="sortable-th" @click="toggleSort('email')" title="Click to sort by Email">
+                        <span>Email</span>
+                        <i :class="getSortIcon('email')"></i>
+                    </span>
+                    <span>Mobile No</span>
+                    <span class="sortable-th" @click="toggleSort('status')" title="Click to sort by Status">
+                        <span>Status</span>
+                        <i :class="getSortIcon('status')"></i>
+                    </span>
+                    <span>Created By</span>
+                    <span v-for="key in extraColumns" :key="'h-'+key" class="extra-col-header">
+                        {{ getColumnDef(key)?.label }}
+                        <button class="remove-col-btn" @click="removeColumn(key)" title="Remove column">&times;</button>
+                    </span>
+                    <span class="actions-col-header">
+                        Actions
+                        <div class="add-col-wrapper">
+                            <button class="add-col-btn" @click.stop="openColumnPicker()" title="Add/Remove columns">
+                                <i class="pi pi-plus"></i>
+                            </button>
+                            <div v-if="showColumnPicker" class="col-picker-backdrop" @click="showColumnPicker = false"></div>
+                            <div v-if="showColumnPicker" class="col-picker-dropdown" @click.stop>
+                                <div class="col-picker-header">
+                                    <span>Select Columns</span>
+                                    <button @click="showColumnPicker = false" class="col-picker-close">&times;</button>
+                                </div>
+                                <div class="col-picker-body">
+                                    <!-- Default columns (always checked, disabled) -->
+                                    <div class="col-picker-group">Default Columns</div>
+                                    <label v-for="col in allColumns.filter(c => c.default)" :key="col.key" class="col-picker-checkbox">
+                                        <input type="checkbox" checked disabled />
+                                        <span>{{ col.label }}</span>
+                                    </label>
+                                    <!-- Optional columns grouped -->
+                                    <template v-for="(cols, group) in groupedOptionalColumns" :key="group">
+                                        <div class="col-picker-group">{{ group }}</div>
+                                        <label v-for="col in cols" :key="col.key" class="col-picker-checkbox" @click.prevent="togglePendingCol(col.key)">
+                                            <input type="checkbox" :checked="pendingSelection.includes(col.key)" />
+                                            <span>{{ col.label }}</span>
+                                        </label>
+                                    </template>
+                                </div>
+                                <div class="col-picker-footer">
+                                    <button class="col-picker-apply" @click="applyColumns()">Apply</button>
+                                </div>
+                            </div>
+                        </div>
+                    </span>
+                    <span v-if="loguser.position_id == 2"></span>
+                </div>
+
+                <!-- Column Filter Row -->
+                <div id='tablefilterrow' >
+                    <span>
+                        <input type="text" v-model="columnFilters.employeeid" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.firstname" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.surname" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.email" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.mobileno" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span>
+                        <select v-model="columnFilters.status" class="col-filter-input">
+                            <option value="">All</option>
+                            <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
+                        </select>
+                    </span>
+                    <span>
+                        <input type="text" v-model="columnFilters.creator" placeholder="Filter..." class="col-filter-input" />
+                    </span>
+                    <span v-for="key in extraColumns" :key="'f-'+key"></span>
+                    <span>
+                        <button v-if="hasColumnFilters" @click="clearColumnFilters" class="col-filter-clear" title="Clear all filters">
+                            <i class="pi pi-filter-slash"></i>
+                        </button>
+                    </span>
+                    <span v-if="loguser.position_id == 2"></span>
+                </div>
+
+                <div id='tablebody' >
+
+                    <div
+                        v-for="(emp, ind) in filteredEmps"
+                        :key="ind"
+                    >
+                        <span>{{ emp.employeeid || emp.emp_code }}</span>
+                        <span>{{ emp.firstname }}</span>
+                        <span>{{ emp.surname }}</span>
+                        <span>{{ emp.email }}</span>
+                        <span>{{ emp.mobileno }}</span>
+                        <span>{{ findstatus(emp.status)  }}</span>
+                        <span>{{ emp.creator?.name || '—' }}</span>
+                        <span v-for="key in extraColumns" :key="'b-'+key+'-'+ind">{{ getExtraValue(emp, key) }}</span>
+                        <span class="view-col">
+                            <router-link target="_blank" :to="`/employee/${emp.id}`" class="view-btn">
+                                View
+                            </router-link>
+                        </span>
+                        <span v-if="loguser.position_id == 2">
+                            <select
+                                v-model="emp.status"
+                                required
+                                @change="changestatus(emp.id, $event)"
+                            >
+                                <option
+                                    v-for="s in statuses"
+                                    :key="s.id"
+                                    :value="s.id"
+                                >
+                                    {{  s.name }}
+                                </option>
+                            </select>
+                        </span>
+                        
+                    </div>
+
+                    <div v-if="!filteredEmps.length && loaded" style="justify-content: center;">
+                        {{ hasColumnFilters ? 'No matches for column filters' : 'No result for your search' }}
+                    </div>
+                </div>
             </div>
-            
-             <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
-                        <tr>
-                            <th class="px-6 py-4">Employee ID</th>
-                            <th class="px-6 py-4">First Name</th>
-                            <th class="px-6 py-4">Surname</th>
-                            <th class="px-6 py-4">Email</th>
-                            <th class="px-6 py-4">Status</th>
-                            <th class="px-6 py-4">Created By</th>
-                            <th class="px-6 py-4 text-right">Actions</th>
-                            <th v-if="loguser.position_id == 2" class="px-6 py-4">Admin Status</th>
-                        </tr>
-                    </thead>
-                     <tbody class="divide-y divide-gray-100">
-                        <tr v-for="(emp, ind) in emps" :key="ind" class="hover:bg-gray-50/50 transition-colors">
-                            <td class="px-6 py-4 font-bold text-gray-700">{{ emp.employeeid }}</td>
-                            <td class="px-6 py-4">{{ emp.firstname }}</td>
-                            <td class="px-6 py-4">{{ emp.surname }}</td>
-                            <td class="px-6 py-4 text-gray-500">{{ emp.email }}</td>
-                            <td class="px-6 py-4">
-                                <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-bold uppercase">{{ findstatus(emp.status) }}</span>
-                            </td>
-                            <td class="px-6 py-4 text-xs text-gray-500">{{ emp.creator.name }}</td>
-                            <td class="px-6 py-4 text-right">
-                                <router-link :to="`/employee/${emp.id}`" target="_blank" class="text-primary hover:text-primary-dark font-medium text-xs uppercase px-3 py-1 bg-purple-50 rounded hover:bg-purple-100 transition-colors">
-                                    View Profile
-                                </router-link>
-                            </td>
-                            <td v-if="loguser.position_id == 2" class="px-6 py-4">
-                                <select v-model="emp.status" required @change="changestatus(emp.id, $event)" class="form-control text-xs py-1">
-                                    <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
-                                </select>
-                            </td>
-                        </tr>
-                        <tr v-if="!emps.length && loaded">
-                            <td colspan="8" class="p-10 text-center text-gray-400">
-                                <i class="pi pi-search text-2xl mb-2 block"></i>
-                                No employees found matching your filters.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-             </div>
-             
-             <!-- Pagination -->
-             <div class="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-                 <div class="flex items-center gap-2">
-                     <span class="text-sm text-gray-500">Rows per page:</span>
-                     <select v-model="per_page" @change="selectchange" class="form-control !w-auto !py-1 text-sm">
-                        <option value="5">5</option>
-                        <option value="10">10</option>
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                    </select>
-                 </div>
-                 
-                 <div class="flex items-center gap-4">
-                     <button @click="prevpage()" :disabled="!isprev || loading" class="px-3 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 text-sm font-medium">
-                         Previous
-                     </button>
-                     <span class="text-sm text-gray-600 font-medium">Page {{ current_page }} of {{ last_page }}</span>
-                     <button @click="nextpage()" :disabled="!isnext || loading" class="px-3 py-1 rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 text-sm font-medium">
-                         Next
-                     </button>
-                 </div>
-             </div>
         </div>
+
+        <div class="paginationcontrols">
+
+
+            
+            <select v-model="per_page" @change="selectchange">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+
+            <div id='pagecontrol'>
+
+                <button :disabled="!isprev || loading"  @click="prevpage()">Prev</button>
+
+                <span v-if="!loading">{{ current_page }} / {{ last_page }}</span>
+                <i v-if="loading" class="pi pi-spin pi-spinner" style="font-size: 1.2rem;padding: 7px 16px;"></i>
+
+                <button :disabled="!isnext || loading" @click="nextpage()">Next</button>
+            </div>
+        </div>
+        
     </div>
 </template>
-
 <style scoped>
-/* Scoped styles can be minimal now as we rely on global/bootstrap-like classes */
-.form-control {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    line-height: 1.5;
-    color: #1f2937;
-    background-color: #fff;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
-    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-}
-.form-control:focus {
-    border-color: var(--color-primary);
-    outline: 0;
-    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
-}
+
+    .paginationcontrols{
+        display: flex;
+        justify-content: end;
+        gap: 15px;
+        margin-top:20px;
+
+        & select{
+            width: 60px ;
+            background-color: var(--surface-card);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+        
+    }
+    #pagecontrol{
+        display: flex;
+        justify-content: end;
+        gap: 5px;
+        
+        & button{
+            padding: 7px 12px;
+            cursor: pointer;
+            background-color: var(--surface-card);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            border-radius: 4px;
+            font-weight: 500;
+            transition: all 0.2s;
+
+            &:disabled{
+                background-color: var(--surface-ground);
+                color: var(--text-secondary);
+                cursor: not-allowed;
+                border-color: var(--border-color);
+            }
+            &:hover:not(:disabled){
+                background-color: var(--primary);
+                color: white;
+            }
+        }
+        & span{
+            padding: 7px 10px;
+            color: var(--text-secondary);
+        }
+        
+        
+    }
+
+    .filterspan{
+        display: flex;
+        gap:10px
+    }
+
+    #filter {
+        display: flex;
+        gap:10px;
+        margin-bottom: 20px;
+        align-items: end;
+        flex-wrap: wrap;
+
+        & label:not(.radio){
+            font-weight: 600;
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-color);
+        }
+
+        & input, select{
+            padding:8px 12px;
+            width: 200px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: var(--surface-card);
+            color: var(--text-color);
+        }
+
+        & button{
+            height: 35px;
+            /* padding:10px; button component handles padding */
+        }
+    }
+
+
+    #tableheader{
+        display: flex;
+        font-weight: 600;
+        padding: 12px 16px;
+        background-color: var(--surface-card);
+        color: var(--text-secondary);
+        border-bottom: 2px solid var(--border-color);
+        border-radius: 8px 8px 0 0;
+        align-items: center;
+    }
+    #tableheader > span{
+        flex: 1 1 0;
+        min-width: 0;
+        display: inline-block;
+        text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    #tableheader > span.actions-col-header {
+        overflow: visible;
+    }
+
+    /* ── Sorting Controls ── */
+    .toolbar-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .sort-toolbar-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+        background: var(--surface-card, #ffffff);
+        padding: 5px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+    .sort-label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-secondary, #64748b);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+    }
+    .sort-select {
+        padding: 5px 10px;
+        font-size: 0.825rem;
+        font-weight: 500;
+        border: 1px solid var(--border-color, #cbd5e1);
+        border-radius: 4px;
+        background: var(--surface-ground, #f8fafc);
+        color: var(--text-color, #1e293b);
+        outline: none;
+        cursor: pointer;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .sort-select:focus {
+        border-color: var(--primary, #4f46e5);
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+    }
+    .sortable-th {
+        cursor: pointer;
+        user-select: none;
+        display: inline-flex !important;
+        align-items: center;
+        gap: 6px;
+        transition: color 0.15s ease;
+    }
+    .sortable-th:hover {
+        color: var(--primary, #4f46e5) !important;
+    }
+    .sort-icon {
+        font-size: 0.75rem;
+        opacity: 0.45;
+        transition: opacity 0.15s ease, transform 0.15s ease, color 0.15s ease;
+    }
+    .sortable-th:hover .sort-icon {
+        opacity: 0.85;
+    }
+    .sort-icon.active {
+        opacity: 1 !important;
+        color: var(--primary, #4f46e5) !important;
+        font-weight: bold;
+    }
+
+    /* Column Filter Row */
+    #tablefilterrow {
+        display: flex;
+        padding: 8px 16px;
+        background-color: var(--surface-ground, #f8fafc);
+        border-bottom: 1px solid var(--border-color);
+        align-items: center;
+    }
+    #tablefilterrow > span {
+        flex: 1 1 0;
+        min-width: 0;
+        display: inline-flex;
+        align-items: center;
+        padding-right: 8px;
+    }
+    .col-filter-input {
+        width: 100% !important;
+        padding: 5px 8px !important;
+        font-size: 0.8rem !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 4px !important;
+        background-color: var(--surface-card) !important;
+        color: var(--text-color) !important;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+    .col-filter-input:focus {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+    }
+    .col-filter-input::placeholder {
+        color: var(--text-secondary, #9ca3af);
+        font-size: 0.75rem;
+    }
+    .col-filter-clear {
+        background: none;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        cursor: pointer;
+        color: var(--text-secondary);
+        padding: 4px 8px;
+        font-size: 0.8rem;
+        transition: all 0.2s;
+    }
+    .col-filter-clear:hover {
+        color: #ef4444;
+        border-color: #ef4444;
+        background-color: rgba(239, 68, 68, 0.05);
+    }
+
+    #tablebody{
+        background-color: var(--surface-card); 
+        flex:1;
+        overflow: auto;
+        border-radius: 0 0 8px 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    #tablebody > div{
+        display: flex;
+        border-bottom:1px solid var(--border-color);
+        padding: 12px 16px;
+        transition: background-color .1s;
+        align-items: center;
+    }
+    #tablebody > div:last-child {
+        border-bottom: none;
+    }
+    #tablebody > div:hover{
+        background-color: var(--surface-ground);
+    }
+    #tablebody > div > span{
+        flex: 1 1 0;
+        min-width: 0;
+        display: inline-block;
+        text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.95rem;
+        color: var(--text-color);
+    }
+    #tablebody button{
+        /* padding:5px 10px; handled by component */
+        cursor: pointer;
+    }
+
+    /* View button */
+    .view-col {
+        display: flex !important;
+        justify-content: flex-end;
+        padding-right: 8px;
+    }
+    .view-btn {
+        display: inline-block;
+        padding: 5px 18px;
+        background: #ecfdf5;
+        color: #059669;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.15s ease;
+        border: 1px solid #a7f3d0;
+    }
+    .view-btn:hover {
+        background: #d1fae5;
+        color: #047857;
+        box-shadow: 0 1px 4px rgba(5, 150, 105, 0.15);
+    }
+
+    /* ── Dynamic Column Picker ── */
+    .actions-col-header {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 8px;
+        position: relative;
+        flex: 0 0 auto !important;
+        width: auto !important;
+        white-space: nowrap;
+    }
+    .add-col-wrapper {
+        position: relative;
+    }
+    .add-col-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        border: 2px dashed var(--primary, #4f46e5);
+        background: rgba(79, 70, 229, 0.06);
+        color: var(--primary, #4f46e5);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        font-size: 0.8rem;
+    }
+    .add-col-btn:hover {
+        background: var(--primary, #4f46e5);
+        color: white;
+        border-style: solid;
+        transform: scale(1.05);
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+    }
+    .col-picker-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 99;
+    }
+    .col-picker-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 8px;
+        width: 260px;
+        background: var(--surface-card, #fff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 12px;
+        box-shadow: 0 12px 36px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+        z-index: 100;
+        overflow: hidden;
+        animation: dropdownFade 0.15s ease-out;
+    }
+    @keyframes dropdownFade {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .col-picker-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-color, #e2e8f0);
+        font-weight: 700;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-color, #1e293b);
+    }
+    .col-picker-close {
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        color: var(--text-secondary, #94a3b8);
+        padding: 0 4px;
+        line-height: 1;
+    }
+    .col-picker-close:hover {
+        color: var(--text-color, #1e293b);
+    }
+    .col-picker-body {
+        max-height: 380px;
+        overflow-y: auto;
+        padding: 8px;
+    }
+    .col-picker-group {
+        padding: 8px 10px 4px;
+        font-size: 0.65rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--primary, #4f46e5);
+        margin-top: 4px;
+    }
+    .col-picker-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: var(--text-color, #334155);
+        transition: background 0.15s ease;
+        user-select: none;
+    }
+    .col-picker-checkbox:hover {
+        background: rgba(79, 70, 229, 0.08);
+    }
+    .col-picker-checkbox input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 17px;
+        min-width: 17px;
+        height: 17px;
+        border: 2px solid #cbd5e1;
+        border-radius: 4px;
+        cursor: pointer;
+        flex-shrink: 0;
+        position: relative;
+        background: #fff;
+        transition: all 0.15s ease;
+        margin-right: 4px;
+    }
+    .col-picker-checkbox input[type="checkbox"]:checked {
+        background: var(--primary, #4f46e5);
+        border-color: var(--primary, #4f46e5);
+    }
+    .col-picker-checkbox input[type="checkbox"]:checked::after {
+        content: '';
+        position: absolute;
+        left: 4px;
+        top: 1px;
+        width: 5px;
+        height: 9px;
+        border: solid #fff;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+    }
+    .col-picker-checkbox input[type="checkbox"]:disabled {
+        cursor: default;
+        opacity: 0.7;
+    }
+    .col-picker-footer {
+        padding: 10px 14px;
+        border-top: 1px solid var(--border-color, #e2e8f0);
+        display: flex;
+        justify-content: flex-end;
+    }
+    .col-picker-apply {
+        padding: 8px 28px;
+        background: var(--primary, #4f46e5);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .col-picker-apply:hover {
+        background: #4338ca;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35);
+    }
+
+    /* Extra column header with remove button */
+    .extra-col-header {
+        position: relative;
+        padding-right: 20px !important;
+        font-size: 0.75rem !important;
+    }
+    .remove-col-btn {
+        position: absolute;
+        top: 0;
+        right: 2px;
+        background: none;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1;
+        opacity: 0.5;
+        transition: opacity 0.15s;
+        padding: 0 2px;
+    }
+    .remove-col-btn:hover {
+        opacity: 1;
+    }
+
+    /* Horizontal scroll when too many columns */
+    #divtoscroll > div {
+        overflow-x: auto;
+    }
+
+    /* Dark mode */
+    :global(body.dark-mode) .col-picker-checkbox input[type="checkbox"]:not(:checked) {
+        background: #0f172a !important;
+        border-color: #475569 !important;
+    }
+    :global(body.dark-mode) .col-picker-checkbox:hover {
+        background: rgba(129, 140, 248, 0.1) !important;
+    }
 </style>

@@ -86,7 +86,7 @@ class APIUserController extends Controller
     }
 
     public function fetchEmployees(Request $request){
-        $query = \App\Models\Employee::with(['creator'])->orderBy('id', 'DESC');
+        $query = \App\Models\Employee::with(['creator']);
 
         // Global search (Employee Info field)
         if($request->employeeinfo){
@@ -144,6 +144,54 @@ class APIUserController extends Controller
         }
         if($request->createdto){
             $query->where('created_at', '<=', $request->createdto.' 23:59:59');
+        }
+
+        // Apply dynamic sorting
+        $sortBy = $request->sort_by ?? 'newest';
+        switch ($sortBy) {
+            case 'oldest':
+                $query->orderBy('created_at', 'ASC')->orderBy('id', 'ASC');
+                break;
+            case 'name_asc':
+                $query->orderBy('firstname', 'ASC')->orderBy('surname', 'ASC');
+                break;
+            case 'name_desc':
+                $query->orderBy('firstname', 'DESC')->orderBy('surname', 'DESC');
+                break;
+            case 'surname_asc':
+                $query->orderBy('surname', 'ASC')->orderBy('firstname', 'ASC');
+                break;
+            case 'surname_desc':
+                $query->orderBy('surname', 'DESC')->orderBy('firstname', 'DESC');
+                break;
+            case 'empid_asc':
+                $query->orderBy('employeeid', 'ASC');
+                break;
+            case 'empid_desc':
+                $query->orderBy('employeeid', 'DESC');
+                break;
+            case 'email_asc':
+                $query->orderBy('email', 'ASC');
+                break;
+            case 'email_desc':
+                $query->orderBy('email', 'DESC');
+                break;
+            case 'status_asc':
+                $query->orderBy('status', 'ASC');
+                break;
+            case 'status_desc':
+                $query->orderBy('status', 'DESC');
+                break;
+            case 'joining_desc':
+                $query->orderBy('joiningdate', 'DESC');
+                break;
+            case 'joining_asc':
+                $query->orderBy('joiningdate', 'ASC');
+                break;
+            case 'newest':
+            default:
+                $query->orderBy('created_at', 'DESC')->orderBy('id', 'DESC');
+                break;
         }
 
         $employees = $query->paginate($request->per_page ?? 50);

@@ -37,10 +37,10 @@ class EmployeeController extends Controller
         // Try central DB first, fallback to local
         try {
             \Illuminate\Support\Facades\DB::connection('central')->getPdo();
-            $employees = Employee::on('central')->with(['creator'])->orderBy('id', 'DESC');
+            $employees = Employee::on('central')->with(['creator']);
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Central DB Connection Error: ' . $e->getMessage());
-            $employees = Employee::with(['creator'])->orderBy('id', 'DESC');
+            $employees = Employee::with(['creator']);
         }
 
         if($request->employeeinfo){
@@ -142,6 +142,53 @@ class EmployeeController extends Controller
             $employees = $employees->where('created_at', '<=', $request->createdto.' 23:59:59');
         }
 
+        // Apply dynamic sorting
+        $sortBy = $request->sort_by ?? 'newest';
+        switch ($sortBy) {
+            case 'oldest':
+                $employees->orderBy('created_at', 'ASC')->orderBy('id', 'ASC');
+                break;
+            case 'name_asc':
+                $employees->orderBy('firstname', 'ASC')->orderBy('surname', 'ASC');
+                break;
+            case 'name_desc':
+                $employees->orderBy('firstname', 'DESC')->orderBy('surname', 'DESC');
+                break;
+            case 'surname_asc':
+                $employees->orderBy('surname', 'ASC')->orderBy('firstname', 'ASC');
+                break;
+            case 'surname_desc':
+                $employees->orderBy('surname', 'DESC')->orderBy('firstname', 'DESC');
+                break;
+            case 'empid_asc':
+                $employees->orderBy('employeeid', 'ASC');
+                break;
+            case 'empid_desc':
+                $employees->orderBy('employeeid', 'DESC');
+                break;
+            case 'email_asc':
+                $employees->orderBy('email', 'ASC');
+                break;
+            case 'email_desc':
+                $employees->orderBy('email', 'DESC');
+                break;
+            case 'status_asc':
+                $employees->orderBy('status', 'ASC');
+                break;
+            case 'status_desc':
+                $employees->orderBy('status', 'DESC');
+                break;
+            case 'joining_desc':
+                $employees->orderBy('joiningdate', 'DESC');
+                break;
+            case 'joining_asc':
+                $employees->orderBy('joiningdate', 'ASC');
+                break;
+            case 'newest':
+            default:
+                $employees->orderBy('created_at', 'DESC')->orderBy('id', 'DESC');
+                break;
+        }
 
         $employees = $employees->paginate($request->per_page);
         return $employees;
@@ -243,7 +290,7 @@ class EmployeeController extends Controller
     public function fetchemployeesdumpforexport(Request $request)
     {
         
-        $employees = Employee::orderBy('firstname');
+        $employees = Employee::query();
 
         if($request->employeeinfo){
             $search = $request->employeeinfo;
@@ -326,7 +373,54 @@ class EmployeeController extends Controller
             $employees = $employees->where('created_at', '<=', $request->createdto.' 23:59:59');
         }
 
-        
+        // Apply dynamic sorting
+        $sortBy = $request->sort_by ?? 'name_asc';
+        switch ($sortBy) {
+            case 'oldest':
+                $employees->orderBy('created_at', 'ASC')->orderBy('id', 'ASC');
+                break;
+            case 'newest':
+                $employees->orderBy('created_at', 'DESC')->orderBy('id', 'DESC');
+                break;
+            case 'name_desc':
+                $employees->orderBy('firstname', 'DESC')->orderBy('surname', 'DESC');
+                break;
+            case 'surname_asc':
+                $employees->orderBy('surname', 'ASC')->orderBy('firstname', 'ASC');
+                break;
+            case 'surname_desc':
+                $employees->orderBy('surname', 'DESC')->orderBy('firstname', 'DESC');
+                break;
+            case 'empid_asc':
+                $employees->orderBy('employeeid', 'ASC');
+                break;
+            case 'empid_desc':
+                $employees->orderBy('employeeid', 'DESC');
+                break;
+            case 'email_asc':
+                $employees->orderBy('email', 'ASC');
+                break;
+            case 'email_desc':
+                $employees->orderBy('email', 'DESC');
+                break;
+            case 'status_asc':
+                $employees->orderBy('status', 'ASC');
+                break;
+            case 'status_desc':
+                $employees->orderBy('status', 'DESC');
+                break;
+            case 'joining_desc':
+                $employees->orderBy('joiningdate', 'DESC');
+                break;
+            case 'joining_asc':
+                $employees->orderBy('joiningdate', 'ASC');
+                break;
+            case 'name_asc':
+            default:
+                $employees->orderBy('firstname', 'ASC')->orderBy('surname', 'ASC');
+                break;
+        }
+
         $employees = $employees->get();
         return $employees;
     }
