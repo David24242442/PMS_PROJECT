@@ -692,6 +692,9 @@ class GoalController extends Controller
                             if (in_array('line_manager_id', $userCols)) $newUserData['line_manager_id'] = $user->id;
                             if (in_array('report_to', $userCols)) $newUserData['report_to'] = $user->name ?: $user->username;
                             if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/pms/goals'];
+                            if (in_array('role', $userCols)) $newUserData['role'] = 'Basic';
+                            if (in_array('position', $userCols)) $newUserData['position'] = 1;
+                            if (in_array('designation', $userCols)) $newUserData['designation'] = 'Employee';
 
                             $empUser = \App\Models\User::create($newUserData);
                         } catch (\Throwable $e) {
@@ -719,6 +722,18 @@ class GoalController extends Controller
                                 if (!$empUser->admin && !$empUser->is_manager && !in_array($empUser->position_id, [3, 4])) {
                                     $updateData['permissions'] = ['/pms/goals'];
                                 }
+                            }
+                            if (in_array('role', $userCols) && !$empUser->admin && !$empUser->is_manager) {
+                                $updateData['role'] = 'Basic';
+                            }
+                            if (in_array('position_id', $userCols) && (empty($empUser->position_id) || $empUser->position_id == 1)) {
+                                $updateData['position_id'] = 1;
+                            }
+                            if (in_array('position', $userCols) && (empty($empUser->position) || $empUser->position == 1)) {
+                                $updateData['position'] = 1;
+                            }
+                            if (in_array('designation', $userCols) && !$empUser->admin && !$empUser->is_manager) {
+                                $updateData['designation'] = 'Employee';
                             }
                             $empUser->update($updateData);
                         } catch (\Throwable $e) {

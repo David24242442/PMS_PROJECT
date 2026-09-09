@@ -16,6 +16,15 @@ class APIUserController extends Controller
     //
     public function index(Request $request){
         $users = User::all();
+        $users->transform(function ($u) {
+            if (empty($u->role) || in_array(strtolower($u->role), ['standard', 'user'])) {
+                $u->role = $u->admin ? 'Admin' : ($u->is_manager ? 'Manager' : 'Basic');
+            }
+            if (empty($u->position_id)) {
+                $u->position_id = 1;
+            }
+            return $u;
+        });
         return $users;
     }
 
@@ -52,8 +61,11 @@ class APIUserController extends Controller
             ];
 
             // Add other details directly to user object for easy access
-            $user->position_name = $user->position_id; // Need to map this if positions table exists? Or Front end masks it.
-            $user->role = $user->admin ? 'Administrator' : 'User';
+            $user->position_name = $user->position_id ?: 1;
+            $user->role = $user->admin ? 'Administrator' : ($user->is_manager ? 'Manager' : 'Basic');
+            if (empty($user->position_id)) {
+                $user->position_id = 1;
+            }
             $user->department = $employee->joining_dept_id; // Front end maps this ID
             $user->joining_date = $employee->joiningdate;
             $user->status = $employee->status; // 1=Active, etc.
@@ -181,8 +193,18 @@ class APIUserController extends Controller
             'username' => $user->username,
             'email' => $user->email,
             'password' => bcrypt($user['password']),
-            'position_id' => $user->position_id
+            'position_id' => $user->position_id ?: 1
         ];
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'role')) {
+            $userDetails['role'] = (!empty($userDetails['admin'])) ? 'Admin' : (!empty($user['is_manager']) ? 'Manager' : 'Basic');
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'position')) {
+            $userDetails['position'] = $userDetails['position_id'];
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
+            $userDetails['designation'] = (!empty($userDetails['admin'])) ? 'Admin' : (!empty($user['is_manager']) ? 'Manager' : 'Employee');
+        }
 
         $u = User::create($userDetails);
 
@@ -199,8 +221,33 @@ class APIUserController extends Controller
             'name' => $user->name,
             'username' => $user->username,
             'email' => $user->email,
-            'position_id' => $user->position_id
+            'position_id' => $user->position_id ?: 1
         ];
+
+        if (isset($user['employee_code']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'employee_code')) {
+            $userDetails['employee_code'] = $user['employee_code'];
+        }
+        if (isset($user['department']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'department')) {
+            $userDetails['department'] = $user['department'];
+        }
+        if (isset($user['location']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'location')) {
+            $userDetails['location'] = $user['location'];
+        }
+        if (isset($user['report_to']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'report_to')) {
+            $userDetails['report_to'] = $user['report_to'];
+        }
+        if (isset($user['is_manager']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'is_manager')) {
+            $userDetails['is_manager'] = $user['is_manager'];
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'role')) {
+            $userDetails['role'] = (!empty($user['admin'])) ? 'Admin' : (!empty($user['is_manager']) ? 'Manager' : 'Basic');
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'position')) {
+            $userDetails['position'] = $userDetails['position_id'];
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation') && empty($user['admin']) && empty($user['is_manager'])) {
+            $userDetails['designation'] = 'Employee';
+        }
 
         if (isset($user['permissions'])) {
             $userDetails['permissions'] = is_array($user['permissions']) ? $user['permissions'] : json_decode($user['permissions'], true);
@@ -383,6 +430,15 @@ class APIUserController extends Controller
                 }
                 if ($goal && !empty($goal->created_by) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'line_manager_id')) {
                     $newUserData['line_manager_id'] = $goal->created_by;
+                }
+                if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'role')) {
+                    $newUserData['role'] = 'Basic';
+                }
+                if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'position')) {
+                    $newUserData['position'] = 1;
+                }
+                if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
+                    $newUserData['designation'] = 'Employee';
                 }
                 $user = User::create($newUserData);
                 if ($goal && empty($goal->user_id)) {

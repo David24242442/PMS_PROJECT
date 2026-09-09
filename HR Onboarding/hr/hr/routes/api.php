@@ -106,6 +106,18 @@ Route::get('/sync-pms-users', function() {
                 if (!empty($goal->manager_name) && \Schema::hasColumn('users', 'report_to')) {
                     $updates['report_to'] = $goal->manager_name;
                 }
+                if (\Schema::hasColumn('users', 'role') && !$user->admin && !$user->is_manager) {
+                    $updates['role'] = 'Basic';
+                }
+                if (\Schema::hasColumn('users', 'position_id') && (empty($user->position_id) || $user->position_id == 1)) {
+                    $updates['position_id'] = 1;
+                }
+                if (\Schema::hasColumn('users', 'position') && (empty($user->position) || $user->position == 1)) {
+                    $updates['position'] = 1;
+                }
+                if (\Schema::hasColumn('users', 'designation') && !$user->admin && !$user->is_manager) {
+                    $updates['designation'] = 'Employee';
+                }
                 $user->update($updates);
                 \App\Models\Goal::where('employee_code', $code)->orWhere('employee_code', $cleanCode)->update(['user_id' => $user->id]);
                 $synced[] = "Updated user for {$code} ({$goal->candidate_name}) -> username: {$code}, password: password";
@@ -126,12 +138,37 @@ Route::get('/sync-pms-users', function() {
                 if (!empty($goal->manager_name) && \Schema::hasColumn('users', 'report_to')) $newUserData['report_to'] = $goal->manager_name;
                 if (\Schema::hasColumn('users', 'department') && !empty($goal->department)) $newUserData['department'] = $goal->department;
                 if (\Schema::hasColumn('users', 'location') && !empty($goal->location)) $newUserData['location'] = $goal->location;
+                if (\Schema::hasColumn('users', 'role')) $newUserData['role'] = 'Basic';
+                if (\Schema::hasColumn('users', 'position')) $newUserData['position'] = 1;
+                if (\Schema::hasColumn('users', 'designation')) $newUserData['designation'] = 'Employee';
 
                 $user = \App\Models\User::create($newUserData);
                 \App\Models\Goal::where('employee_code', $code)->orWhere('employee_code', $cleanCode)->update(['user_id' => $user->id]);
                 $synced[] = "Created user for {$code} ({$goal->candidate_name}) -> username: {$code}, password: password";
             }
         }
+
+        // Bulk sync all non-admin, non-manager users to role 'Basic' and position_id 1
+        try {
+            if (\Schema::hasColumn('users', 'role')) {
+                \App\Models\User::where('admin', 0)
+                    ->where(function($q) {
+                        $q->whereNull('is_manager')->orWhere('is_manager', 0);
+                    })
+                    ->where(function($q) {
+                        $q->whereNull('role')->orWhere('role', 'standard')->orWhere('role', 'Standard')->orWhere('role', 'user')->orWhere('role', '');
+                    })
+                    ->update(['role' => 'Basic']);
+            }
+            \App\Models\User::where('admin', 0)
+                ->where(function($q) {
+                    $q->whereNull('is_manager')->orWhere('is_manager', 0);
+                })
+                ->where(function($q) {
+                    $q->whereNull('position_id')->orWhere('position_id', 0);
+                })
+                ->update(['position_id' => 1]);
+        } catch (\Throwable $bulkEx) {}
 
         return response()->json([
             'status' => 'success',

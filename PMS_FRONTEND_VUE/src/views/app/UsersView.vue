@@ -229,8 +229,8 @@
         // Role filter
         if (selectedRole.value === 'admin') {
             list = list.filter(u => Boolean(u.admin))
-        } else if (selectedRole.value === 'standard') {
-            list = list.filter(u => !u.admin)
+        } else if (selectedRole.value === 'basic' || selectedRole.value === 'standard') {
+            list = list.filter(u => !u.admin && !u.is_manager)
         } else if (selectedRole.value === 'manager') {
             list = list.filter(u => Boolean(u.is_manager) || u.position_id == 3)
         }
@@ -340,8 +340,8 @@
             `"${(u.employee_code || '').replace(/"/g, '""')}"`,
             `"${(u.department || '').replace(/"/g, '""')}"`,
             `"${(u.location || '').replace(/"/g, '""')}"`,
-            `"${u.admin ? 'Yes (Administrator)' : 'No (Standard)'}"`,
-            `"${(findposition(u.position_id) || 'Viewer').replace(/"/g, '""')}"`,
+            `"${u.admin ? 'Yes (Administrator)' : 'No (Basic)'}"`,
+            `"${(findposition(u.position_id) || 'Employee').replace(/"/g, '""')}"`,
             `"${(u.report_to || '').replace(/"/g, '""')}"`,
             `"${(u.email || '').replace(/"/g, '""')}"`
         ])
@@ -445,7 +445,7 @@
         user.permissions = []
         user.admin = false
         user.is_manager = false
-        user.position_id = 1 // Default Viewer
+        user.position_id = 1 // Default Employee
         user.password = ''
         creatinguser.value = true
     }
@@ -664,7 +664,7 @@
                     <i class="pi pi-id-card text-lg"></i>
                 </div>
                 <div class="metric-content">
-                    <span class="metric-label">Standard Viewers</span>
+                    <span class="metric-label">Basic Employees</span>
                     <span class="metric-val text-blue-950">{{ viewerCount }}</span>
                 </div>
             </div>
@@ -705,7 +705,7 @@
                         <option value="">All Roles</option>
                         <option value="admin">Administrators Only</option>
                         <option value="manager">Line Managers</option>
-                        <option value="standard">Standard Users</option>
+                        <option value="basic">Basic Users</option>
                     </select>
                 </div>
 
@@ -827,16 +827,16 @@
 
                         <!-- Role / Admin Status -->
                         <td>
-                            <span v-if="u.admin" class="role-badge admin-badge">
+                            <span v-if="u.admin || u.role === 'admin' || u.role === 'Admin'" class="role-badge admin-badge">
                                 <i class="pi pi-shield text-xs mr-1"></i>
                                 Admin
                             </span>
-                            <span v-else-if="u.is_manager" class="role-badge manager-role-badge">
+                            <span v-else-if="u.is_manager || u.role === 'manager' || u.role === 'Manager'" class="role-badge manager-role-badge">
                                 <i class="pi pi-briefcase text-xs mr-1"></i>
                                 Manager
                             </span>
-                            <span v-else class="role-badge standard-badge">
-                                Standard
+                            <span v-else class="role-badge basic-badge">
+                                Basic
                             </span>
                         </td>
 
@@ -847,10 +847,10 @@
                                     'position-pill',
                                     u.position_id == 3 ? 'pos-manager' : 
                                     u.position_id == 4 ? 'pos-hrhead' : 
-                                    u.position_id == 2 ? 'pos-entry' : 'pos-viewer'
+                                    u.position_id == 2 ? 'pos-entry' : 'pos-employee'
                                 ]"
                             >
-                                {{ findposition(u.position_id) || 'VIEWER' }}
+                                {{ findposition(u.position_id) || 'EMPLOYEE' }}
                             </span>
                         </td>
 
@@ -1859,10 +1859,11 @@
         border: 1px solid #a7f3d0;
     }
 
+    .basic-badge,
     .standard-badge {
         background: #f8fafc;
-        color: #64748b;
-        border: 1px solid #e2e8f0;
+        color: #475569;
+        border: 1px solid #cbd5e1;
     }
 
     /* Position Pills */
@@ -1888,6 +1889,7 @@
         border: 1px solid #fde68a;
     }
 
+    .pos-employee,
     .pos-viewer {
         background: #f0f9ff;
         color: #0369a1;

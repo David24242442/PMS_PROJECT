@@ -21,7 +21,7 @@
     let cpassword = ref('')
 
     const userInitial = computed(() => user.name?.charAt(0)?.toUpperCase() || 'U')
-    const userRole = computed(() => findposition(user.position_id) || 'STANDARD')
+    const userRole = computed(() => findposition(user.position_id) || 'BASIC')
 
     onMounted(() => {
         Object.assign(user, loguser)

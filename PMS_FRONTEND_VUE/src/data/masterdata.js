@@ -284,7 +284,7 @@ const branchs = [
 ]
 
 const positions = [
-    {id:1,name:'Viewer'},
+    {id:1,name:'Employee'},
     {id:2,name:'Entry'},
     {id:3,name:'Manager'},
     {id:4,name:'Hr Head'},
@@ -601,7 +601,10 @@ const findstatus = (status) => {
 }
 
 const findposition = (position) => {
-    return  positions.find((p) => p.id == position ) ? positions.find((p) => p.id == position ).name.toUpperCase() : ''
+    const found = positions.find((p) => p.id == position)
+    if (found) return found.name.toUpperCase()
+    if (position == 1 || !position) return 'EMPLOYEE'
+    return ''
 }
 
 const findrelation = (rel) => {
