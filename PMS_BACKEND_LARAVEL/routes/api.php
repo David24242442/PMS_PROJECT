@@ -95,28 +95,33 @@ Route::get('/sync-pms-users', function() {
                     'password' => bcrypt('password'),
                 ];
                 if (\Schema::hasColumn('users', 'employee_code')) $updates['employee_code'] = $code;
-                if (\Schema::hasColumn('users', 'permissions')) {
-                    if (!$user->admin && !$user->is_manager && !in_array($user->position_id, [3, 4])) {
-                        $updates['permissions'] = ['/pms/goals'];
-                    }
-                }
                 if (!empty($goal->created_by) && \Schema::hasColumn('users', 'line_manager_id')) {
                     $updates['line_manager_id'] = $goal->created_by;
                 }
                 if (!empty($goal->manager_name) && \Schema::hasColumn('users', 'report_to')) {
                     $updates['report_to'] = $goal->manager_name;
                 }
-                if (\Schema::hasColumn('users', 'role') && !$user->admin && !$user->is_manager) {
-                    $updates['role'] = 'Basic';
-                }
-                if (\Schema::hasColumn('users', 'position_id') && (empty($user->position_id) || $user->position_id == 1)) {
-                    $updates['position_id'] = 1;
-                }
-                if (\Schema::hasColumn('users', 'position') && (empty($user->position) || $user->position == 1)) {
-                    $updates['position'] = 1;
-                }
-                if (\Schema::hasColumn('users', 'designation') && !$user->admin && !$user->is_manager) {
-                    $updates['designation'] = 'Employee';
+
+                $isMgrOrConfigured = $user->admin || $user->is_manager || in_array($user->position_id, [2, 3, 4]);
+                if ($user->is_manager && !$user->admin && $user->position_id != 3) {
+                    $updates['position_id'] = 3;
+                    if (\Schema::hasColumn('users', 'position')) $updates['position'] = 3;
+                } elseif (!$isMgrOrConfigured) {
+                    if (\Schema::hasColumn('users', 'permissions')) {
+                        $updates['permissions'] = ['/pms/goals'];
+                    }
+                    if (\Schema::hasColumn('users', 'role')) {
+                        $updates['role'] = 'Basic';
+                    }
+                    if (\Schema::hasColumn('users', 'position_id')) {
+                        $updates['position_id'] = 5;
+                    }
+                    if (\Schema::hasColumn('users', 'position')) {
+                        $updates['position'] = 5;
+                    }
+                    if (\Schema::hasColumn('users', 'designation')) {
+                        $updates['designation'] = 'Employee';
+                    }
                 }
                 $user->update($updates);
                 \App\Models\Goal::where('employee_code', $code)->orWhere('employee_code', $cleanCode)->update(['user_id' => $user->id]);
@@ -127,7 +132,7 @@ Route::get('/sync-pms-users', function() {
                     'username' => $code,
                     'email' => $fallbackEmail,
                     'password' => bcrypt('password'),
-                    'position_id' => 1,
+                    'position_id' => 5,
                     'user_id' => $goal->created_by ?? 1,
                     'admin' => 0,
                     'is_manager' => 0,
@@ -139,7 +144,7 @@ Route::get('/sync-pms-users', function() {
                 if (\Schema::hasColumn('users', 'department') && !empty($goal->department)) $newUserData['department'] = $goal->department;
                 if (\Schema::hasColumn('users', 'location') && !empty($goal->location)) $newUserData['location'] = $goal->location;
                 if (\Schema::hasColumn('users', 'role')) $newUserData['role'] = 'Basic';
-                if (\Schema::hasColumn('users', 'position')) $newUserData['position'] = 1;
+                if (\Schema::hasColumn('users', 'position')) $newUserData['position'] = 5;
                 if (\Schema::hasColumn('users', 'designation')) $newUserData['designation'] = 'Employee';
 
                 $user = \App\Models\User::create($newUserData);
@@ -148,26 +153,25 @@ Route::get('/sync-pms-users', function() {
             }
         }
 
-        // Bulk sync all non-admin, non-manager users to role 'Basic' and position_id 1
+        // Bulk sync managers to position_id = 3 and assigned employees to position_id = 5
         try {
-            if (\Schema::hasColumn('users', 'role')) {
-                \App\Models\User::where('admin', 0)
+            \App\Models\User::where('is_manager', 1)
+                ->where('admin', 0)
+                ->where(function($q) {
+                    $q->where('position_id', 1)->orWhereNull('position_id')->orWhere('position_id', 0);
+                })
+                ->update(['position_id' => 3]);
+
+            $goalUserIds = \App\Models\Goal::pluck('user_id')->filter()->unique();
+            if ($goalUserIds->isNotEmpty()) {
+                \App\Models\User::whereIn('id', $goalUserIds)
+                    ->where('admin', 0)
                     ->where(function($q) {
                         $q->whereNull('is_manager')->orWhere('is_manager', 0);
                     })
-                    ->where(function($q) {
-                        $q->whereNull('role')->orWhere('role', 'standard')->orWhere('role', 'Standard')->orWhere('role', 'user')->orWhere('role', '');
-                    })
-                    ->update(['role' => 'Basic']);
+                    ->whereNotIn('position_id', [2, 3, 4])
+                    ->update(['position_id' => 5]);
             }
-            \App\Models\User::where('admin', 0)
-                ->where(function($q) {
-                    $q->whereNull('is_manager')->orWhere('is_manager', 0);
-                })
-                ->where(function($q) {
-                    $q->whereNull('position_id')->orWhere('position_id', 0);
-                })
-                ->update(['position_id' => 1]);
         } catch (\Throwable $bulkEx) {}
 
         return response()->json([

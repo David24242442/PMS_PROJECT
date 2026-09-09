@@ -191,7 +191,7 @@
     const totalUsersCount = computed(() => users.value.length)
     const adminCount = computed(() => users.value.filter(u => Boolean(u.admin)).length)
     const managerCount = computed(() => users.value.filter(u => Boolean(u.is_manager) || u.position_id == 3).length)
-    const viewerCount = computed(() => users.value.filter(u => !u.admin && (!u.position_id || u.position_id == 1)).length)
+    const viewerCount = computed(() => users.value.filter(u => !u.admin && !u.is_manager && u.position_id != 3 && u.position_id != 4).length)
 
     // Dynamic departments list
     const departmentsList = computed(() => {
@@ -228,11 +228,15 @@
 
         // Role filter
         if (selectedRole.value === 'admin') {
-            list = list.filter(u => Boolean(u.admin))
-        } else if (selectedRole.value === 'basic' || selectedRole.value === 'standard') {
-            list = list.filter(u => !u.admin && !u.is_manager)
+            list = list.filter(u => Boolean(u.admin) || u.role === 'admin' || u.role === 'Admin')
         } else if (selectedRole.value === 'manager') {
-            list = list.filter(u => Boolean(u.is_manager) || u.position_id == 3)
+            list = list.filter(u => Boolean(u.is_manager) || u.position_id == 3 || u.role === 'manager' || u.role === 'Manager')
+        } else if (selectedRole.value === 'entry') {
+            list = list.filter(u => u.position_id == 2)
+        } else if (selectedRole.value === 'viewer') {
+            list = list.filter(u => u.position_id == 1 && !u.admin && !u.is_manager)
+        } else if (selectedRole.value === 'basic' || selectedRole.value === 'standard' || selectedRole.value === 'employee') {
+            list = list.filter(u => !u.admin && !u.is_manager && u.position_id != 3 && u.position_id != 4)
         }
 
         // Position filter
@@ -425,9 +429,17 @@
         masterEmpSearchQuery.value = u.name ? `${u.name}${u.employee_code ? ` (${u.employee_code})` : ''}` : ''
         isMasterEmpDropdownOpen.value = false
 
+        const isMgr = Boolean(u.is_manager || u.position_id == 3)
+        let posId = u.position_id
+        if (isMgr && (!posId || posId == 1)) {
+            posId = 3
+        }
+
         // Ensure permissions array exists during edit
         Object.assign(user, { 
             ...u, 
+            is_manager: isMgr,
+            position_id: posId || 1,
             password: '', // Kept empty; user types only if changing
             permissions: Array.isArray(u.permissions) ? [...u.permissions] : [] 
         })
@@ -445,9 +457,44 @@
         user.permissions = []
         user.admin = false
         user.is_manager = false
-        user.position_id = 1 // Default Employee
+        user.position_id = 1 // Default Viewer
         user.password = ''
         creatinguser.value = true
+    }
+
+    const onPositionSelectChange = () => {
+        if (user.position_id == 3 || user.position_id == 4) {
+            user.is_manager = true
+        } else if (user.position_id == 1 || user.position_id == 2 || user.position_id == 5) {
+            if (!user.admin) {
+                user.is_manager = false
+            }
+        }
+    }
+
+    const toggleManager = () => {
+        user.is_manager = !user.is_manager
+        if (user.is_manager) {
+            if (user.position_id != 3 && user.position_id != 4) {
+                user.position_id = 3
+            }
+        } else {
+            if (user.position_id == 3) {
+                user.position_id = 1
+            }
+        }
+    }
+
+    const onManagerCheckboxChange = () => {
+        if (user.is_manager) {
+            if (user.position_id != 3 && user.position_id != 4) {
+                user.position_id = 3
+            }
+        } else {
+            if (user.position_id == 3) {
+                user.position_id = 1
+            }
+        }
     }
 
     // --- Master Employee Smart Search & Auto-Fill ---
@@ -503,7 +550,12 @@
         const posText = (emp.position || emp.emp_position || emp.job_title || emp.joiningposition || '').toLowerCase()
         if (posText) {
             const matchedPos = positions.find(p => posText.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(posText))
-            if (matchedPos) user.position_id = matchedPos.id
+            if (matchedPos) {
+                user.position_id = matchedPos.id
+                if (matchedPos.id == 3 || matchedPos.id == 4) {
+                    user.is_manager = true
+                }
+            }
         }
 
         masterEmpSearchQuery.value = `${fullName} (${empCode})`
@@ -831,9 +883,21 @@
                                 <i class="pi pi-shield text-xs mr-1"></i>
                                 Admin
                             </span>
-                            <span v-else-if="u.is_manager || u.role === 'manager' || u.role === 'Manager'" class="role-badge manager-role-badge">
+                            <span v-else-if="u.is_manager || u.position_id == 3 || u.role === 'manager' || u.role === 'Manager'" class="role-badge manager-role-badge">
                                 <i class="pi pi-briefcase text-xs mr-1"></i>
                                 Manager
+                            </span>
+                            <span v-else-if="u.position_id == 4" class="role-badge hrhead-role-badge">
+                                <i class="pi pi-user text-xs mr-1"></i>
+                                Hr Head
+                            </span>
+                            <span v-else-if="u.position_id == 2" class="role-badge entry-role-badge">
+                                <i class="pi pi-file-edit text-xs mr-1"></i>
+                                Entry
+                            </span>
+                            <span v-else-if="u.position_id == 1" class="role-badge viewer-role-badge">
+                                <i class="pi pi-eye text-xs mr-1"></i>
+                                Viewer
                             </span>
                             <span v-else class="role-badge basic-badge">
                                 Basic
@@ -845,12 +909,13 @@
                             <span 
                                 :class="[
                                     'position-pill',
-                                    u.position_id == 3 ? 'pos-manager' : 
+                                    (u.position_id == 3 || (u.is_manager && u.position_id != 4)) ? 'pos-manager' : 
                                     u.position_id == 4 ? 'pos-hrhead' : 
-                                    u.position_id == 2 ? 'pos-entry' : 'pos-employee'
+                                    u.position_id == 2 ? 'pos-entry' : 
+                                    u.position_id == 1 ? 'pos-viewer' : 'pos-employee'
                                 ]"
                             >
-                                {{ findposition(u.position_id) || 'EMPLOYEE' }}
+                                {{ (u.position_id == 3 || (u.is_manager && u.position_id != 4)) ? 'MANAGER' : (findposition(u.position_id) || 'EMPLOYEE') }}
                             </span>
                         </td>
 
@@ -1157,7 +1222,7 @@
                         </div>
                         <div class="space-y-1">
                             <label class="field-label">Position / Job Role</label>
-                            <select v-model="user.position_id" class="premium-input">
+                            <select v-model="user.position_id" @change="onPositionSelectChange" class="premium-input">
                                 <option v-for="p in positions" :key="p.id" :value="p.id">{{ p.name }}</option>
                             </select>
                         </div>
@@ -1201,7 +1266,7 @@
 
                         <!-- Manager Switch -->
                         <div 
-                            @click="user.is_manager = !user.is_manager"
+                            @click="toggleManager"
                             :class="['privilege-toggle-card', { 'active-privilege-manager': user.is_manager }]"
                         >
                             <div class="privilege-icon bg-emerald-50 text-emerald-600">
@@ -1211,7 +1276,7 @@
                                 <span class="privilege-title">Line Manager</span>
                                 <span class="privilege-desc">Can review PMS appraisals & goals</span>
                             </div>
-                            <input type="checkbox" v-model="user.is_manager" class="w-4 h-4 text-emerald-600 rounded" @click.stop>
+                            <input type="checkbox" v-model="user.is_manager" @change="onManagerCheckboxChange" class="w-4 h-4 text-emerald-600 rounded" @click.stop>
                         </div>
                     </div>
                 </div>
@@ -1864,6 +1929,24 @@
         background: #f8fafc;
         color: #475569;
         border: 1px solid #cbd5e1;
+    }
+
+    .viewer-role-badge {
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #cbd5e1;
+    }
+
+    .entry-role-badge {
+        background: #f5f3ff;
+        color: #6d28d9;
+        border: 1px solid #ddd6fe;
+    }
+
+    .hrhead-role-badge {
+        background: #fffbeb;
+        color: #b45309;
+        border: 1px solid #fde68a;
     }
 
     /* Position Pills */

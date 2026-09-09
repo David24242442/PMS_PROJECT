@@ -681,7 +681,7 @@ class GoalController extends Controller
                                 'username' => $empCode,
                                 'email' => $userEmail,
                                 'password' => bcrypt('password'),
-                                'position_id' => 1,
+                                'position_id' => 5,
                                 'user_id' => $user->id,
                                 'is_manager' => 0,
                                 'admin' => 0,
@@ -693,7 +693,7 @@ class GoalController extends Controller
                             if (in_array('report_to', $userCols)) $newUserData['report_to'] = $user->name ?: $user->username;
                             if (in_array('permissions', $userCols)) $newUserData['permissions'] = ['/pms/goals'];
                             if (in_array('role', $userCols)) $newUserData['role'] = 'Basic';
-                            if (in_array('position', $userCols)) $newUserData['position'] = 1;
+                            if (in_array('position', $userCols)) $newUserData['position'] = 5;
                             if (in_array('designation', $userCols)) $newUserData['designation'] = 'Employee';
 
                             $empUser = \App\Models\User::create($newUserData);
@@ -713,27 +713,34 @@ class GoalController extends Controller
                                 'password' => bcrypt('password'), // Ensure login password is password
                                 'username' => $empCode,
                             ];
-                            if (in_array('line_manager_id', $userCols)) $updateData['line_manager_id'] = $user->id;
-                            if (in_array('report_to', $userCols)) $updateData['report_to'] = $user->name ?: $user->username;
+                            if (in_array('line_manager_id', $userCols) && empty($empUser->line_manager_id)) {
+                                $updateData['line_manager_id'] = $user->id;
+                            }
+                            if (in_array('report_to', $userCols) && empty($empUser->report_to)) {
+                                $updateData['report_to'] = $user->name ?: $user->username;
+                            }
                             if (in_array('employee_code', $userCols)) {
                                 $updateData['employee_code'] = $empCode;
                             }
-                            if (in_array('permissions', $userCols)) {
-                                if (!$empUser->admin && !$empUser->is_manager && !in_array($empUser->position_id, [3, 4])) {
+
+                            // If user is already a Manager, Admin, Entry, Hr Head: DO NOT alter their role or position
+                            $isConfiguredRole = $empUser->admin || $empUser->is_manager || in_array($empUser->position_id, [2, 3, 4]);
+                            if (!$isConfiguredRole) {
+                                if (in_array('permissions', $userCols)) {
                                     $updateData['permissions'] = ['/pms/goals'];
                                 }
-                            }
-                            if (in_array('role', $userCols) && !$empUser->admin && !$empUser->is_manager) {
-                                $updateData['role'] = 'Basic';
-                            }
-                            if (in_array('position_id', $userCols) && (empty($empUser->position_id) || $empUser->position_id == 1)) {
-                                $updateData['position_id'] = 1;
-                            }
-                            if (in_array('position', $userCols) && (empty($empUser->position) || $empUser->position == 1)) {
-                                $updateData['position'] = 1;
-                            }
-                            if (in_array('designation', $userCols) && !$empUser->admin && !$empUser->is_manager) {
-                                $updateData['designation'] = 'Employee';
+                                if (in_array('role', $userCols)) {
+                                    $updateData['role'] = 'Basic';
+                                }
+                                if (in_array('position_id', $userCols)) {
+                                    $updateData['position_id'] = 5;
+                                }
+                                if (in_array('position', $userCols)) {
+                                    $updateData['position'] = 5;
+                                }
+                                if (in_array('designation', $userCols)) {
+                                    $updateData['designation'] = 'Employee';
+                                }
                             }
                             $empUser->update($updateData);
                         } catch (\Throwable $e) {

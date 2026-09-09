@@ -17,11 +17,22 @@ class APIUserController extends Controller
     public function index(Request $request){
         $users = User::all();
         $users->transform(function ($u) {
-            if (empty($u->role) || in_array(strtolower($u->role), ['standard', 'user'])) {
-                $u->role = $u->admin ? 'Admin' : ($u->is_manager ? 'Manager' : 'Basic');
+            if ($u->admin) {
+                $u->role = 'Admin';
+            } elseif ($u->is_manager || $u->position_id == 3) {
+                $u->role = 'Manager';
+                $u->is_manager = 1;
+            } elseif ($u->position_id == 4) {
+                $u->role = 'Hr Head';
+            } elseif ($u->position_id == 2) {
+                $u->role = 'Entry';
+            } elseif ($u->position_id == 1) {
+                $u->role = 'Viewer';
+            } else {
+                $u->role = 'Basic';
             }
             if (empty($u->position_id)) {
-                $u->position_id = 1;
+                $u->position_id = ($u->is_manager ? 3 : 5);
             }
             return $u;
         });
@@ -181,47 +192,20 @@ class APIUserController extends Controller
     }
 
     public function store(Request $request){
-        // return $request;
-
         $user = $request;
-       
+        $posId = !empty($user['position_id']) ? intval($user['position_id']) : 1;
+        $isManager = (!empty($user['is_manager']) || $posId === 3) ? 1 : 0;
+        $isAdmin = (isset($user['admin']) && $user['admin']) ? 1 : 0;
 
         $userDetails = [
-            'admin' => isset($user['admin']) && $user['admin'] ? 1 : 0,
-            'user_id' => Auth::user()->id,
+            'admin' => $isAdmin,
+            'is_manager' => $isManager,
+            'user_id' => Auth::check() ? Auth::user()->id : 1,
             'name' => $user->name,
             'username' => $user->username,
             'email' => $user->email,
             'password' => bcrypt($user['password']),
-            'position_id' => $user->position_id ?: 1
-        ];
-
-        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'role')) {
-            $userDetails['role'] = (!empty($userDetails['admin'])) ? 'Admin' : (!empty($user['is_manager']) ? 'Manager' : 'Basic');
-        }
-        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'position')) {
-            $userDetails['position'] = $userDetails['position_id'];
-        }
-        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
-            $userDetails['designation'] = (!empty($userDetails['admin'])) ? 'Admin' : (!empty($user['is_manager']) ? 'Manager' : 'Employee');
-        }
-
-        $u = User::create($userDetails);
-
-        return $u;
-
-    }
-
-    public function updateuser(Request $request){
-        // return $request;
-
-        $user = $request;
-        $userDetails = [
-            'admin' => $user['admin'],
-            'name' => $user->name,
-            'username' => $user->username,
-            'email' => $user->email,
-            'position_id' => $user->position_id ?: 1
+            'position_id' => $posId
         ];
 
         if (isset($user['employee_code']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'employee_code')) {
@@ -236,16 +220,58 @@ class APIUserController extends Controller
         if (isset($user['report_to']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'report_to')) {
             $userDetails['report_to'] = $user['report_to'];
         }
-        if (isset($user['is_manager']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'is_manager')) {
-            $userDetails['is_manager'] = $user['is_manager'];
+        if (isset($user['permissions'])) {
+            $userDetails['permissions'] = is_array($user['permissions']) ? $user['permissions'] : json_decode($user['permissions'], true);
         }
         if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'role')) {
-            $userDetails['role'] = (!empty($user['admin'])) ? 'Admin' : (!empty($user['is_manager']) ? 'Manager' : 'Basic');
+            $userDetails['role'] = (!empty($userDetails['admin'])) ? 'Admin' : (!empty($userDetails['is_manager']) ? 'Manager' : ($posId == 2 ? 'Entry' : ($posId == 1 ? 'Viewer' : 'Basic')));
         }
         if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'position')) {
             $userDetails['position'] = $userDetails['position_id'];
         }
-        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation') && empty($user['admin']) && empty($user['is_manager'])) {
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
+            $userDetails['designation'] = (!empty($userDetails['admin'])) ? 'Admin' : (!empty($userDetails['is_manager']) ? 'Manager' : 'Employee');
+        }
+
+        $u = User::create($userDetails);
+
+        return $u;
+    }
+
+    public function updateuser(Request $request){
+        $user = $request;
+        $posId = !empty($user['position_id']) ? intval($user['position_id']) : 1;
+        $isManager = (isset($user['is_manager']) && $user['is_manager']) || $posId === 3;
+        $isAdmin = isset($user['admin']) && $user['admin'];
+
+        $userDetails = [
+            'admin' => $isAdmin ? 1 : 0,
+            'is_manager' => $isManager ? 1 : 0,
+            'name' => $user->name,
+            'username' => $user->username,
+            'email' => $user->email,
+            'position_id' => $posId
+        ];
+
+        if (isset($user['employee_code']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'employee_code')) {
+            $userDetails['employee_code'] = $user['employee_code'];
+        }
+        if (isset($user['department']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'department')) {
+            $userDetails['department'] = $user['department'];
+        }
+        if (isset($user['location']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'location')) {
+            $userDetails['location'] = $user['location'];
+        }
+        if (isset($user['report_to']) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'report_to')) {
+            $userDetails['report_to'] = $user['report_to'];
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'role')) {
+            $userDetails['role'] = (!empty($userDetails['admin'])) ? 'Admin' : (!empty($userDetails['is_manager']) ? 'Manager' : ($posId == 2 ? 'Entry' : ($posId == 1 ? 'Viewer' : 'Basic')));
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'position')) {
+            $userDetails['position'] = $userDetails['position_id'];
+        }
+        if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation') && empty($userDetails['admin']) && empty($userDetails['is_manager'])) {
             $userDetails['designation'] = 'Employee';
         }
 

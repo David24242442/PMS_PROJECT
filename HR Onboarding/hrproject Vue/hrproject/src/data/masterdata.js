@@ -286,10 +286,11 @@ const branchs = [
 ]
 
 const positions = [
-    {id:1,name:'Employee'},
+    {id:1,name:'Viewer'},
     {id:2,name:'Entry'},
     {id:3,name:'Manager'},
     {id:4,name:'Hr Head'},
+    {id:5,name:'Employee'},
 ]
 branchs.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -605,8 +606,12 @@ const findstatus = (status) => {
 const findposition = (position) => {
     const found = positions.find((p) => p.id == position)
     if (found) return found.name.toUpperCase()
-    if (position == 1 || !position) return 'EMPLOYEE'
-    return ''
+    if (position == 1) return 'VIEWER'
+    if (position == 2) return 'ENTRY'
+    if (position == 3) return 'MANAGER'
+    if (position == 4) return 'HR HEAD'
+    if (position == 5) return 'EMPLOYEE'
+    return 'EMPLOYEE'
 }
 
 const findrelation = (rel) => {
