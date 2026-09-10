@@ -273,6 +273,7 @@ const startReview = (goal) => {
             ...parsedData,
             competencies: normalizedCompetencies,
             comments: parsedData.comments || '',
+            manager_comments: parsedData.manager_comments || '',
             impressedMost: parsedData.impressedMost || '',
             impressedLeast: parsedData.impressedLeast || '',
             performanceRating: parsedData.performanceRating || 0,
@@ -932,10 +933,25 @@ const downloadFile = (url, filename) => {
                         </div>
                     </div>
 
+                    <!-- Employee Self-Comments & Development Goals (Submitted by Employee) -->
+                    <div class="p-6 bg-indigo-50/60 rounded-2xl border border-indigo-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-1.5">
+                                <i class="pi pi-comment text-indigo-600"></i> Employee Self-Comments &amp; Development Goals
+                            </span>
+                            <span class="text-[10px] font-bold text-indigo-600 bg-white px-2.5 py-0.5 rounded-full border border-indigo-100 shadow-xs">
+                                Submitted by Candidate
+                            </span>
+                        </div>
+                        <div class="p-4 bg-white rounded-xl border border-indigo-100 text-sm font-medium text-slate-700 whitespace-pre-wrap min-h-[60px] leading-relaxed">
+                            {{ selectedGoal.appraisal_data.comments || 'No employee self-comments provided.' }}
+                        </div>
+                    </div>
+
                     <!-- Manager Review Comments -->
                     <div class="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                        <span class="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-2">Manager Review Comments & Feedback</span>
-                        <textarea v-model="selectedGoal.appraisal_data.comments" rows="4" 
+                        <span class="text-[10px] font-black text-indigo-600 uppercase tracking-widest block mb-2">Manager Review Comments &amp; Feedback</span>
+                        <textarea v-model="selectedGoal.appraisal_data.manager_comments" rows="4" 
                             class="w-full bg-white border border-indigo-100 rounded-xl p-4 text-sm font-medium text-slate-700 focus:ring-indigo-500 outline-none resize-none transition-all focus:border-indigo-300" 
                             placeholder="Provide overall feedback on the employee's performance goals and execution..."></textarea>
                     </div>

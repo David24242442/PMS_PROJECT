@@ -374,6 +374,16 @@
                 </table>
             </div>
 
+            <!-- Employee Self-Comments & Development Goals Box -->
+            <div v-if="norm.employeeComments" class="feedback-split-box" style="margin-top: 6px;">
+                <div class="feedback-col" style="width: 100%;">
+                    <div class="feedback-col-header">Employee Self-Comments &amp; Development Goals</div>
+                    <div class="feedback-col-body" style="min-height: 24px;">
+                        {{ norm.employeeComments }}
+                    </div>
+                </div>
+            </div>
+
             <!-- Page 2 Footer -->
             <div class="page-footer">
                 <span>Page 02 &bull; Yearly Performance Assessment</span>
@@ -832,7 +842,13 @@ const norm = computed(() => {
     const summaryB = Array.isArray(rSummary.B) ? rSummary.B : (rSummary.B ? [rSummary.B] : []);
     const summaryC = Array.isArray(rSummary.C) ? rSummary.C : (rSummary.C ? [rSummary.C] : []);
     const summaryD = Array.isArray(rSummary.D) ? rSummary.D : (rSummary.D ? [rSummary.D] : []);
-    const summaryE = Array.isArray(rSummary.E) ? rSummary.E : (rSummary.E ? [rSummary.E] : []);
+    const summaryE = (() => {
+        let list = Array.isArray(rSummary.E) ? rSummary.E.filter(Boolean) : (rSummary.E ? [rSummary.E] : []);
+        if (!list.length && ad.manager_comments) {
+            list = [ad.manager_comments];
+        }
+        return list;
+    })();
 
     // Authorization
     const rawAuth = (typeof ad.authorization === 'string') 
@@ -930,6 +946,8 @@ const norm = computed(() => {
         selfAvgScore,
         impressedMost: ad.impressedMost || '',
         impressedLeast: ad.impressedLeast || '',
+        employeeComments: (ad.comments || '').trim(),
+        managerComments: (ad.manager_comments || '').trim(),
         candidateSignature: ad.candidate_signature_name || g.candidate_name,
         candidateSignatureDate: ad.signature_date || g.created_at,
         managerSignature: ad.manager_signature_name || auth.line_manager_signature || g.manager_name,

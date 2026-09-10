@@ -778,7 +778,7 @@ class GoalController extends Controller
                         'signature_date' => date('Y-m-d')
                     ];
 
-                    // Check if a goal already exists for this employee in this year
+                    // Check if an uncompleted goal already exists for this employee in this year to update
                     $existingGoal = \App\Models\Goal::where('year', $year)
                         ->where(function ($q) use ($empCode, $empUser) {
                             $q->where('employee_code', $empCode);
@@ -786,6 +786,8 @@ class GoalController extends Controller
                                 $q->orWhere('user_id', $empUser->id);
                             }
                         })
+                        ->whereIn('status', ['assigned', 'draft', 'in_progress'])
+                        ->latest('id')
                         ->first();
 
                     $rawGoalData = [
@@ -815,13 +817,12 @@ class GoalController extends Controller
                     // Filter goal data by columns actually present in goals table
                     $goalData = !empty($goalCols) ? array_intersect_key($rawGoalData, array_flip($goalCols)) : $rawGoalData;
 
-                    if ($existingGoal) {
-                        if (in_array($existingGoal->status, ['assigned', 'draft', 'in_progress'])) {
-                            $existingGoal->update($goalData);
-                            $existingGoal->display_status = $this->computeDisplayStatus($existingGoal);
-                            $createdGoals[] = $existingGoal;
-                        }
+                    if ($existingGoal && in_array($existingGoal->status, ['assigned', 'draft', 'in_progress'])) {
+                        $existingGoal->update($goalData);
+                        $existingGoal->display_status = $this->computeDisplayStatus($existingGoal);
+                        $createdGoals[] = $existingGoal;
                     } else {
+                        // If no goal exists or previous goals have been submitted/completed, create a newly assigned goal
                         $newG = \App\Models\Goal::create($goalData);
                         $newG->display_status = $this->computeDisplayStatus($newG);
                         $createdGoals[] = $newG;
