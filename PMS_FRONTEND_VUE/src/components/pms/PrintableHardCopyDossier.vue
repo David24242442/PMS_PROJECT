@@ -334,41 +334,60 @@
                 </div>
             </div>
 
-            <!-- Standard 1-5 Performance Rating Guide Table -->
+            <!-- Standard 1-5 Performance Rating Assessment Table (Matching Official Template) -->
             <div class="scale-guide-wrapper">
-                <table class="form-table scale-table">
+                <table class="form-table scale-table" style="border: 1px solid #000000;">
                     <thead>
-                        <tr class="header-row-dark">
-                            <th style="width: 32%;">1-5 Rating (5 Highest)</th>
-                            <th style="width: 34%;">Performance Rating</th>
-                            <th style="width: 34%;">Comments</th>
+                        <tr style="background-color: #ffffff !important; border-bottom: 2px solid #000000;">
+                            <th style="width: 32%; text-align: center; color: #000000 !important; font-weight: 900; border-right: 1px solid #000000; padding: 4px 6px;">1-5 Rating (5 Highest)</th>
+                            <th style="width: 20%; text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                                <span style="color: #002060; font-style: italic; text-decoration: underline; font-weight: 900;">Performance Rating</span>
+                            </th>
+                            <th style="width: 48%; text-align: center; padding: 4px 6px;">
+                                <span style="color: #002060; font-style: italic; text-decoration: underline; font-weight: 900;">Comments</span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 5 }">
-                            <td class="scale-cell-band font-bold">5 - Out Standing / Exceptional</td>
-                            <td>High Potential</td>
-                            <td>{{ canViewReviewPage ? (norm.ratingComments[5] || '') : '' }}</td>
+                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 5 }" style="border-bottom: 1px solid #000000;">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">5-Out Standing / Exceptional</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 5" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 5</span>
+                                <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 5</span>
+                            </td>
+                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[5] || '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 4 }">
-                            <td class="scale-cell-band font-bold">4 - Exceeding Expectations</td>
-                            <td>High Potential</td>
-                            <td>{{ canViewReviewPage ? (norm.ratingComments[4] || '') : '' }}</td>
+                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 4 }" style="border-bottom: 1px solid #000000;">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">4-Exceeding Expectations</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 4" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 4</span>
+                                <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 4</span>
+                            </td>
+                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[4] || '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 3 }">
-                            <td class="scale-cell-band font-bold">3 - Meeting Expectations</td>
-                            <td>Good Potential</td>
-                            <td>{{ canViewReviewPage ? (norm.ratingComments[3] || '') : '' }}</td>
+                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 3 }" style="border-bottom: 1px solid #000000;">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">3-Meeting Expectations</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 3" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 3</span>
+                                <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 3</span>
+                            </td>
+                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[3] || '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 2 }">
-                            <td class="scale-cell-band font-bold">2 - Partly Meeting Expectations</td>
-                            <td>Low Potential</td>
-                            <td>{{ canViewReviewPage ? (norm.ratingComments[2] || '') : '' }}</td>
+                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 2 }" style="border-bottom: 1px solid #000000;">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">2-Partly Meeting Expectations</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 2" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 2</span>
+                                <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 2</span>
+                            </td>
+                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[2] || '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': canViewReviewPage && (norm.performanceRating || Math.round(norm.managerOverallScore)) === 1 }">
-                            <td class="scale-cell-band font-bold">1 - Below Expectations / Unsatisfactory</td>
-                            <td>Below Potential</td>
-                            <td>{{ canViewReviewPage ? (norm.ratingComments[1] || '') : '' }}</td>
+                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 1 }">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">1-Below Expectations/ Unsatisfactory</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 1" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 1</span>
+                                <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 1</span>
+                            </td>
+                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[1] || '' }}</td>
                         </tr>
                     </tbody>
                 </table>

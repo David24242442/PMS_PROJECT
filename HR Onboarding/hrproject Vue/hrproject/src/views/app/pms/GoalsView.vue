@@ -69,7 +69,7 @@ const employeeGoal = computed(() => {
 // Helper to check if employee has an active assigned goal requiring action
 const pendingAssignedGoal = computed(() => {
     if (!goals.value || !goals.value.length) return null;
-    return goals.value.find(g => ['assigned', 'draft', 'in_progress'].includes(g.status)) || null;
+    return goals.value.find(g => g.status === 'assigned' || g.display_status === 'assigned') || null;
 });
 
 // Master Employee Data for Dropdown
@@ -358,6 +358,13 @@ const openEmployeeGoal = (goal) => {
     if (!newGoal.value.appraisal_data.candidate_signature_name) {
         newGoal.value.appraisal_data.candidate_signature_name = newGoal.value.candidate_name;
     }
+    if (!newGoal.value.appraisal_data.rating_comments || typeof newGoal.value.appraisal_data.rating_comments !== 'object') {
+        newGoal.value.appraisal_data.rating_comments = { 1: '', 2: '', 3: '', 4: '', 5: '' };
+    } else {
+        for (let i = 1; i <= 5; i++) {
+            if (!newGoal.value.appraisal_data.rating_comments[i]) newGoal.value.appraisal_data.rating_comments[i] = '';
+        }
+    }
 
     // Ensure fields and SMART checklist start clean and empty for the employee to fill in
     if (goal.status === 'assigned' || isEmployee.value) {
@@ -414,6 +421,15 @@ const selfAppraisalOverallPercentage = computed(() => {
 });
 
 const activeSelfRatingBand = computed(() => Math.round(parseFloat(selfAppraisalOverallRating.value) || 0));
+
+const toggleRating = (val) => {
+    if (isFormReadOnly.value) return;
+    if (newGoal.value.appraisal_data.performanceRating === val) {
+        newGoal.value.appraisal_data.performanceRating = 0;
+    } else {
+        newGoal.value.appraisal_data.performanceRating = val;
+    }
+};
 
 // Manager Assign Modal State
 const showAssignModal = ref(false);
@@ -1284,8 +1300,17 @@ const resumeDraft = (goal) => {
     if (!data.quarterly_tracking) data.quarterly_tracking = defaultQuarterlyTracking();
     if (!data.appraisal_data) {
         data.appraisal_data = defaultAppraisalData();
-    } else if (!data.appraisal_data.rating_comments) {
-        data.appraisal_data.rating_comments = { 1: '', 2: '', 3: '', 4: '', 5: '' };
+    } else {
+        if (typeof data.appraisal_data.rating_comments === 'string') {
+            try { data.appraisal_data.rating_comments = JSON.parse(data.appraisal_data.rating_comments); } catch {}
+        }
+        if (!data.appraisal_data.rating_comments || typeof data.appraisal_data.rating_comments !== 'object') {
+            data.appraisal_data.rating_comments = { 1: '', 2: '', 3: '', 4: '', 5: '' };
+        } else {
+            for (let i = 1; i <= 5; i++) {
+                if (!data.appraisal_data.rating_comments[i]) data.appraisal_data.rating_comments[i] = '';
+            }
+        }
     }
     if (!Array.isArray(data.description) || !data.description.length) data.description = [''];
     if (!Array.isArray(data.purposes) || !data.purposes.length) data.purposes = [''];
@@ -1383,7 +1408,15 @@ const filteredGoals = computed(() => {
         // Status Filter by display_status
         if (filterStatus.value !== 'all') {
             if (filterStatus.value === 'assigned' && g.display_status !== 'assigned') return false;
-            if (filterStatus.value === 'submitted' && g.display_status !== 'submitted') return false;
+            if (filterStatus.value === 'submitted') {
+                if (isEmployee.value) {
+                    const isSub = ['submitted', 'appraisal_completed', 'review_completed', 'completed'].includes(g.display_status) ||
+                                  ['submitted', 'appraisal_completed', 'review_completed', 'completed'].includes(g.status);
+                    if (!isSub) return false;
+                } else {
+                    if (g.display_status !== 'submitted') return false;
+                }
+            }
             if (filterStatus.value === 'goal_created' && g.display_status !== 'goal_created') return false;
             if (filterStatus.value === 'appraisal_completed' && g.display_status !== 'appraisal_completed') return false;
             if (filterStatus.value === 'review_completed' && g.display_status !== 'review_completed') return false;
@@ -1540,6 +1573,35 @@ const downloadAttachment = (file) => {
     <div class="h-full pb-6">
         <!-- LIST VIEW -->
         <template v-if="viewMode === 'list'">
+            <!-- TOP BLINKING ALERT FOR EMPLOYEES: NEW GOAL & APPRAISAL ASSIGNED -->
+            <div v-if="isEmployee && pendingAssignedGoal && (pendingAssignedGoal.status === 'assigned' || pendingAssignedGoal.display_status === 'assigned')" class="mb-6 p-5 bg-gradient-to-r from-red-600 via-rose-600 to-indigo-950 rounded-2xl text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-2 border-red-400 relative overflow-hidden animate-pulse">
+                <div class="flex items-center gap-3.5 z-10">
+                    <span class="relative flex h-5 w-5 shrink-0">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-90"></span>
+                        <span class="relative inline-flex rounded-full h-5 w-5 bg-amber-400 text-slate-900 items-center justify-center text-[10px] font-black shadow-sm">
+                            <i class="pi pi-bell text-[10px]"></i>
+                        </span>
+                    </span>
+                    <div>
+                        <div class="flex items-center gap-2 mb-0.5 flex-wrap">
+                            <span class="px-2.5 py-0.5 bg-amber-400 text-slate-900 rounded-md text-[10px] font-black uppercase tracking-widest shadow-xs">
+                                ACTION REQUIRED
+                            </span>
+                            <span class="text-xs font-black uppercase tracking-wider text-rose-100">
+                                NEW GOAL &amp; PERFORMANCE APPRAISAL ASSIGNED!
+                            </span>
+                        </div>
+                        <p class="text-xs font-medium text-white/95 leading-snug">
+                            Your Line Manager <strong>({{ pendingAssignedGoal.manager_name || 'Line Manager' }})</strong> has assigned your performance goals and appraisal template for FY {{ pendingAssignedGoal.year || currentYear }}. Please click below to fill your SMART objectives, quarterly tracking, and self-appraisal.
+                        </p>
+                    </div>
+                </div>
+                <button @click="openEmployeeGoal(pendingAssignedGoal)" class="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg flex items-center gap-2 transition-all flex-shrink-0 cursor-pointer z-10">
+                    <i class="pi pi-pencil text-xs"></i>
+                    <span>Fill Goals &amp; Self-Appraisal</span>
+                </button>
+            </div>
+
             <!-- Page Header -->
             <div class="prof-card mb-6 bg-[#1A237E] !rounded-2xl">
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-5 px-6">
@@ -1577,65 +1639,7 @@ const downloadAttachment = (file) => {
                 </div>
             </div>
 
-            <!-- EMPLOYEE PORTAL VIEW: Assigned Goal Card or Waiting State -->
-            <div v-if="isEmployee" class="mb-6">
-                <!-- Awaiting Assignment State -->
-                <div v-if="!employeeGoal" class="prof-card p-12 text-center bg-white rounded-3xl border border-slate-200 shadow-xl">
-                    <div class="w-20 h-20 mx-auto mb-5 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center text-3xl border-2 border-amber-200 shadow-inner">
-                        <i class="pi pi-clock"></i>
-                    </div>
-                    <h3 class="text-xl font-black text-slate-800 mb-2">Awaiting Goal & Appraisal Assignment</h3>
-                    <p class="text-sm text-slate-500 max-w-lg mx-auto font-medium mb-6">
-                        Your Line Manager has not yet assigned a SMART Goal & Performance Appraisal template for FY {{ currentYear }}. 
-                        Once assigned, your goal template will appear here automatically for you to define objectives, track quarterly milestones, and complete your self-appraisal.
-                    </p>
-                    <div class="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold border border-slate-200">
-                        <i class="pi pi-info-circle text-xs"></i>
-                        <span>Please contact your Line Manager if you need this assigned urgently.</span>
-                    </div>
-                </div>
 
-                <!-- Assigned Goal Hub Card -->
-                <div v-else class="prof-card p-6 bg-white rounded-3xl border border-indigo-100 shadow-xl overflow-hidden relative">
-                    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-                        <div class="space-y-3 flex-1">
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span v-if="employeeGoal.display_status === 'assigned'" class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                    <i class="pi pi-bell mr-1"></i> Assigned — Action Required: Fill & Submit
-                                </span>
-                                <span v-else-if="employeeGoal.display_status === 'submitted'" class="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                    <i class="pi pi-clock mr-1"></i> Submitted — Under Line Manager Review
-                                </span>
-                                <span v-else-if="employeeGoal.display_status === 'review_completed'" class="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                    <i class="pi pi-check-circle mr-1"></i> Review Completed (Finalized)
-                                </span>
-                                <span v-else class="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                    {{ employeeGoal.display_status }}
-                                </span>
-                                <span class="text-xs font-bold text-slate-400">FY {{ employeeGoal.year }}</span>
-                            </div>
-                            <h2 class="text-2xl font-black text-slate-800 tracking-tight">{{ employeeGoal.title }}</h2>
-                            <div class="flex flex-wrap gap-4 text-xs font-semibold text-slate-500">
-                                <span class="flex items-center gap-1.5"><i class="pi pi-user text-indigo-500"></i> Candidate: <strong>{{ employeeGoal.candidate_name }}</strong></span>
-                                <span class="flex items-center gap-1.5"><i class="pi pi-shield text-blue-500"></i> Line Manager: <strong>{{ employeeGoal.manager_name }}</strong></span>
-                                <span class="flex items-center gap-1.5"><i class="pi pi-building text-slate-400"></i> {{ employeeGoal.department || 'N/A' }} ({{ employeeGoal.location || 'N/A' }})</span>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <button @click="openEmployeeGoal(employeeGoal)" 
-                                class="prof-button !bg-indigo-600 hover:!bg-indigo-700 !text-white px-6 py-3 rounded-2xl shadow-lg shadow-indigo-600/30 flex items-center gap-2 font-black text-xs uppercase tracking-wider transition-all">
-                                <i :class="employeeGoal.display_status === 'assigned' ? 'pi pi-pencil' : 'pi pi-eye'"></i>
-                                <span>{{ employeeGoal.display_status === 'assigned' ? 'Fill Goals & Self-Appraisal' : 'View Submission & Status' }}</span>
-                            </button>
-                            <button @click="viewGoalDetail(employeeGoal)" 
-                                class="prof-button !bg-slate-100 hover:!bg-slate-200 !text-slate-700 px-5 py-3 rounded-2xl border border-slate-200 flex items-center gap-2 font-black text-xs uppercase tracking-wider transition-all">
-                                <i class="pi pi-file"></i>
-                                <span>View Dossier</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             <!-- Dashboard Stats & Table (Manager only) -->
             <div v-if="isManager" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
@@ -1705,23 +1709,7 @@ const downloadAttachment = (file) => {
                 </div>
             </div>
 
-            <!-- Active Goal Assignment Alert Banner for Employees -->
-            <div v-if="isEmployee && pendingAssignedGoal" class="mb-6 p-6 bg-gradient-to-r from-[#1A237E] via-[#283593] to-indigo-900 rounded-3xl text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-5 border border-indigo-200/20">
-                <div class="space-y-1.5">
-                    <div class="flex items-center gap-2">
-                        <span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-900 text-[10px] font-black uppercase tracking-wider animate-pulse">Action Required</span>
-                        <span class="text-xs font-bold text-indigo-200">Assigned by {{ pendingAssignedGoal.manager_name || 'Line Manager' }}</span>
-                    </div>
-                    <h3 class="text-xl font-black tracking-tight">{{ pendingAssignedGoal.title || 'New Performance Goal & Appraisal Assigned' }}</h3>
-                    <p class="text-xs text-indigo-100 font-medium max-w-2xl leading-relaxed">
-                        You have an active performance cycle assigned. Set your SMART objectives, log your quarterly target measures, and complete your self-appraisal.
-                    </p>
-                </div>
-                <button @click="openEmployeeGoal(pendingAssignedGoal)" class="px-6 py-3.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-900 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg flex items-center gap-2.5 transition-all flex-shrink-0 cursor-pointer">
-                    <i class="pi pi-pencil text-xs"></i>
-                    <span>Fill Goals &amp; Self-Appraisal</span>
-                </button>
-            </div>
+
 
             <!-- Goals List Section (Visible to both Manager and Employee) -->
             <div class="prof-card mb-6 !rounded-2xl">
@@ -1757,26 +1745,28 @@ const downloadAttachment = (file) => {
                                 class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
                                 Submitted
                             </button>
-                            <button @click="filterStatus = 'goal_created'" 
-                                :class="filterStatus === 'goal_created' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-blue-600'" 
-                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
-                                In Progress
-                            </button>
-                            <button @click="filterStatus = 'appraisal_completed'" 
-                                :class="filterStatus === 'appraisal_completed' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-teal-600'" 
-                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
-                                Appraisal Done
-                            </button>
-                            <button @click="filterStatus = 'review_completed'" 
-                                :class="filterStatus === 'review_completed' ? 'bg-green-700 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-green-700'" 
-                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
-                                Review Done
-                            </button>
-                            <button @click="filterStatus = 'draft'" 
-                                :class="filterStatus === 'draft' ? 'bg-gray-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-gray-800'" 
-                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
-                                Drafts
-                            </button>
+                            <template v-if="isManager">
+                                <button @click="filterStatus = 'goal_created'" 
+                                    :class="filterStatus === 'goal_created' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-blue-600'" 
+                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                    In Progress
+                                </button>
+                                <button @click="filterStatus = 'appraisal_completed'" 
+                                    :class="filterStatus === 'appraisal_completed' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-teal-600'" 
+                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                    Appraisal Done
+                                </button>
+                                <button @click="filterStatus = 'review_completed'" 
+                                    :class="filterStatus === 'review_completed' ? 'bg-green-700 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-green-700'" 
+                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                    Review Done
+                                </button>
+                                <button @click="filterStatus = 'draft'" 
+                                    :class="filterStatus === 'draft' ? 'bg-gray-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-gray-800'" 
+                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                    Drafts
+                                </button>
+                            </template>
                         </div>
 
                         <!-- Actions & Search Box -->
@@ -2553,61 +2543,62 @@ const downloadAttachment = (file) => {
                 </div>
 
                 <!-- Yearly Performance Assessment: 1-5 Performance Rating & Potential Reference Guide Table -->
-                <div class="p-6 bg-white rounded-3xl border border-gray-200 shadow-sm space-y-3">
+                <div class="p-6 bg-white rounded-3xl border border-gray-200 shadow-sm space-y-4">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
                         <div>
                             <div class="flex items-center gap-2">
                                 <span class="w-2.5 h-2.5 rounded-full bg-[#1A237E]"></span>
-                                <h4 class="text-xs font-black text-[#1A237E] uppercase tracking-wider">Yearly Performance Assessment: 1-5 Rating &amp; Potential Reference Guide</h4>
+                                <h4 class="text-xs font-black text-[#1A237E] uppercase tracking-wider">Yearly Performance Assessment</h4>
                             </div>
-                            <p class="text-[11px] text-gray-500 font-medium mt-0.5">Standard Melcom evaluation benchmark reference scale. Your current self-appraisal score is dynamically highlighted below.</p>
+                            <p class="text-[11px] text-gray-500 font-medium mt-0.5">Select your performance rating checkbox and leave your assessment comments in the comments column.</p>
                         </div>
-                        <div v-if="parseFloat(selfAppraisalOverallRating) > 0" class="flex items-center gap-2 self-start sm:self-auto px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-xl">
-                            <span class="text-[10px] font-bold text-indigo-700 uppercase">Current Self Score:</span>
-                            <span class="text-xs font-black text-indigo-900">{{ selfAppraisalOverallRating }} / 5.00</span>
+                        <div v-if="newGoal.appraisal_data.performanceRating" class="flex items-center gap-2 self-start sm:self-auto px-3 py-1 bg-blue-50 border border-blue-200 rounded-xl">
+                            <span class="text-[10px] font-bold text-blue-700 uppercase">Selected Rating:</span>
+                            <span class="text-xs font-black text-blue-900">{{ newGoal.appraisal_data.performanceRating }} / 5</span>
                         </div>
                     </div>
 
-                    <div class="overflow-x-auto rounded-2xl border border-gray-200">
+                    <div class="overflow-x-auto rounded-xl border-2 border-slate-700 shadow-xs">
                         <table class="w-full text-left border-collapse text-xs">
-                            <thead class="bg-[#1A237E] text-white uppercase text-[10px] tracking-wider">
-                                <tr>
-                                    <th class="px-4 py-3 font-black w-[35%]">1-5 Rating (5 Highest)</th>
-                                    <th class="px-4 py-3 font-black w-[25%]">Performance Rating</th>
-                                    <th class="px-4 py-3 font-black w-[40%]">Benchmark / Readiness Indicator</th>
+                            <thead>
+                                <tr class="bg-slate-50 border-b-2 border-slate-700">
+                                    <th class="px-4 py-3.5 font-black text-slate-900 text-center w-[30%] border-r-2 border-slate-700 text-xs tracking-tight">
+                                        1-5 Rating (5 Highest)
+                                    </th>
+                                    <th class="px-4 py-3.5 text-center w-[20%] border-r-2 border-slate-700">
+                                        <span class="text-blue-700 italic underline font-black text-xs tracking-tight">Performance Rating</span>
+                                    </th>
+                                    <th class="px-4 py-3.5 text-center w-[50%]">
+                                        <span class="text-blue-700 italic underline font-black text-xs tracking-tight">Comments</span>
+                                    </th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-gray-100">
+                            <tbody class="divide-y divide-slate-300">
                                 <tr v-for="rate in performanceRatings" :key="rate.value" 
-                                    :class="[
-                                        activeSelfRatingBand === rate.value && parseFloat(selfAppraisalOverallRating) > 0
-                                            ? 'bg-indigo-50/80 font-bold border-l-4 border-indigo-600'
-                                            : 'hover:bg-gray-50/60'
-                                    ]"
-                                    class="transition-colors">
-                                    <td class="px-4 py-3 text-slate-800 flex items-center gap-2">
-                                        <div v-if="activeSelfRatingBand === rate.value && parseFloat(selfAppraisalOverallRating) > 0" 
-                                            class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] shadow-sm flex-shrink-0">
-                                            <i class="pi pi-check text-[9px]"></i>
-                                        </div>
-                                        <div v-else class="w-5 h-5 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-[10px] font-black flex-shrink-0">
-                                            {{ rate.value }}
-                                        </div>
-                                        <span class="font-black" :class="activeSelfRatingBand === rate.value && parseFloat(selfAppraisalOverallRating) > 0 ? 'text-indigo-950 font-black' : 'text-slate-700'">
-                                            {{ rate.label }}
-                                        </span>
+                                    :class="newGoal.appraisal_data.performanceRating === rate.value ? 'bg-blue-50/70 font-semibold' : 'hover:bg-slate-50/50'"
+                                    class="transition-colors border-b border-slate-300 last:border-b-0">
+                                    <td class="px-4 py-3 text-slate-900 font-bold border-r border-slate-400 align-middle">
+                                        {{ rate.label }}
                                     </td>
-                                    <td class="px-4 py-3 font-extrabold" :class="[
-                                        rate.value >= 4 ? 'text-emerald-700' : rate.value === 3 ? 'text-blue-700' : rate.value === 2 ? 'text-amber-700' : 'text-rose-700'
-                                    ]">
-                                        <span class="px-2 py-0.5 rounded-lg text-[10px] border" :class="[
-                                            rate.value >= 4 ? 'bg-emerald-50 border-emerald-200' : rate.value === 3 ? 'bg-blue-50 border-blue-200' : rate.value === 2 ? 'bg-amber-50 border-amber-200' : 'bg-rose-50 border-rose-200'
-                                        ]">
-                                            {{ rate.potential }}
-                                        </span>
+                                    <td class="px-4 py-3 text-center border-r border-slate-400 align-middle">
+                                        <label class="inline-flex items-center justify-center gap-2 cursor-pointer select-none">
+                                            <input 
+                                                type="checkbox" 
+                                                :checked="newGoal.appraisal_data.performanceRating === rate.value" 
+                                                @change="toggleRating(rate.value)" 
+                                                :disabled="isFormReadOnly" 
+                                                class="w-4 h-4 text-blue-600 rounded cursor-pointer accent-blue-600"
+                                            />
+                                            <span class="font-black text-sm text-slate-800">{{ rate.value }}</span>
+                                        </label>
                                     </td>
-                                    <td class="px-4 py-3 text-slate-600 font-medium">
-                                        <span>{{ rate.potentialComment || 'Solid contributor meeting all designated operational benchmarks' }}</span>
+                                    <td class="px-3 py-2 align-middle">
+                                        <textarea 
+                                            v-model="newGoal.appraisal_data.rating_comments[rate.value]" 
+                                            :disabled="isFormReadOnly" 
+                                            rows="2" 
+                                            class="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30 outline-none resize-none transition-all placeholder:text-slate-400 placeholder:italic" 
+                                            :placeholder="rate.value === 5 ? 'e.g. All issues reported are always resolved without a delay' : 'Enter comments for rating ' + rate.value + '...'"></textarea>
                                     </td>
                                 </tr>
                             </tbody>
