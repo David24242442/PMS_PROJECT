@@ -355,8 +355,9 @@ const openEmployeeGoal = (goal) => {
     if (!newGoal.value.appraisal_data) {
         newGoal.value.appraisal_data = defaultAppraisalData();
     }
+    // Signature is left blank for manual signing
     if (!newGoal.value.appraisal_data.candidate_signature_name) {
-        newGoal.value.appraisal_data.candidate_signature_name = newGoal.value.candidate_name;
+        newGoal.value.appraisal_data.candidate_signature_name = '';
     }
     if (!newGoal.value.appraisal_data.rating_comments || typeof newGoal.value.appraisal_data.rating_comments !== 'object') {
         newGoal.value.appraisal_data.rating_comments = { 1: '', 2: '', 3: '', 4: '', 5: '' };

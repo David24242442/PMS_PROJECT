@@ -24,14 +24,12 @@
                     </tr>
                     <tr>
                         <td class="cell-label">Signature:-</td>
-                        <td class="cell-value">
-                            <span class="sig-font">{{ norm.candidateSignature || norm.candidateName }}</span>
-                            <span class="sig-date" v-if="norm.candidateSignatureDate">({{ formatDate(norm.candidateSignatureDate) }})</span>
+                        <td class="cell-value" style="height: 38px;">
+                            <!-- Blank for manual physical signing -->
                         </td>
                         <td class="cell-label">Signature:-</td>
-                        <td class="cell-value">
-                            <span class="sig-font">{{ norm.managerSignature || norm.lineManagerName }}</span>
-                            <span class="sig-date" v-if="norm.managerSignatureDate">({{ formatDate(norm.managerSignatureDate) }})</span>
+                        <td class="cell-value" style="height: 38px;">
+                            <!-- Blank for manual physical signing -->
                         </td>
                     </tr>
                     <tr>
