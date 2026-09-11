@@ -261,7 +261,7 @@
                                     {{ norm.managerOverallScore.toFixed(2) }} / 5.00 ({{ norm.managerOverallPercentage }}%)
                                 </template>
                                 <template v-else>
-                                    {{ norm.selfAvgScore > 0 ? (norm.selfAvgScore.toFixed(2) + ' / 5.00 (Self Score)') : '--' }}
+                                    --
                                 </template>
                             </span>
                         </td>
@@ -347,42 +347,42 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 5 }" style="border-bottom: 1px solid #000000;">
+                        <tr :class="{ 'active-rating-row': norm.performanceRating === 5 }" style="border-bottom: 1px solid #000000;">
                             <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">5-Out Standing / Exceptional</td>
                             <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
-                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 5" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 5</span>
+                                <span v-if="norm.performanceRating === 5" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 5</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 5</span>
                             </td>
                             <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[5] || '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 4 }" style="border-bottom: 1px solid #000000;">
+                        <tr :class="{ 'active-rating-row': norm.performanceRating === 4 }" style="border-bottom: 1px solid #000000;">
                             <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">4-Exceeding Expectations</td>
                             <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
-                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 4" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 4</span>
+                                <span v-if="norm.performanceRating === 4" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 4</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 4</span>
                             </td>
                             <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[4] || '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 3 }" style="border-bottom: 1px solid #000000;">
+                        <tr :class="{ 'active-rating-row': norm.performanceRating === 3 }" style="border-bottom: 1px solid #000000;">
                             <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">3-Meeting Expectations</td>
                             <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
-                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 3" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 3</span>
+                                <span v-if="norm.performanceRating === 3" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 3</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 3</span>
                             </td>
                             <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[3] || '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 2 }" style="border-bottom: 1px solid #000000;">
+                        <tr :class="{ 'active-rating-row': norm.performanceRating === 2 }" style="border-bottom: 1px solid #000000;">
                             <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">2-Partly Meeting Expectations</td>
                             <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
-                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 2" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 2</span>
+                                <span v-if="norm.performanceRating === 2" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 2</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 2</span>
                             </td>
                             <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[2] || '' }}</td>
                         </tr>
-                        <tr :class="{ 'active-rating-row': (norm.performanceRating || Math.round(norm.managerOverallScore)) === 1 }">
+                        <tr :class="{ 'active-rating-row': norm.performanceRating === 1 }">
                             <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">1-Below Expectations/ Unsatisfactory</td>
                             <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
-                                <span v-if="(norm.performanceRating || Math.round(norm.managerOverallScore)) === 1" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 1</span>
+                                <span v-if="norm.performanceRating === 1" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 1</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 1</span>
                             </td>
                             <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[1] || '' }}</td>
@@ -405,7 +405,7 @@
             <div class="page-footer">
                 <span>Page 02 &bull; Yearly Performance Assessment</span>
                 <span>Melcom HR Performance Management System</span>
-                <span>Overall: {{ canViewReviewPage ? (norm.managerOverallScore.toFixed(2) + ' / 5.00 (' + norm.managerOverallPercentage + '%)') : (norm.selfAvgScore > 0 ? norm.selfAvgScore.toFixed(2) + ' / 5.00 (Self Score)' : '--') }}</span>
+                <span>Overall: {{ canViewReviewPage ? (norm.managerOverallScore.toFixed(2) + ' / 5.00 (' + norm.managerOverallPercentage + '%)') : '--' }}</span>
             </div>
         </div>
 
@@ -977,12 +977,12 @@ const norm = computed(() => {
         summaryD,
         summaryE,
         auth,
-        performanceRating: Number(ad.performanceRating || (Math.round(managerOverallScore) > 0 ? Math.round(managerOverallScore) : 0)),
+        performanceRating: Number(ad.performanceRating || (canViewReviewPage.value && Math.round(managerOverallScore) > 0 ? Math.round(managerOverallScore) : 0)),
         ratingComments: (() => {
             const raw = (typeof ad.rating_comments === 'string') 
                 ? parseMaybeJSON(ad.rating_comments, {}) 
                 : (ad.rating_comments || {});
-            const selectedR = Number(ad.performanceRating || Math.round(managerOverallScore) || 0);
+            const selectedR = Number(ad.performanceRating || (canViewReviewPage.value ? Math.round(managerOverallScore) : 0) || 0);
             const fallbackC = (ad.performanceComments || '').trim();
             return {
                 1: ((raw[1] || raw['1'] || (selectedR === 1 ? fallbackC : '')) || '').trim(),

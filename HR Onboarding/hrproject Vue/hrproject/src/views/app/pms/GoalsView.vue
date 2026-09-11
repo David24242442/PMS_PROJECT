@@ -902,6 +902,15 @@ const isGoalReviewCompleted = (goal) => {
            (goal.status === 'completed' && goal.display_status !== 'appraisal_completed');
 };
 
+const isGoalSubmittedOrReviewed = (goal) => {
+    if (!goal) return false;
+    const st = (goal.status || '').toLowerCase();
+    const dst = (goal.display_status || '').toLowerCase();
+    return ['submitted', 'appraisal_completed', 'review_completed', 'completed'].includes(st) ||
+           ['submitted', 'appraisal_completed', 'review_completed', 'completed'].includes(dst) ||
+           isGoalReviewCompleted(goal);
+};
+
 const canProceedToStep2 = computed(() => {
     const hasTitle = newGoal.value.title && String(newGoal.value.title).trim() !== '';
     const hasUser = !!newGoal.value.user_id;
@@ -1153,12 +1162,12 @@ const downloadSingleCSV = (goal) => {
 
     // Competency data
     comps.forEach(c => {
-        row.push(`${c.weight}%`, c.selfRating || 0, c.managerRating || 0);
+        row.push(`${c.weight}%`, c.selfRating || 0, isManager.value ? (c.managerRating || 0) : 0);
     });
 
     // Appraisal data
     row.push(
-        getManagerRating(goal) || 'N/A', ad.performanceRating || 'N/A', ad.potentialRating || 'N/A',
+        (isManager.value ? getManagerRating(goal) : '') || 'N/A', ad.performanceRating || 'N/A', ad.potentialRating || 'N/A',
         ad.impressedMost || '', ad.impressedLeast || '', ad.comments || '',
         ad.hod_comments || '', ad.director_remarks || '',
         ad.candidate_signature_name || '', ad.manager_signature_name || '', ad.signature_date || '',
@@ -1818,7 +1827,7 @@ const downloadAttachment = (file) => {
                                 <th class="px-6 py-4 w-[12%]">SMART Score</th>
                                 <th class="px-6 py-4 w-[15%]">Progress</th>
                                 <th class="px-6 py-4 w-[13%]">Status</th>
-                                <th class="px-6 py-4 w-[10%] text-center">Rating</th>
+                                <th v-if="isManager" class="px-6 py-4 w-[10%] text-center">Rating</th>
                                 <th class="px-6 py-4 w-[10%] text-right">Actions</th>
                             </tr>
                         </thead>
@@ -1882,7 +1891,7 @@ const downloadAttachment = (file) => {
                                         <i class="pi pi-minus mr-1.5 text-xs"></i> {{ goal.display_status }}
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 text-center font-black text-[11px]">
+                                <td v-if="isManager" class="px-6 py-4 text-center font-black text-[11px]">
                                     <span v-if="getManagerRating(goal)" class="px-2 py-1 bg-slate-100 text-slate-700 rounded border border-slate-200" :title="'Manager avg: ' + getManagerRating(goal) + '/5'">
                                         {{ getManagerRating(goal) }}
                                     </span>
@@ -1890,15 +1899,15 @@ const downloadAttachment = (file) => {
                                 </td>
                                 <td class="px-6 py-4 text-right whitespace-nowrap">
                                     <div class="flex items-center justify-end gap-2">
-                                        <!-- Fill / Edit Button (Hidden if review is completed) -->
-                                        <button v-if="!isGoalReviewCompleted(goal) && (isManager || goal.status === 'assigned' || goal.status === 'draft' || goal.status === 'in_progress')" @click="editGoal(goal)" 
+                                        <!-- Fill / Edit Button (Hidden once submitted or reviewed) -->
+                                        <button v-if="!isGoalSubmittedOrReviewed(goal) && (isManager || goal.status === 'assigned' || goal.status === 'draft' || goal.status === 'in_progress')" @click="editGoal(goal)" 
                                             class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer"
                                             :title="isManager ? 'Edit SMART Goal' : (goal.status === 'assigned' ? 'Fill Goals & Self-Appraisal' : 'Edit')">
                                             <i class="pi pi-pencil text-[9px]"></i> {{ isManager ? 'Edit Goal' : (goal.status === 'assigned' ? 'Fill Goals & Appraisal' : 'Edit') }}
                                         </button>
 
-                                        <!-- Edit Appraisal Step 1 Button (Manager - Hidden if review is completed) -->
-                                        <button v-if="isManager && !isGoalReviewCompleted(goal)" @click="router.push({ path: '/pms/appraisal', query: { goal_id: goal.id, employee_code: goal.candidate_code || goal.employee_code, step: 1 } })" 
+                                        <!-- Edit Appraisal Step 1 Button (Manager - Hidden once submitted or reviewed) -->
+                                        <button v-if="isManager && !isGoalSubmittedOrReviewed(goal)" @click="router.push({ path: '/pms/appraisal', query: { goal_id: goal.id, employee_code: goal.candidate_code || goal.employee_code, step: 1 } })" 
                                             class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white rounded-lg border border-teal-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer"
                                             title="Edit Appraisal Template & Key Competencies (Step 1)">
                                             <i class="pi pi-file-edit text-[9px]"></i> Edit Appraisal (Step 1)
@@ -2917,7 +2926,7 @@ const downloadAttachment = (file) => {
                 <div class="flex-1 overflow-y-auto bg-slate-200 p-8 md:p-12 lg:p-20 flex flex-col items-center custom-scrollbar scroll-smooth">
                     
                     <div id="protocol-report" class="w-full max-w-[210mm] print:m-0 print:shadow-none print:w-full no-scrollbar">
-                        <PrintableHardCopyDossier :goal="selectedGoal" :employees="masterEmployees" :showReviewPage="isManager || isGoalReviewCompleted(selectedGoal)" />
+                        <PrintableHardCopyDossier :goal="selectedGoal" :employees="masterEmployees" :showReviewPage="isManager" />
                     </div>
                 </div>
 
