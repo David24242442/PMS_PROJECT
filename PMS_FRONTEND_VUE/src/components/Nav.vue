@@ -16,9 +16,9 @@
 
     const hasPendingAppraisals = ref(false);
 
-    // State for Sidebar Expand/Collapse (default pinned/expanded so open sections persist)
-    const isPinned = ref(localStorage.getItem('hr-sidebar-pinned') !== 'false');
+    // State for Hover-based Sidebar Expand/Collapse
     const isHovered = ref(false);
+    const isExpanded = computed(() => isHovered.value);
 
     // Read saved open menu preferences from localStorage
     const getSavedMenus = () => {
@@ -35,11 +35,6 @@
         onboarding: savedMenus.onboarding ?? false,
         pms: savedMenus.pms ?? true,
         admin: savedMenus.admin ?? false
-    });
-
-    // Sidebar remains expanded if pinned, hovered, or if any section is open
-    const isExpanded = computed(() => {
-        return isPinned.value || isHovered.value || openMenus.value.onboarding || openMenus.value.pms || openMenus.value.admin;
     });
 
     // Dark Mode State
@@ -60,12 +55,6 @@
     };
 
     const emit = defineEmits(['hover-change']);
-
-    const togglePin = () => {
-        isPinned.value = !isPinned.value;
-        localStorage.setItem('hr-sidebar-pinned', isPinned.value ? 'true' : 'false');
-        emit('hover-change', isExpanded.value);
-    };
 
     // Auto-sync open menu with active route
     const syncMenuWithRoute = (path) => {
@@ -88,26 +77,19 @@
         localStorage.setItem('hr-nav-open-menus', JSON.stringify(val));
     }, { deep: true });
 
-    watch(isExpanded, (val) => {
-        emit('hover-change', val);
-    }, { immediate: true });
-
     const onMouseEnter = () => {
         isHovered.value = true;
-        emit('hover-change', isExpanded.value);
+        emit('hover-change', true);
     };
 
     const onMouseLeave = () => {
         isHovered.value = false;
         // Do NOT reset openMenus! Opened tabs/sections persist open when mouse leaves.
-        emit('hover-change', isExpanded.value);
+        emit('hover-change', false);
     };
 
     const toggleMenu = (menu) => {
         openMenus.value[menu] = !openMenus.value[menu];
-        if (openMenus.value[menu]) {
-            emit('hover-change', true);
-        }
     };
 
     const logout = () => {
@@ -118,6 +100,9 @@
     };
 
     onMounted(async () => {
+        // Clear legacy pin setting so sidebar is purely hover-driven
+        localStorage.removeItem('hr-sidebar-pinned');
+
         // Apply saved theme preference
         applyTheme(isDarkMode.value);
 
@@ -147,9 +132,6 @@
                 <span class="logo-text" v-show="isExpanded"> HR <span class="pms-styled">PORTAL</span></span>
                 <span class="logo-text-collapsed" v-show="!isExpanded">HR</span>
             </div>
-            <button v-show="isExpanded" class="collapse-btn" @click.stop="togglePin" :title="isPinned ? 'Collapse to mini sidebar' : 'Keep sidebar open'">
-                <i class="pi" :class="isPinned ? 'pi-chevron-left' : 'pi-bars'"></i>
-            </button>
         </div>
 
         <!-- Sidebar Navigation -->
@@ -183,7 +165,7 @@
             </div>
 
             <!-- PMS Group (For Employees: ONLY Goals is visible) -->
-            <div v-if="isManager || loguser?.position_id === 1 || loguser?.permissions?.includes('/pms/goals')" class="menu-item-wrapper dropdown" :class="{ 'showMenu': (openMenus.pms || !isManager) && isExpanded }">
+            <div v-if="isManager || loguser?.position_id === 1 || loguser?.permissions?.includes('/pms/goals')" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.pms && isExpanded }">
                 <div class="menu-item" @click="toggleMenu('pms')" :title="!isExpanded ? 'PMS' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-chart-bar"></span>

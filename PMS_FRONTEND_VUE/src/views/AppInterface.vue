@@ -9,7 +9,7 @@
     const userstore = useUsersStore()
     let { loguser } = userstore
 
-    const isNavExpanded = ref(localStorage.getItem('hr-sidebar-pinned') !== 'false');
+    const isNavExpanded = ref(false);
 
     const handleHoverChange = (expanded) => {
         isNavExpanded.value = expanded;
