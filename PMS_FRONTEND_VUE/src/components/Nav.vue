@@ -16,9 +16,31 @@
 
     const hasPendingAppraisals = ref(false);
 
-    // State for Hover-based Sidebar Expand/Collapse
+    // State for Sidebar Expand/Collapse (default pinned/expanded so open sections persist)
+    const isPinned = ref(localStorage.getItem('hr-sidebar-pinned') !== 'false');
     const isHovered = ref(false);
-    const isExpanded = computed(() => isHovered.value);
+
+    // Read saved open menu preferences from localStorage
+    const getSavedMenus = () => {
+        try {
+            return JSON.parse(localStorage.getItem('hr-nav-open-menus') || '{}');
+        } catch (e) {
+            return {};
+        }
+    };
+    const savedMenus = getSavedMenus();
+
+    // State for Dropdown Menus - persist user choice
+    const openMenus = ref({
+        onboarding: savedMenus.onboarding ?? false,
+        pms: savedMenus.pms ?? true,
+        admin: savedMenus.admin ?? false
+    });
+
+    // Sidebar remains expanded if pinned, hovered, or if any section is open
+    const isExpanded = computed(() => {
+        return isPinned.value || isHovered.value || openMenus.value.onboarding || openMenus.value.pms || openMenus.value.admin;
+    });
 
     // Dark Mode State
     const isDarkMode = ref(localStorage.getItem('hr-theme') === 'dark');
@@ -37,31 +59,54 @@
         applyTheme(isDarkMode.value);
     };
 
-    // State for Dropdown Menus
-    const openMenus = ref({
-        onboarding: false,
-        pms: false,
-        admin: false
-    });
-
     const emit = defineEmits(['hover-change']);
+
+    const togglePin = () => {
+        isPinned.value = !isPinned.value;
+        localStorage.setItem('hr-sidebar-pinned', isPinned.value ? 'true' : 'false');
+        emit('hover-change', isExpanded.value);
+    };
+
+    // Auto-sync open menu with active route
+    const syncMenuWithRoute = (path) => {
+        if (!path) return;
+        if (path.startsWith('/pms')) {
+            openMenus.value.pms = true;
+        } else if (path.startsWith('/onboarding') || path.startsWith('/employees') || path.startsWith('/employee')) {
+            openMenus.value.onboarding = true;
+        } else if (path.startsWith('/users')) {
+            openMenus.value.admin = true;
+        }
+    };
+
+    watch(() => route.path, (newPath) => {
+        syncMenuWithRoute(newPath);
+    }, { immediate: true });
+
+    // Persist openMenus across page refreshes
+    watch(openMenus, (val) => {
+        localStorage.setItem('hr-nav-open-menus', JSON.stringify(val));
+    }, { deep: true });
+
+    watch(isExpanded, (val) => {
+        emit('hover-change', val);
+    }, { immediate: true });
 
     const onMouseEnter = () => {
         isHovered.value = true;
-        emit('hover-change', true);
+        emit('hover-change', isExpanded.value);
     };
 
     const onMouseLeave = () => {
         isHovered.value = false;
-        openMenus.value.onboarding = false;
-        openMenus.value.pms = false;
-        openMenus.value.admin = false;
-        emit('hover-change', false);
+        // Do NOT reset openMenus! Opened tabs/sections persist open when mouse leaves.
+        emit('hover-change', isExpanded.value);
     };
 
     const toggleMenu = (menu) => {
-        if (isExpanded.value) {
-            openMenus.value[menu] = !openMenus.value[menu];
+        openMenus.value[menu] = !openMenus.value[menu];
+        if (openMenus.value[menu]) {
+            emit('hover-change', true);
         }
     };
 
@@ -102,6 +147,9 @@
                 <span class="logo-text" v-show="isExpanded"> HR <span class="pms-styled">PORTAL</span></span>
                 <span class="logo-text-collapsed" v-show="!isExpanded">HR</span>
             </div>
+            <button v-show="isExpanded" class="collapse-btn" @click.stop="togglePin" :title="isPinned ? 'Collapse to mini sidebar' : 'Keep sidebar open'">
+                <i class="pi" :class="isPinned ? 'pi-chevron-left' : 'pi-bars'"></i>
+            </button>
         </div>
 
         <!-- Sidebar Navigation -->
