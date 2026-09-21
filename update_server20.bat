@@ -30,10 +30,11 @@ if exist "%SHARE%\AUGUST 2026 PAYROLL DATA.xlsx" (
     copy /Y "%SHARE%\AUGUST 2026 PAYROLL DATA.xlsx" "%SERVER_ROOT%\AUGUST 2026 PAYROLL DATA.xlsx"
 )
 
-:: 4. Clear Laravel Cache
-echo [4/4] Clearing Laravel caches on Server 20...
+:: 4. Run Migrations & Clear Laravel Cache
+echo [4/4] Running migrations and clearing Laravel caches on Server 20...
 cd /d "%SERVER_BACKEND%"
 if exist "artisan" (
+    call php artisan migrate --force
     call php artisan optimize:clear
 )
 
