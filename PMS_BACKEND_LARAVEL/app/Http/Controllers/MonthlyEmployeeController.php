@@ -207,17 +207,24 @@ class MonthlyEmployeeController extends Controller
             ], 422);
         }
 
-        // Process records in batches
-        $now = now();
-        $total = count($records);
-        $insertedCount = 0;
-        $updatedCount = 0;
+        return $this->saveRecordsToDb($records, $monthYear);
+    }
 
+    /**
+     * Ingest records in clean batches.
+     */
+    private function saveRecordsToDb(array $records, string $monthYear)
+    {
+        $now = now();
         $batch = [];
         $batchSize = 500;
+        $insertedCount = 0;
 
         DB::beginTransaction();
         try {
+            // Delete previous records for this month to ensure completely clean, uncorrupted ingestion
+            MonthlyEmployee::where('month_year', $monthYear)->delete();
+
             foreach ($records as $row) {
                 $empId = trim($row['emp_id'] ?? '');
                 if (empty($empId)) {
@@ -239,14 +246,14 @@ class MonthlyEmployeeController extends Controller
                 ];
 
                 if (count($batch) >= $batchSize) {
-                    $this->upsertBatch($batch);
+                    DB::table('Monthly_Employees')->insert($batch);
                     $insertedCount += count($batch);
                     $batch = [];
                 }
             }
 
             if (!empty($batch)) {
-                $this->upsertBatch($batch);
+                DB::table('Monthly_Employees')->insert($batch);
                 $insertedCount += count($batch);
             }
 
@@ -254,7 +261,7 @@ class MonthlyEmployeeController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => "Successfully uploaded and processed {$insertedCount} employee records for {$monthYear}.",
+                'message' => "Successfully uploaded and ingested all {$insertedCount} employee records for {$monthYear}.",
                 'data' => [
                     'total_processed' => $insertedCount,
                     'month_year' => $monthYear,
@@ -271,32 +278,38 @@ class MonthlyEmployeeController extends Controller
     }
 
     /**
-     * Efficient batch upsert into Monthly_Employees.
+     * Direct endpoint to sync from local Excel file on server.
      */
-    private function upsertBatch(array $batch)
+    public function syncLocalExcel()
     {
-        if (empty($batch)) return;
+        self::ensureTableExists();
 
-        // Uses MySQL INSERT ... ON DUPLICATE KEY UPDATE
-        // Matching by emp_id and month_year
-        foreach ($batch as $row) {
-            MonthlyEmployee::updateOrCreate(
-                [
-                    'emp_id' => $row['emp_id'],
-                    'month_year' => $row['month_year']
-                ],
-                [
-                    'sr_no' => $row['sr_no'],
-                    'employee_name' => $row['employee_name'],
-                    'location' => $row['location'],
-                    'designation' => $row['designation'],
-                    'sex' => $row['sex'],
-                    'category' => $row['category'],
-                    'status' => $row['status'],
-                    'updated_at' => $row['updated_at']
-                ]
-            );
+        $candidates = [
+            'C:\\xampp\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx',
+            base_path('AUGUST 2026 PAYROLL DATA.xlsx'),
+            base_path('../AUGUST 2026 PAYROLL DATA.xlsx'),
+            base_path('../../AUGUST 2026 PAYROLL DATA.xlsx'),
+            'C:\\Users\\USER\\Workspaces\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx'
+        ];
+
+        $found = null;
+        foreach ($candidates as $c) {
+            if (file_exists($c)) {
+                $found = $c;
+                break;
+            }
         }
+
+        if (!$found) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Local AUGUST 2026 PAYROLL DATA.xlsx not found on server paths.',
+                'checked_paths' => $candidates
+            ], 404);
+        }
+
+        $records = $this->parseXlsxFile($found);
+        return $this->saveRecordsToDb($records, 'AUGUST 2026');
     }
 
     /**
@@ -372,15 +385,15 @@ class MonthlyEmployeeController extends Controller
             }
 
             if ($rowCount === 1) {
-                // Determine headers
+                // Determine headers: Note that 'name' must be checked BEFORE 'id'/'emp' to prevent 'Employee Name' from matching 'emp'
                 foreach ($rowCells as $col => $headerName) {
                     $norm = strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', '', $headerName)));
-                    if (strpos($norm, 'sr') !== false || strpos($norm, 'no') !== false) {
+                    if (strpos($norm, 'sr') !== false || $norm === 'no' || $norm === 'sno') {
                         $headerMap[$col] = 'sr_no';
-                    } elseif (strpos($norm, 'empid') !== false || strpos($norm, 'employeeid') !== false || strpos($norm, 'emp') !== false || $norm === 'code') {
-                        $headerMap[$col] = 'emp_id';
                     } elseif (strpos($norm, 'name') !== false) {
                         $headerMap[$col] = 'employee_name';
+                    } elseif (strpos($norm, 'id') !== false || strpos($norm, 'code') !== false || $norm === 'empid' || $norm === 'employeeid' || $norm === 'emp') {
+                        $headerMap[$col] = 'emp_id';
                     } elseif (strpos($norm, 'loc') !== false || strpos($norm, 'branch') !== false) {
                         $headerMap[$col] = 'location';
                     } elseif (strpos($norm, 'desig') !== false || strpos($norm, 'title') !== false || strpos($norm, 'pos') !== false) {
@@ -411,7 +424,7 @@ class MonthlyEmployeeController extends Controller
                     }
                 }
 
-                // Fallbacks if header mapping was loose
+                // Positional fallbacks (A: Sr.No, B: Emp Id, C: Employee Name, D: Location, E: Designation, F: Sex, G: Category)
                 if (empty($data['emp_id']) && isset($rowCells['B'])) {
                     $data['emp_id'] = $rowCells['B'];
                 }
@@ -455,19 +468,19 @@ class MonthlyEmployeeController extends Controller
                 if ($lineCount === 1) {
                     foreach ($data as $idx => $headerName) {
                         $norm = strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', '', $headerName)));
-                        if (strpos($norm, 'sr') !== false || strpos($norm, 'no') !== false) {
+                        if (strpos($norm, 'sr') !== false || $norm === 'no' || $norm === 'sno') {
                             $headerMap[$idx] = 'sr_no';
-                        } elseif (strpos($norm, 'empid') !== false || strpos($norm, 'employeeid') !== false || strpos($norm, 'emp') !== false) {
-                            $headerMap[$idx] = 'emp_id';
                         } elseif (strpos($norm, 'name') !== false) {
                             $headerMap[$idx] = 'employee_name';
+                        } elseif (strpos($norm, 'id') !== false || strpos($norm, 'code') !== false || $norm === 'empid' || $norm === 'employeeid' || $norm === 'emp') {
+                            $headerMap[$idx] = 'emp_id';
                         } elseif (strpos($norm, 'loc') !== false || strpos($norm, 'branch') !== false) {
                             $headerMap[$idx] = 'location';
-                        } elseif (strpos($norm, 'desig') !== false || strpos($norm, 'title') !== false) {
+                        } elseif (strpos($norm, 'desig') !== false || strpos($norm, 'title') !== false || strpos($norm, 'pos') !== false) {
                             $headerMap[$idx] = 'designation';
                         } elseif (strpos($norm, 'sex') !== false || strpos($norm, 'gender') !== false) {
                             $headerMap[$idx] = 'sex';
-                        } elseif (strpos($norm, 'cat') !== false) {
+                        } elseif (strpos($norm, 'cat') !== false || strpos($norm, 'type') !== false) {
                             $headerMap[$idx] = 'category';
                         }
                     }
@@ -490,7 +503,7 @@ class MonthlyEmployeeController extends Controller
                         }
                     }
 
-                    // Fallbacks
+                    // Positional fallbacks
                     if (empty($row['emp_id']) && isset($data[1])) $row['emp_id'] = trim($data[1]);
                     if (empty($row['employee_name']) && isset($data[2])) $row['employee_name'] = trim($data[2]);
                     if (empty($row['location']) && isset($data[3])) $row['location'] = trim($data[3]);
@@ -522,13 +535,66 @@ class MonthlyEmployeeController extends Controller
         $callback = function () {
             $file = fopen('php://output', 'w');
             fputcsv($file, ['Sr.No', 'Emp Id', 'Employee Name', 'Location', 'Designation', 'Sex', 'Category']);
-            fputcsv($file, ['1', '202274', 'FRANCIS TEYE', 'CENTURY', 'WELDER', 'Male', 'CONTRACT']);
-            fputcsv($file, ['2', '206270', 'ALBERT OPARE', 'CENTURY', 'MOULD CHANGER', 'Male', 'CONTRACT']);
+            fputcsv($file, ['1', 'H664', 'YEBOAH DAVID ADOM', 'HEAD OFFICE', 'IT TECHNICIAN', 'Male', 'CONTRACT']);
+            fputcsv($file, ['2', '202274', 'FRANCIS TEYE', 'CENTURY', 'WELDER', 'Male', 'CONTRACT']);
             fputcsv($file, ['3', '206275', 'AYINE JACOB', 'ACCRA MALL', 'ELECTRICIAN', 'Male', 'PERMANENT']);
             fclose($file);
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * Ingest directly from local Excel file if present on server filesystem.
+     */
+    public function syncLocalExcel(Request $request)
+    {
+        try {
+            self::ensureTableExists();
+
+            $possiblePaths = [
+                base_path('AUGUST 2026 PAYROLL DATA.xlsx'),
+                base_path('../AUGUST 2026 PAYROLL DATA.xlsx'),
+                base_path('../../AUGUST 2026 PAYROLL DATA.xlsx'),
+                'c:\\Users\\USER\\Workspaces\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx',
+                'C:\\xampp\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx',
+                'C:\\xampp\\htdocs\\AUGUST 2026 PAYROLL DATA.xlsx',
+                storage_path('app/AUGUST 2026 PAYROLL DATA.xlsx')
+            ];
+
+            $filePath = null;
+            foreach ($possiblePaths as $p) {
+                if (file_exists($p)) {
+                    $filePath = $p;
+                    break;
+                }
+            }
+
+            if (!$filePath) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Local Excel file not found on server filesystem.'
+                ], 404);
+            }
+
+            $monthYear = $request->input('month_year', 'AUGUST 2026');
+            $rows = $this->parseXlsxFile($filePath);
+
+            if (empty($rows)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No rows parsed from file: ' . $filePath
+                ], 422);
+            }
+
+            return $this->saveRecordsToDb($rows, $monthYear);
+        } catch (\Throwable $e) {
+            \Log::error('syncLocalExcel error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Sync failed: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

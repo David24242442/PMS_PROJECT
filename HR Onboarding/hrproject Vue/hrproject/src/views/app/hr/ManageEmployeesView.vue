@@ -7,8 +7,9 @@ const userstore = useUsersStore();
 
 // UI State
 const loading = ref(false);
-const showUploadSection = ref(true);
+const showUploadSection = ref(false);
 const uploading = ref(false);
+const quickSyncing = ref(false);
 const uploadProgress = ref(0);
 const uploadSuccessMessage = ref('');
 const uploadErrorMessage = ref('');
@@ -247,6 +248,30 @@ const submitUpload = async () => {
     }
 };
 
+// Quick Ingest from Server 20 Local Excel File
+const triggerLocalSync = async () => {
+    quickSyncing.value = true;
+    uploadSuccessMessage.value = '';
+    uploadErrorMessage.value = '';
+    try {
+        const res = await axios.get('/pms/sync-local-excel', {
+            params: { month_year: uploadMonthYear.value }
+        });
+        if (res.data && res.data.status === 'success') {
+            uploadSuccessMessage.value = res.data.message;
+            await fetchEmployees(1);
+            await fetchStats();
+        } else {
+            uploadErrorMessage.value = res.data.message || 'Direct server sync failed.';
+        }
+    } catch (err) {
+        console.error('Local sync error:', err);
+        uploadErrorMessage.value = err.response?.data?.message || 'Server-side file not found or sync failed. Please select file to upload.';
+    } finally {
+        quickSyncing.value = false;
+    }
+};
+
 // Download Template
 const downloadTemplate = () => {
     window.open(axios.defaults.baseURL + '/pms/monthly-employees/template', '_blank');
@@ -435,11 +460,21 @@ onMounted(() => {
                         <div class="upload-actions-footer">
                             <button 
                                 class="btn btn-primary btn-block btn-upload" 
-                                :disabled="!selectedFile || uploading" 
+                                :disabled="!selectedFile || uploading || quickSyncing" 
                                 @click="submitUpload"
                             >
                                 <i class="pi" :class="uploading ? 'pi-spin pi-spinner' : 'pi-check-circle'"></i>
                                 {{ uploading ? 'Ingesting Employees...' : 'Upload & Sync to PMS' }}
+                            </button>
+                            <button 
+                                type="button"
+                                class="btn btn-secondary btn-block mt-2" 
+                                :disabled="uploading || quickSyncing" 
+                                @click="triggerLocalSync"
+                                title="Ingest directly from AUGUST 2026 PAYROLL DATA.xlsx placed on Server 20"
+                            >
+                                <i class="pi" :class="quickSyncing ? 'pi-spin pi-spinner' : 'pi-bolt'"></i>
+                                {{ quickSyncing ? 'Ingesting Server Excel File...' : 'One-Click Ingest from Server Excel' }}
                             </button>
                         </div>
 
@@ -703,83 +738,88 @@ onMounted(() => {
     padding: 0 4px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 14px;
 }
 
 /* Header Card */
 .header-card {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    border-radius: 16px;
-    padding: 28px;
+    border-radius: 12px;
+    padding: 14px 20px;
     color: white;
-    box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
+    box-shadow: 0 6px 18px -4px rgba(15, 23, 42, 0.2);
 }
 
 .header-content {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    gap: 20px;
-    margin-bottom: 24px;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
     flex-wrap: wrap;
 }
 
 .badge-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     background: rgba(99, 102, 241, 0.2);
     border: 1px solid rgba(129, 140, 248, 0.3);
     color: #a5b4fc;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 4px 10px;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
     border-radius: 9999px;
-    margin-bottom: 10px;
+    margin-bottom: 4px;
 }
 
 .title-section h1 {
-    font-size: 1.75rem;
+    font-size: 1.3rem;
     font-weight: 800;
-    margin: 0 0 6px 0;
+    margin: 0 0 2px 0;
     letter-spacing: -0.02em;
     color: #ffffff;
 }
 
 .subtitle {
     margin: 0;
-    font-size: 0.92rem;
+    font-size: 0.82rem;
     color: #94a3b8;
     max-width: 680px;
-    line-height: 1.45;
+    line-height: 1.35;
 }
 
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
+}
+
+.header-actions .btn {
+    padding: 7px 13px;
+    font-size: 0.82rem;
 }
 
 /* Stats Grid */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 14px;
-    margin-top: 6px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 4px;
 }
 
 .stat-card {
     background: rgba(255, 255, 255, 0.06);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 14px 16px;
+    border-radius: 10px;
+    padding: 8px 12px;
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
     transition: transform 0.2s ease, background 0.2s ease;
 }
 
@@ -789,13 +829,14 @@ onMounted(() => {
 }
 
 .stat-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem;
+    font-size: 1rem;
+    flex-shrink: 0;
 }
 
 .icon-blue { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
@@ -810,7 +851,7 @@ onMounted(() => {
 }
 
 .stat-label {
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     font-weight: 600;
     color: #94a3b8;
     text-transform: uppercase;
@@ -818,13 +859,13 @@ onMounted(() => {
 }
 
 .stat-value {
-    font-size: 1.35rem;
+    font-size: 1.15rem;
     font-weight: 800;
     color: #ffffff;
 }
 
 .stat-month {
-    font-size: 1.05rem;
+    font-size: 0.92rem;
     letter-spacing: -0.01em;
 }
 

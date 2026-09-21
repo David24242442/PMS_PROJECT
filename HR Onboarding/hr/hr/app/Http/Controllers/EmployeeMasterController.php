@@ -179,7 +179,100 @@ class EmployeeMasterController extends Controller
         try {
             $user = $request->user();
             $isAdmin = $user && $user->admin;
+            $search = $request->input('search');
 
+            // 1. PRIMARY SOURCE: Query Monthly_Employees table
+            if (\Schema::hasTable('Monthly_Employees')) {
+                $monthlyCount = \App\Models\MonthlyEmployee::count();
+                if ($monthlyCount > 0) {
+                    $mQuery = \App\Models\MonthlyEmployee::query();
+                    if (!empty($search)) {
+                        $mQuery->search($search);
+                    }
+                    
+                    $mRecords = $mQuery->orderBy('sr_no', 'asc')->get();
+
+                    if ($mRecords->isNotEmpty()) {
+                        // Match with users table to attach user_id and line_manager_id where existing
+                        $empIds = $mRecords->pluck('emp_id')->filter()->toArray();
+                        $usersMap = [];
+                        if (\Schema::hasColumn('users', 'employee_code')) {
+                            $users = \App\Models\User::whereIn('employee_code', $empIds)->get();
+                            foreach ($users as $u) {
+                                $usersMap[$u->employee_code] = $u;
+                            }
+                        }
+
+                        $employees = $mRecords->map(function ($emp) use ($usersMap) {
+                            $user = $usersMap[$emp->emp_id] ?? null;
+                            $managerName = null;
+                            if ($user && $user->line_manager_id) {
+                                $mgr = \App\Models\User::find($user->line_manager_id);
+                                $managerName = $mgr ? $mgr->name : null;
+                            }
+
+                            return [
+                                'id' => $emp->id,
+                                'user_id' => $user ? $user->id : null,
+                                'employee_code' => $emp->emp_id,
+                                'name' => $emp->employee_name,
+                                'firstname' => explode(' ', $emp->employee_name)[0] ?? '',
+                                'surname' => substr(strstr($emp->employee_name, ' '), 1) ?: '',
+                                'email' => $user ? $user->email : null,
+                                'location' => $emp->location ?: 'N/A',
+                                'department' => $emp->location ?: 'N/A',
+                                'position' => $emp->designation ?: 'N/A',
+                                'designation' => $emp->designation ?: 'N/A',
+                                'sex' => $emp->sex,
+                                'category' => $emp->category,
+                                'line_manager_id' => $user ? $user->line_manager_id : null,
+                                'line_manager_name' => $managerName,
+                                'full_string' => $emp->emp_id . ' - ' . $emp->employee_name . ' (' . ($emp->location ?: 'N/A') . ')',
+                                'source' => 'monthly_employees'
+                            ];
+                        });
+
+                        // Fallback merge: if any onboarding employee exists that is not in Monthly_Employees
+                        try {
+                            $monthlyCodes = $employees->pluck('employee_code')->filter()->toArray();
+                            $extraOnboarding = \App\Models\Employee::whereNotIn('employeeid', $monthlyCodes)
+                                ->get()
+                                ->map(function ($emp) {
+                                    return [
+                                        'id' => $emp->id,
+                                        'user_id' => null,
+                                        'employee_code' => $emp->employeeid,
+                                        'name' => trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
+                                        'firstname' => $emp->firstname ?? '',
+                                        'surname' => $emp->surname ?? '',
+                                        'email' => $emp->email ?? null,
+                                        'location' => $emp->location ?? 'N/A',
+                                        'department' => $emp->department ?? 'N/A',
+                                        'position' => $emp->job_title ?? $emp->joiningposition ?? 'N/A',
+                                        'designation' => $emp->job_title ?? $emp->joiningposition ?? 'N/A',
+                                        'sex' => $emp->gender ?? null,
+                                        'category' => $emp->contracttype ?? null,
+                                        'line_manager_id' => $emp->line_manager_id ?? null,
+                                        'line_manager_name' => null,
+                                        'full_string' => $emp->employeeid . ' - ' . trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
+                                        'source' => 'onboarding_fallback'
+                                    ];
+                                });
+
+                            if ($extraOnboarding->isNotEmpty()) {
+                                $employees = $employees->concat($extraOnboarding)->values();
+                            }
+                        } catch (\Throwable $t) {}
+
+                        return response()->json([
+                            'status' => 'success',
+                            'data' => $employees
+                        ]);
+                    }
+                }
+            }
+
+            // 2. FALLBACK to legacy query if Monthly_Employees is empty
             $hasJoiningDept = \Schema::hasColumn('employees', 'joiningdepartment');
             $hasLocation = \Schema::hasColumn('employees', 'location');
             $hasJoiningLocation = \Schema::hasColumn('employees', 'joininglocation');

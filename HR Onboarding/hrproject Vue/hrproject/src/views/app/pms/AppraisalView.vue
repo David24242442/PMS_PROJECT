@@ -420,12 +420,30 @@ const fetchMasterEmployees = async () => {
     }
 };
 
-const searchCandidate = (event) => {
-    const query = event.query.toLowerCase();
-    filteredMasterEmployees.value = masterEmployees.value.filter(emp => 
+const searchCandidate = async (event) => {
+    const query = (event.query || '').trim().toLowerCase();
+    let matches = masterEmployees.value.filter(emp => 
         (emp.employee_code && emp.employee_code.toLowerCase().includes(query)) || 
-        emp.name.toLowerCase().includes(query)
+        (emp.name && emp.name.toLowerCase().includes(query)) ||
+        (emp.location && emp.location.toLowerCase().includes(query)) ||
+        (emp.position && emp.position.toLowerCase().includes(query)) ||
+        (emp.designation && emp.designation.toLowerCase().includes(query)) ||
+        (emp.full_string && emp.full_string.toLowerCase().includes(query))
     );
+
+    // Fallback: If not found in loaded memory and user typed at least 2 chars, search backend directly
+    if (matches.length === 0 && query.length >= 2) {
+        try {
+            const response = await axios.get('pms/get-employees', { params: { search: query } });
+            if (response.data && response.data.status === 'success' && response.data.data.length > 0) {
+                matches = response.data.data;
+            }
+        } catch (err) {
+            console.error('Error dynamic searchCandidate in AppraisalView:', err);
+        }
+    }
+
+    filteredMasterEmployees.value = matches;
 };
 
 const onCandidateSelect = async (event) => {

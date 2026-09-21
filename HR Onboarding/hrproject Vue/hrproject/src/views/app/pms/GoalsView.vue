@@ -297,38 +297,59 @@ const fetchMasterEmployees = async () => {
     }
 };
 
-const searchCandidate = (event) => {
-    const query = event.query.toLowerCase();
-    filteredMasterEmployees.value = masterEmployees.value.filter(emp => 
+const searchCandidate = async (event) => {
+    const query = (event.query || '').toLowerCase().trim();
+    if (!query) {
+        filteredMasterEmployees.value = [];
+        return;
+    }
+
+    // 1. Search local masterEmployees (checking code, name, designation, location, full_string)
+    let matched = (masterEmployees.value || []).filter(emp => 
         (emp.employee_code && emp.employee_code.toLowerCase().includes(query)) || 
-        emp.name.toLowerCase().includes(query)
+        (emp.name && emp.name.toLowerCase().includes(query)) ||
+        (emp.location && emp.location.toLowerCase().includes(query)) ||
+        (emp.position && emp.position.toLowerCase().includes(query)) ||
+        (emp.designation && emp.designation.toLowerCase().includes(query)) ||
+        (emp.full_string && emp.full_string.toLowerCase().includes(query))
     );
+
+    if (matched.length > 0) {
+        filteredMasterEmployees.value = matched.slice(0, 100);
+        return;
+    }
+
+    // 2. Dynamic server search fallback to Monthly_Employees
+    try {
+        const response = await axios.get('pms/get-employees', { params: { search: query } });
+        if (response.data && response.data.status === 'success') {
+            filteredMasterEmployees.value = (response.data.data || []).slice(0, 100);
+        }
+    } catch (err) {
+        console.error('Error dynamic searchCandidate:', err);
+    }
 };
 
 const onCandidateSelect = (event) => {
     const candidate = event.value;
-    // Keep user_id as loguser.id (the creator/manager) to avoid foreign key violations 
-    // since candidates are employees from onboarding and may not have user accounts.
+    if (!candidate) return;
     newGoal.value.user_id = loguser.id; 
     
     newGoal.value.candidate_name = candidate.name;
     newGoal.value.employee_code = candidate.employee_code;
     
-    // Resolve Department & Location from master data if flat strings are missing/N/A
     newGoal.value.location = (candidate.location && candidate.location !== 'N/A') 
         ? candidate.location 
         : (findbranch(candidate.joining_branch_id) || 'N/A');
         
     newGoal.value.department = (candidate.department && candidate.department !== 'N/A') 
         ? candidate.department 
-        : (finddept(candidate.joining_dept_id) || 'N/A');
+        : (candidate.location || finddept(candidate.joining_dept_id) || 'N/A');
         
-    // Job Title fallback logic
     newGoal.value.job_title = (candidate.position && candidate.position !== 'N/A')
         ? candidate.position
-        : newGoal.value.department;
+        : (candidate.designation || 'Employee');
         
-    // Manager stays as logged in user (the creator)
     newGoal.value.manager_name = loguser.name;
 };
 

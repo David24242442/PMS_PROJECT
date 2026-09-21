@@ -232,12 +232,29 @@ const searchUsers = (event) => {
 };
 
 // Filter employees for AutoComplete (General HR)
-const searchEmployees = (event) => {
-    const query = event.query.toLowerCase();
-    filteredMasterEmployees.value = masterEmployees.value.filter(emp => 
+const searchEmployees = async (event) => {
+    const query = (event.query || '').trim().toLowerCase();
+    let matches = masterEmployees.value.filter(emp => 
         (emp.name && emp.name.toLowerCase().includes(query)) || 
-        (emp.employee_code && emp.employee_code.toLowerCase().includes(query))
+        (emp.employee_code && emp.employee_code.toLowerCase().includes(query)) ||
+        (emp.location && emp.location.toLowerCase().includes(query)) ||
+        (emp.position && emp.position.toLowerCase().includes(query)) ||
+        (emp.designation && emp.designation.toLowerCase().includes(query)) ||
+        (emp.full_string && emp.full_string.toLowerCase().includes(query))
     );
+
+    if (matches.length === 0 && query.length >= 2) {
+        try {
+            const response = await axios.get('pms/get-employees', { params: { search: query } });
+            if (response.data && response.data.status === 'success' && response.data.data.length > 0) {
+                matches = response.data.data;
+            }
+        } catch (err) {
+            console.error('Error dynamic searchEmployees in EmployeeMasterView:', err);
+        }
+    }
+
+    filteredMasterEmployees.value = matches;
 };
 
 // CSV Upload for Bulk Team Assignment
