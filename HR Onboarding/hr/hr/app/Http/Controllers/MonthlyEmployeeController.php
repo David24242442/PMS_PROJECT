@@ -7,30 +7,79 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Schema\Blueprint;
+use Carbon\Carbon;
 
 class MonthlyEmployeeController extends Controller
 {
+    /**
+     * Dynamically resolve the actual table name across MySQL casing variations.
+     */
+    public static function getActualTableName(): string
+    {
+        static $cachedName = null;
+        if ($cachedName !== null) {
+            return $cachedName;
+        }
+
+        try {
+            $candidates = ['Monthly_Employees', 'monthly_employees', 'monthly_employee', 'Monthly_Employee'];
+            foreach ($candidates as $candidate) {
+                if (Schema::hasTable($candidate)) {
+                    $cachedName = $candidate;
+                    return $cachedName;
+                }
+            }
+
+            // Direct check via SHOW TABLES
+            $tables = DB::select("SHOW TABLES LIKE '%employee%'");
+            foreach ($tables as $tblObj) {
+                $row = (array)$tblObj;
+                $tName = reset($row);
+                if (stripos($tName, 'monthly') !== false) {
+                    $cachedName = $tName;
+                    return $cachedName;
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning("getActualTableName notice: " . $e->getMessage());
+        }
+
+        $cachedName = 'Monthly_Employees';
+        return $cachedName;
+    }
+
     /**
      * Auto-ensure Monthly_Employees table exists on Server 20 / local.
      */
     public static function ensureTableExists()
     {
-        if (!Schema::hasTable('Monthly_Employees')) {
-            Schema::create('Monthly_Employees', function (Blueprint $table) {
-                $table->id();
-                $table->unsignedInteger('sr_no')->nullable();
-                $table->string('emp_id', 50)->index();
-                $table->string('employee_name', 255)->index();
-                $table->string('location', 255)->nullable()->index();
-                $table->string('designation', 255)->nullable();
-                $table->string('sex', 20)->nullable();
-                $table->string('category', 100)->nullable()->index();
-                $table->string('month_year', 50)->default('AUGUST 2026')->index();
-                $table->string('status', 50)->default('ACTIVE')->index();
-                $table->timestamps();
+        try {
+            $tableName = self::getActualTableName();
 
-                $table->index(['emp_id', 'month_year']);
-            });
+            // Safe key lengths: varchar(190) to prevent MySQL 1071 (max key length 767/1000 bytes)
+            DB::statement("CREATE TABLE IF NOT EXISTS `{$tableName}` (
+                `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                `sr_no` int(10) unsigned DEFAULT NULL,
+                `emp_id` varchar(50) NOT NULL,
+                `employee_name` varchar(190) NOT NULL,
+                `location` varchar(190) DEFAULT NULL,
+                `designation` varchar(190) DEFAULT NULL,
+                `sex` varchar(20) DEFAULT NULL,
+                `category` varchar(100) DEFAULT NULL,
+                `month_year` varchar(50) NOT NULL DEFAULT 'AUGUST 2026',
+                `status` varchar(50) NOT NULL DEFAULT 'ACTIVE',
+                `created_at` timestamp NULL DEFAULT NULL,
+                `updated_at` timestamp NULL DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                KEY `idx_me_emp_id` (`emp_id`),
+                KEY `idx_me_name` (`employee_name`),
+                KEY `idx_me_location` (`location`),
+                KEY `idx_me_category` (`category`),
+                KEY `idx_me_month` (`month_year`),
+                KEY `idx_me_status` (`status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        } catch (\Throwable $e) {
+            \Log::warning("ensureTableExists notice: " . $e->getMessage());
         }
     }
 
@@ -39,63 +88,101 @@ class MonthlyEmployeeController extends Controller
      */
     public function index(Request $request)
     {
-        self::ensureTableExists();
+        try {
+            self::ensureTableExists();
+            $tableName = self::getActualTableName();
 
-        $search = $request->input('search');
-        $location = $request->input('location');
-        $category = $request->input('category');
-        $monthYear = $request->input('month_year');
-        $sortBy = $request->input('sort_by', 'sr_no');
-        $sortOrder = strtolower($request->input('sort_order', 'asc')) === 'desc' ? 'desc' : 'asc';
-        $perPage = min(max((int)$request->input('per_page', 25), 5), 500);
+            $search = $request->input('search');
+            $location = $request->input('location');
+            $category = $request->input('category');
+            $monthYear = $request->input('month_year');
+            $sortBy = $request->input('sort_by', 'sr_no');
+            $sortOrder = strtolower($request->input('sort_order', 'asc')) === 'desc' ? 'desc' : 'asc';
+            $perPage = min(max((int)$request->input('per_page', 25), 5), 500);
 
-        $query = MonthlyEmployee::query()
-            ->search($search)
-            ->location($location)
-            ->category($category)
-            ->monthYear($monthYear);
+            $query = DB::table($tableName);
 
-        // Sorting
-        $allowedSorts = ['id', 'sr_no', 'emp_id', 'employee_name', 'location', 'designation', 'sex', 'category', 'month_year'];
-        if (in_array($sortBy, $allowedSorts)) {
-            $query->orderBy($sortBy, $sortOrder);
-        } else {
-            $query->orderBy('sr_no', 'asc');
+            if (!empty($search)) {
+                $term = trim($search);
+                $query->where(function ($q) use ($term) {
+                    $q->where('emp_id', 'like', "%{$term}%")
+                      ->orWhere('employee_name', 'like', "%{$term}%")
+                      ->orWhere('designation', 'like', "%{$term}%")
+                      ->orWhere('location', 'like', "%{$term}%");
+                });
+            }
+
+            if (!empty($location) && $location !== 'all') {
+                $query->where('location', $location);
+            }
+
+            if (!empty($category) && $category !== 'all') {
+                $query->where('category', $category);
+            }
+
+            if (!empty($monthYear) && $monthYear !== 'all') {
+                $query->where('month_year', $monthYear);
+            }
+
+            $allowedSorts = ['id', 'sr_no', 'emp_id', 'employee_name', 'location', 'designation', 'sex', 'category', 'month_year', 'created_at'];
+            if (in_array($sortBy, $allowedSorts)) {
+                $query->orderBy($sortBy, $sortOrder);
+            } else {
+                $query->orderBy('sr_no', 'asc');
+            }
+
+            $employees = $query->paginate($perPage);
+
+            // Distinct filter options for UI dropdowns
+            $locations = DB::table($tableName)
+                ->whereNotNull('location')
+                ->where('location', '!=', '')
+                ->distinct()
+                ->orderBy('location', 'asc')
+                ->pluck('location');
+
+            $categories = DB::table($tableName)
+                ->whereNotNull('category')
+                ->where('category', '!=', '')
+                ->distinct()
+                ->orderBy('category', 'asc')
+                ->pluck('category');
+
+            $months = DB::table($tableName)
+                ->whereNotNull('month_year')
+                ->where('month_year', '!=', '')
+                ->distinct()
+                ->orderBy('month_year', 'desc')
+                ->pluck('month_year');
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $employees,
+                'filters' => [
+                    'locations' => $locations,
+                    'categories' => $categories,
+                    'months' => $months,
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('MonthlyEmployeeController@index error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to load employee records: ' . $e->getMessage(),
+                'data' => [
+                    'data' => [],
+                    'total' => 0,
+                    'current_page' => 1,
+                    'last_page' => 1,
+                    'per_page' => 25
+                ],
+                'filters' => [
+                    'locations' => [],
+                    'categories' => [],
+                    'months' => []
+                ]
+            ], 200);
         }
-
-        $employees = $query->paginate($perPage);
-
-        // Distinct filter options for UI dropdowns
-        $locations = MonthlyEmployee::select('location')
-            ->whereNotNull('location')
-            ->where('location', '!=', '')
-            ->distinct()
-            ->orderBy('location')
-            ->pluck('location');
-
-        $categories = MonthlyEmployee::select('category')
-            ->whereNotNull('category')
-            ->where('category', '!=', '')
-            ->distinct()
-            ->orderBy('category')
-            ->pluck('category');
-
-        $months = MonthlyEmployee::select('month_year')
-            ->whereNotNull('month_year')
-            ->where('month_year', '!=', '')
-            ->distinct()
-            ->orderBy('id', 'desc')
-            ->pluck('month_year');
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $employees,
-            'filters' => [
-                'locations' => $locations,
-                'categories' => $categories,
-                'months' => $months,
-            ]
-        ]);
     }
 
     /**
@@ -103,41 +190,66 @@ class MonthlyEmployeeController extends Controller
      */
     public function stats(Request $request)
     {
-        self::ensureTableExists();
+        try {
+            self::ensureTableExists();
+            $tableName = self::getActualTableName();
 
-        $monthYear = $request->input('month_year');
-        $baseQuery = MonthlyEmployee::query();
-        if (!empty($monthYear) && $monthYear !== 'all') {
-            $baseQuery->where('month_year', $monthYear);
+            $monthYear = $request->input('month_year');
+
+            $baseQuery = DB::table($tableName);
+            if (!empty($monthYear) && $monthYear !== 'all') {
+                $baseQuery->where('month_year', $monthYear);
+            }
+
+            $totalEmployees = (clone $baseQuery)->count();
+            
+            // Safe distinct locations count
+            $totalLocations = (clone $baseQuery)
+                ->whereNotNull('location')
+                ->where('location', '!=', '')
+                ->distinct()
+                ->count('location');
+            
+            $categoriesBreakdown = (clone $baseQuery)
+                ->whereNotNull('category')
+                ->where('category', '!=', '')
+                ->select('category', DB::raw('count(*) as count'))
+                ->groupBy('category')
+                ->pluck('count', 'category');
+
+            $genderBreakdown = (clone $baseQuery)
+                ->whereNotNull('sex')
+                ->where('sex', '!=', '')
+                ->select('sex', DB::raw('count(*) as count'))
+                ->groupBy('sex')
+                ->pluck('count', 'sex');
+
+            $latestMonth = DB::table($tableName)->orderBy('id', 'desc')->value('month_year') ?: 'AUGUST 2026';
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'total_employees' => $totalEmployees,
+                    'total_locations' => $totalLocations,
+                    'categories' => $categoriesBreakdown,
+                    'gender' => $genderBreakdown,
+                    'latest_month' => $latestMonth,
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('MonthlyEmployeeController@stats error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to load stats: ' . $e->getMessage(),
+                'data' => [
+                    'total_employees' => 0,
+                    'total_locations' => 0,
+                    'categories' => [],
+                    'gender' => [],
+                    'latest_month' => 'AUGUST 2026',
+                ]
+            ], 200);
         }
-
-        $totalEmployees = (clone $baseQuery)->count();
-        $totalLocations = (clone $baseQuery)->distinct('location')->count('location');
-        
-        $categoriesBreakdown = (clone $baseQuery)
-            ->select('category', DB::raw('count(*) as count'))
-            ->groupBy('category')
-            ->get()
-            ->pluck('count', 'category');
-
-        $genderBreakdown = (clone $baseQuery)
-            ->select('sex', DB::raw('count(*) as count'))
-            ->groupBy('sex')
-            ->get()
-            ->pluck('count', 'sex');
-
-        $latestMonth = MonthlyEmployee::orderBy('id', 'desc')->value('month_year') ?: 'AUGUST 2026';
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'total_employees' => $totalEmployees,
-                'total_locations' => $totalLocations,
-                'categories' => $categoriesBreakdown,
-                'gender' => $genderBreakdown,
-                'latest_month' => $latestMonth,
-            ]
-        ]);
     }
 
     /**
@@ -145,19 +257,24 @@ class MonthlyEmployeeController extends Controller
      */
     public function locations()
     {
-        self::ensureTableExists();
+        try {
+            self::ensureTableExists();
+            $tableName = self::getActualTableName();
 
-        $locations = MonthlyEmployee::select('location')
-            ->whereNotNull('location')
-            ->where('location', '!=', '')
-            ->distinct()
-            ->orderBy('location')
-            ->pluck('location');
+            $locations = DB::table($tableName)
+                ->whereNotNull('location')
+                ->where('location', '!=', '')
+                ->distinct()
+                ->orderBy('location')
+                ->pluck('location');
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $locations
-        ]);
+            return response()->json([
+                'status' => 'success',
+                'data' => $locations
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['status' => 'error', 'data' => []], 200);
+        }
     }
 
     /**
@@ -165,216 +282,273 @@ class MonthlyEmployeeController extends Controller
      */
     public function upload(Request $request)
     {
-        self::ensureTableExists();
-
-        $request->validate([
-            'file' => 'required|file',
-            'month_year' => 'nullable|string'
-        ]);
-
-        $file = $request->file('file');
-        $monthYear = trim($request->input('month_year') ?: '');
-
-        // If month_year not explicitly provided, try to infer from filename or default
-        if (empty($monthYear)) {
-            $filename = $file->getClientOriginalName();
-            if (preg_match('/(january|february|march|april|may|june|july|august|september|october|november|december)\s*\d{4}/i', $filename, $matches)) {
-                $monthYear = strtoupper($matches[0]);
-            } else {
-                $monthYear = strtoupper(date('F Y'));
-            }
-        }
-
-        $ext = strtolower($file->getClientOriginalExtension());
-        $path = $file->getRealPath();
-
-        $records = [];
-        if ($ext === 'csv' || $ext === 'txt') {
-            $records = $this->parseCsvFile($path);
-        } elseif ($ext === 'xlsx') {
-            $records = $this->parseXlsxFile($path);
-        } else {
-            return response()->json([
-                'status' => 'error',
-                'message' => "Unsupported file type: .{$ext}. Please upload a .xlsx or .csv file."
-            ], 422);
-        }
-
-        if (empty($records)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'No valid employee records found in the uploaded file.'
-            ], 422);
-        }
-
-        return $this->saveRecordsToDb($records, $monthYear);
-    }
-
-    /**
-     * Ingest records in clean batches.
-     */
-    private function saveRecordsToDb(array $records, string $monthYear)
-    {
-        $now = now();
-        $batch = [];
-        $batchSize = 500;
-        $insertedCount = 0;
-
-        DB::beginTransaction();
         try {
-            // Delete previous records for this month to ensure completely clean, uncorrupted ingestion
-            MonthlyEmployee::where('month_year', $monthYear)->delete();
+            self::ensureTableExists();
 
-            foreach ($records as $row) {
-                $empId = trim($row['emp_id'] ?? '');
-                if (empty($empId)) {
-                    continue;
-                }
-
-                $batch[] = [
-                    'sr_no' => !empty($row['sr_no']) ? (int)$row['sr_no'] : null,
-                    'emp_id' => $empId,
-                    'employee_name' => trim($row['employee_name'] ?? 'N/A'),
-                    'location' => trim($row['location'] ?? 'N/A'),
-                    'designation' => trim($row['designation'] ?? 'N/A'),
-                    'sex' => trim($row['sex'] ?? ''),
-                    'category' => trim($row['category'] ?? 'N/A'),
-                    'month_year' => $monthYear,
-                    'status' => 'ACTIVE',
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-
-                if (count($batch) >= $batchSize) {
-                    DB::table('Monthly_Employees')->insert($batch);
-                    $insertedCount += count($batch);
-                    $batch = [];
-                }
-            }
-
-            if (!empty($batch)) {
-                DB::table('Monthly_Employees')->insert($batch);
-                $insertedCount += count($batch);
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => "Successfully uploaded and ingested all {$insertedCount} employee records for {$monthYear}.",
-                'data' => [
-                    'total_processed' => $insertedCount,
-                    'month_year' => $monthYear,
-                ]
+            $request->validate([
+                'file' => 'required|file',
+                'month_year' => 'nullable|string'
             ]);
+
+            $file = $request->file('file');
+            $monthYear = trim($request->input('month_year') ?: '');
+
+            // If month_year not explicitly provided, try to infer from filename or default
+            if (empty($monthYear)) {
+                $filename = $file->getClientOriginalName();
+                if (preg_match('/(january|february|march|april|may|june|july|august|september|october|november|december)\s*\d{4}/i', $filename, $matches)) {
+                    $monthYear = strtoupper($matches[0]);
+                } else {
+                    $monthYear = strtoupper(date('F Y'));
+                }
+            }
+
+            $ext = strtolower($file->getClientOriginalExtension());
+            $path = $file->getRealPath();
+
+            $records = [];
+            if ($ext === 'csv' || $ext === 'txt') {
+                $records = $this->parseCsvFile($path);
+            } elseif ($ext === 'xlsx') {
+                $records = $this->parseXlsxFile($path);
+            } else {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "Unsupported file type: .{$ext}. Please upload a .xlsx or .csv file."
+                ], 422);
+            }
+
+            if (empty($records)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No valid employee records found in the uploaded file.'
+                ], 422);
+            }
+
+            return $this->saveRecordsToDb($records, $monthYear);
         } catch (\Throwable $e) {
-            DB::rollBack();
-            \Log::error('MonthlyEmployee upload error: ' . $e->getMessage());
+            \Log::error('Upload error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to process employee upload: ' . $e->getMessage()
+                'message' => 'Upload failed: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Direct endpoint to sync from local Excel file on server.
+     * Ingest records: updates existing employees and adds new employees.
      */
-    public function syncLocalExcel()
+    private function saveRecordsToDb(array $records, string $monthYear)
     {
+        $now = Carbon::now();
+        $batchSize = 500;
+        $totalInserted = 0;
+        $totalUpdated = 0;
+
         self::ensureTableExists();
+        $tableName = self::getActualTableName();
 
-        $candidates = [
-            'C:\\xampp\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx',
-            base_path('AUGUST 2026 PAYROLL DATA.xlsx'),
-            base_path('../AUGUST 2026 PAYROLL DATA.xlsx'),
-            base_path('../../AUGUST 2026 PAYROLL DATA.xlsx'),
-            'C:\\Users\\USER\\Workspaces\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx'
-        ];
+        // Process in chunks of 500
+        $chunks = array_chunk($records, $batchSize);
 
-        $found = null;
-        foreach ($candidates as $c) {
-            if (file_exists($c)) {
-                $found = $c;
-                break;
+        foreach ($chunks as $chunk) {
+            $empIds = [];
+            $validRows = [];
+            foreach ($chunk as $row) {
+                $empId = trim($row['emp_id'] ?? '');
+                if (empty($empId)) continue;
+                $empIds[] = $empId;
+                $validRows[$empId] = $row;
+            }
+
+            if (empty($empIds)) continue;
+
+            // Check which employees already exist in DB
+            $existing = DB::table($tableName)
+                ->whereIn('emp_id', $empIds)
+                ->pluck('id', 'emp_id')
+                ->toArray();
+
+            $insertRows = [];
+
+            foreach ($validRows as $empId => $row) {
+                $srNo = !empty($row['sr_no']) ? (int)$row['sr_no'] : null;
+                $name = mb_substr(trim($row['employee_name'] ?? 'N/A'), 0, 190);
+                $location = mb_substr(trim($row['location'] ?? 'N/A'), 0, 190);
+                $designation = mb_substr(trim($row['designation'] ?? 'N/A'), 0, 190);
+                $sex = mb_substr(trim($row['sex'] ?? ''), 0, 20);
+                $category = mb_substr(trim($row['category'] ?? 'N/A'), 0, 100);
+
+                if (isset($existing[$empId])) {
+                    // Update existing employee with new month details
+                    DB::table($tableName)
+                        ->where('id', $existing[$empId])
+                        ->update([
+                            'sr_no' => $srNo,
+                            'employee_name' => $name,
+                            'location' => $location,
+                            'designation' => $designation,
+                            'sex' => $sex,
+                            'category' => $category,
+                            'month_year' => $monthYear,
+                            'status' => 'ACTIVE',
+                            'updated_at' => $now,
+                        ]);
+                    $totalUpdated++;
+                } else {
+                    // Add new employee
+                    $insertRows[] = [
+                        'sr_no' => $srNo,
+                        'emp_id' => $empId,
+                        'employee_name' => $name,
+                        'location' => $location,
+                        'designation' => $designation,
+                        'sex' => $sex,
+                        'category' => $category,
+                        'month_year' => $monthYear,
+                        'status' => 'ACTIVE',
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+            }
+
+            if (!empty($insertRows)) {
+                DB::table($tableName)->insert($insertRows);
+                $totalInserted += count($insertRows);
             }
         }
 
-        if (!$found) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Local AUGUST 2026 PAYROLL DATA.xlsx not found on server paths.',
-                'checked_paths' => $candidates
-            ], 404);
-        }
+        $totalProcessed = $totalInserted + $totalUpdated;
 
-        $records = $this->parseXlsxFile($found);
-        return $this->saveRecordsToDb($records, 'AUGUST 2026');
+        return response()->json([
+            'status' => 'success',
+            'message' => "Successfully processed {$totalProcessed} employees for {$monthYear}: {$totalInserted} new added, {$totalUpdated} updated.",
+            'data' => [
+                'total_processed' => $totalProcessed,
+                'new_added' => $totalInserted,
+                'updated' => $totalUpdated,
+                'month_year' => $monthYear,
+                'current_total' => DB::table($tableName)->count()
+            ]
+        ]);
     }
 
     /**
-     * Parse .xlsx file natively using PHP ZipArchive and SimpleXML.
+     * Direct endpoint to sync from local Excel file on server filesystem.
+     */
+    public function syncLocalExcel(Request $request)
+    {
+        try {
+            self::ensureTableExists();
+
+            $possiblePaths = [
+                base_path('AUGUST 2026 PAYROLL DATA.xlsx'),
+                base_path('../AUGUST 2026 PAYROLL DATA.xlsx'),
+                base_path('../../AUGUST 2026 PAYROLL DATA.xlsx'),
+                'c:\\Users\\USER\\Workspaces\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx',
+                'C:\\xampp\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx',
+                'C:\\xampp\\htdocs\\AUGUST 2026 PAYROLL DATA.xlsx',
+                storage_path('app/AUGUST 2026 PAYROLL DATA.xlsx'),
+                '\\\\192.168.0.24\\it-software\\IT DEV DAVID\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx'
+            ];
+
+            $filePath = null;
+            foreach ($possiblePaths as $p) {
+                if (file_exists($p)) {
+                    $filePath = $p;
+                    break;
+                }
+            }
+
+            if (!$filePath) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Local Excel file not found on server paths.',
+                    'checked_paths' => $possiblePaths
+                ], 404);
+            }
+
+            $monthYear = $request->input('month_year', 'AUGUST 2026');
+            $rows = $this->parseXlsxFile($filePath);
+
+            if (empty($rows)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No rows parsed from file: ' . $filePath
+                ], 422);
+            }
+
+            return $this->saveRecordsToDb($rows, $monthYear);
+        } catch (\Throwable $e) {
+            \Log::error('syncLocalExcel error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Sync failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Parse an XLSX file without third-party dependencies using ZipArchive + SimpleXML.
      */
     private function parseXlsxFile($filePath)
     {
+        $rows = [];
         $zip = new \ZipArchive();
+
         if ($zip->open($filePath) !== true) {
-            throw new \Exception("Cannot open .xlsx file.");
+            return $rows;
         }
 
         // 1. Read shared strings
         $sharedStrings = [];
-        $ssXml = $zip->getFromName('xl/sharedStrings.xml');
-        if ($ssXml) {
-            $xml = simplexml_load_string($ssXml);
-            foreach ($xml->si as $si) {
-                if (isset($si->t)) {
-                    $sharedStrings[] = (string)$si->t;
-                } elseif (isset($si->r)) {
-                    $text = '';
-                    foreach ($si->r as $r) {
-                        $text .= (string)$r->t;
+        $sharedStringsXml = $zip->getFromName('xl/sharedStrings.xml');
+        if ($sharedStringsXml !== false) {
+            $xml = simplexml_load_string($sharedStringsXml);
+            if ($xml && isset($xml->si)) {
+                foreach ($xml->si as $si) {
+                    if (isset($si->t)) {
+                        $sharedStrings[] = (string)$si->t;
+                    } elseif (isset($si->r)) {
+                        $text = '';
+                        foreach ($si->r as $r) {
+                            $text .= (string)$r->t;
+                        }
+                        $sharedStrings[] = $text;
+                    } else {
+                        $sharedStrings[] = '';
                     }
-                    $sharedStrings[] = $text;
-                } else {
-                    $sharedStrings[] = '';
                 }
             }
         }
 
-        // 2. Read first sheet XML
+        // 2. Read first sheet
         $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
-        if (!$sheetXml) {
-            // Try to find any sheet
-            for ($i = 0; $i < $zip->numFiles; $i++) {
-                $name = $zip->getNameIndex($i);
-                if (strpos($name, 'xl/worksheets/sheet') === 0) {
-                    $sheetXml = $zip->getFromName($name);
-                    break;
-                }
-            }
-        }
-
-        if (!$sheetXml) {
+        if ($sheetXml === false) {
             $zip->close();
-            throw new \Exception("Could not find worksheet in .xlsx file.");
+            return $rows;
         }
 
-        $xml = simplexml_load_string($sheetXml);
+        $sheet = simplexml_load_string($sheetXml);
         $zip->close();
 
-        $rows = [];
+        if (!$sheet || !isset($sheet->sheetData->row)) {
+            return $rows;
+        }
+
         $headerMap = [];
         $rowCount = 0;
 
-        foreach ($xml->sheetData->row as $row) {
+        foreach ($sheet->sheetData->row as $r) {
             $rowCount++;
             $rowCells = [];
-            foreach ($row->c as $c) {
-                $ref = (string)$c['r']; // e.g. A1, B1
-                $colLetter = preg_replace('/[0-9]/', '', $ref);
+
+            foreach ($r->c as $c) {
+                $cellRef = (string)$c['r'];
+                $colLetter = preg_replace('/[0-9]/', '', $cellRef);
                 $type = (string)$c['t'];
-                $val = (string)$c->v;
+                $val = isset($c->v) ? (string)$c->v : '';
 
                 if ($type === 's' && isset($sharedStrings[(int)$val])) {
                     $val = $sharedStrings[(int)$val];
@@ -454,7 +628,7 @@ class MonthlyEmployeeController extends Controller
     }
 
     /**
-     * Parse .csv file.
+     * Parse a standard CSV or text file.
      */
     private function parseCsvFile($filePath)
     {
@@ -463,7 +637,7 @@ class MonthlyEmployeeController extends Controller
             $headerMap = [];
             $lineCount = 0;
 
-            while (($data = fgetcsv($handle, 2000, ',')) !== false) {
+            while (($data = fgetcsv($handle, 4096, ',')) !== false) {
                 $lineCount++;
                 if ($lineCount === 1) {
                     foreach ($data as $idx => $headerName) {
@@ -496,7 +670,7 @@ class MonthlyEmployeeController extends Controller
                     ];
 
                     foreach ($data as $idx => $val) {
-                        $val = trim(str_replace("\xc2\xa0", ' ', $val));
+                        $val = trim($val);
                         if (isset($headerMap[$idx])) {
                             $field = $headerMap[$idx];
                             $row[$field] = $val;
@@ -545,69 +719,18 @@ class MonthlyEmployeeController extends Controller
     }
 
     /**
-     * Ingest directly from local Excel file if present on server filesystem.
-     */
-    public function syncLocalExcel(Request $request)
-    {
-        try {
-            self::ensureTableExists();
-
-            $possiblePaths = [
-                base_path('AUGUST 2026 PAYROLL DATA.xlsx'),
-                base_path('../AUGUST 2026 PAYROLL DATA.xlsx'),
-                base_path('../../AUGUST 2026 PAYROLL DATA.xlsx'),
-                'c:\\Users\\USER\\Workspaces\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx',
-                'C:\\xampp\\htdocs\\PMS\\AUGUST 2026 PAYROLL DATA.xlsx',
-                'C:\\xampp\\htdocs\\AUGUST 2026 PAYROLL DATA.xlsx',
-                storage_path('app/AUGUST 2026 PAYROLL DATA.xlsx')
-            ];
-
-            $filePath = null;
-            foreach ($possiblePaths as $p) {
-                if (file_exists($p)) {
-                    $filePath = $p;
-                    break;
-                }
-            }
-
-            if (!$filePath) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Local Excel file not found on server filesystem.'
-                ], 404);
-            }
-
-            $monthYear = $request->input('month_year', 'AUGUST 2026');
-            $rows = $this->parseXlsxFile($filePath);
-
-            if (empty($rows)) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'No rows parsed from file: ' . $filePath
-                ], 422);
-            }
-
-            return $this->saveRecordsToDb($rows, $monthYear);
-        } catch (\Throwable $e) {
-            \Log::error('syncLocalExcel error: ' . $e->getMessage());
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Sync failed: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
      * Public / Protected runner to ensure table migration on Server 20.
      */
     public function migrateTable()
     {
         try {
             self::ensureTableExists();
-            $count = MonthlyEmployee::count();
+            $tableName = self::getActualTableName();
+            $count = DB::table($tableName)->count();
             return response()->json([
                 'status' => 'success',
-                'message' => 'Monthly_Employees table verified and ready on Server 20.',
+                'message' => "Monthly_Employees table ({$tableName}) verified and ready on Server 20.",
+                'table_used' => $tableName,
                 'current_employee_count' => $count
             ]);
         } catch (\Throwable $e) {

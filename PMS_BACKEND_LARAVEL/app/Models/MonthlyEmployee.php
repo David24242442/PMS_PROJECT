@@ -14,6 +14,14 @@ class MonthlyEmployee extends Model
     protected $guarded = [];
 
     /**
+     * Dynamically resolve table name to match database casing.
+     */
+    public function getTable()
+    {
+        return \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+    }
+
+    /**
      * Scope for searching by Emp ID, Employee Name, or Designation.
      */
     public function scopeSearch($query, $term)

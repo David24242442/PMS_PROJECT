@@ -182,12 +182,21 @@ class EmployeeMasterController extends Controller
             $search = $request->input('search');
 
             // 1. PRIMARY SOURCE: Query Monthly_Employees table
-            if (\Schema::hasTable('Monthly_Employees')) {
-                $monthlyCount = \App\Models\MonthlyEmployee::count();
+            \App\Http\Controllers\MonthlyEmployeeController::ensureTableExists();
+            $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+
+            if (\Schema::hasTable($mTable)) {
+                $monthlyCount = DB::table($mTable)->count();
                 if ($monthlyCount > 0) {
-                    $mQuery = \App\Models\MonthlyEmployee::query();
+                    $mQuery = DB::table($mTable);
                     if (!empty($search)) {
-                        $mQuery->search($search);
+                        $term = trim($search);
+                        $mQuery->where(function ($q) use ($term) {
+                            $q->where('emp_id', 'like', "%{$term}%")
+                              ->orWhere('employee_name', 'like', "%{$term}%")
+                              ->orWhere('designation', 'like', "%{$term}%")
+                              ->orWhere('location', 'like', "%{$term}%");
+                        });
                     }
                     
                     $mRecords = $mQuery->orderBy('sr_no', 'asc')->get();

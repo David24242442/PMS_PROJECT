@@ -18,9 +18,9 @@ class CreateMonthlyEmployeesTable extends Migration
                 $table->id();
                 $table->unsignedInteger('sr_no')->nullable();
                 $table->string('emp_id', 50)->index();
-                $table->string('employee_name', 255)->index();
-                $table->string('location', 255)->nullable()->index();
-                $table->string('designation', 255)->nullable();
+                $table->string('employee_name', 190)->index();
+                $table->string('location', 190)->nullable()->index();
+                $table->string('designation', 190)->nullable();
                 $table->string('sex', 20)->nullable();
                 $table->string('category', 100)->nullable()->index(); // CONTRACT, PERMANENT, OUTSOURCE
                 $table->string('month_year', 50)->default('AUGUST 2026')->index();
