@@ -19,9 +19,28 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://192.168.0.20', 'http://192.168.0.20:5173'],
+    'allowed_origins' => [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://localhost:5175',
+        'http://localhost:5050',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
+        'http://127.0.0.1:5050',
+        'http://192.168.0.20',
+        'http://192.168.0.20:5050',
+        'http://192.168.0.20:5173',
+        'http://192.168.0.20:9090',
+        'http://192.168.0.24',
+        'http://192.168.0.24:5050',
+        'http://192.168.0.24:5173',
+    ],
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => [
+        '#^http://192\.168\.0\.\d+(:\d+)?$#',
+        '#^http://localhost(:\d+)?$#',
+        '#^http://127\.0\.0\.1(:\d+)?$#',
+    ],
 
     'allowed_headers' => ['*'],
 
