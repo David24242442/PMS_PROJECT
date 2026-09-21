@@ -72,7 +72,7 @@ const fetchUsers = async () => {
 // Fetch Master Employee List (for Code Search)
 const fetchMasterEmployees = async () => {
     try {
-        const response = await axios.get('pms/get-employees');
+        const response = await axios.get('pms/get-employees?all=1');
         if (response.data.status === 'success') {
             masterEmployees.value = response.data.data;
         }
@@ -141,10 +141,14 @@ const updateTeam = async () => {
     try {
         const payload = {
             manager_id: editingManager.value.id,
+            year: 2026,
             employees: form.value.team_members.map(emp => ({
                 employee_code: emp.employee_code,
+                name: emp.name,
                 department: emp.department,
-                location: emp.location
+                location: emp.location,
+                position: emp.position || emp.designation,
+                email: emp.email
             }))
         };
 
@@ -157,7 +161,6 @@ const updateTeam = async () => {
             if (editingManager.value) {
                 teamMembers.value = masterEmployees.value.filter(emp => emp.line_manager_id === editingManager.value.id);
             }
-            // showEditModal.value = false; // Manual-close enabled
         }
     } catch (error) {
         console.error('Error syncing team:', error);
@@ -536,6 +539,22 @@ onMounted(() => {
                                     <span class="flex items-center gap-1.5"><i class="pi pi-envelope text-indigo-400"></i> {{ editingManager.email }}</span>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Automatic Provisioning & Goals Badge -->
+                    <div class="p-4 bg-purple-50/80 rounded-2xl border border-purple-200 flex items-start gap-3.5 shadow-sm">
+                        <div class="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                            <i class="pi pi-bolt text-sm"></i>
+                        </div>
+                        <div class="flex-1 text-xs">
+                            <p class="font-black text-purple-900 uppercase tracking-wide">Automatic Account Provisioning & Goals Assignment</p>
+                            <p class="text-purple-700 font-medium mt-1 leading-relaxed">
+                                When you finalize team assignments, all members automatically receive their portal credentials:
+                                <span class="font-mono font-black bg-white px-2 py-0.5 rounded border border-purple-200 text-purple-900">Username: Emp ID</span> &
+                                <span class="font-mono font-black bg-white px-2 py-0.5 rounded border border-purple-200 text-purple-900">Password: Password</span>.
+                                Their <strong>FY 2026 SMART Goals & Appraisal dossier</strong> is automatically initialized for them to complete self-assessment and submit for <strong>{{ editingManager?.name }}</strong> to review.
+                            </p>
                         </div>
                     </div>
 

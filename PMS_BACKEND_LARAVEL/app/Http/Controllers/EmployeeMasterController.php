@@ -3,10 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Goal;
+use App\Models\Employee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class EmployeeMasterController extends Controller
 {
@@ -176,15 +180,70 @@ class EmployeeMasterController extends Controller
         180=>'OYARIFA',181=>'LASHIBI',
     ];
 
+    /**
+     * Ensure database schemas and necessary columns are present across tables.
+     */
+    private function ensureSchema()
+    {
+        try {
+            \App\Http\Controllers\MonthlyEmployeeController::ensureTableExists();
+            $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+            if (\Schema::hasTable($mTable) && !\Schema::hasColumn($mTable, 'line_manager_id')) {
+                \Schema::table($mTable, function ($table) {
+                    $table->unsignedBigInteger('line_manager_id')->nullable()->index();
+                });
+            }
+
+            if (\Schema::hasTable('users')) {
+                \Schema::table('users', function ($table) {
+                    if (!\Schema::hasColumn('users', 'employee_code')) {
+                        $table->string('employee_code')->nullable()->index();
+                    }
+                    if (!\Schema::hasColumn('users', 'line_manager_id')) {
+                        $table->unsignedBigInteger('line_manager_id')->nullable()->index();
+                    }
+                    if (!\Schema::hasColumn('users', 'report_to')) {
+                        $table->string('report_to')->nullable();
+                    }
+                    if (!\Schema::hasColumn('users', 'is_manager')) {
+                        $table->boolean('is_manager')->default(0);
+                    }
+                    if (!\Schema::hasColumn('users', 'permissions')) {
+                        $table->text('permissions')->nullable();
+                    }
+                    if (!\Schema::hasColumn('users', 'appraisal_template')) {
+                        $table->longText('appraisal_template')->nullable();
+                    }
+                });
+            }
+
+            if (\Schema::hasTable('goals')) {
+                \Schema::table('goals', function ($table) {
+                    if (!\Schema::hasColumn('goals', 'appraisal_data')) {
+                        $table->longText('appraisal_data')->nullable();
+                    }
+                    if (!\Schema::hasColumn('goals', 'manager_name')) {
+                        $table->string('manager_name')->nullable();
+                    }
+                    if (!\Schema::hasColumn('goals', 'employee_code')) {
+                        $table->string('employee_code')->nullable()->index();
+                    }
+                });
+            }
+        } catch (\Throwable $e) {
+            \Log::warning("EmployeeMasterController ensureSchema notice: " . $e->getMessage());
+        }
+    }
+
     public function getEmployees(Request $request)
     {
         try {
+            $this->ensureSchema();
             $user = $request->user();
             $isAdmin = $user && $user->admin;
             $search = $request->input('search');
 
             // 1. PRIMARY SOURCE: Query Monthly_Employees table
-            \App\Http\Controllers\MonthlyEmployeeController::ensureTableExists();
             $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
 
             if (\Schema::hasTable($mTable)) {
@@ -198,10 +257,11 @@ class EmployeeMasterController extends Controller
                               ->orWhere('employee_name', 'like', "%{$term}%")
                               ->orWhere('designation', 'like', "%{$term}%")
                               ->orWhere('location', 'like', "%{$term}%");
-                        })->limit(100);
+                        })->limit(200);
                     } else {
-                        // Limit initial fetch to 500 to ensure instantaneous response without PHP timeout
-                        $mQuery->limit(500);
+                        // Allow full roster retrieval up to 10,000 records
+                        $limit = $request->input('limit', 10000);
+                        $mQuery->limit($limit);
                     }
                     
                     $mRecords = $mQuery->orderBy('sr_no', 'asc')->get();
@@ -221,6 +281,15 @@ class EmployeeMasterController extends Controller
                             }
                         }
 
+                        // Also collect any manager IDs directly on Monthly_Employees
+                        if (\Schema::hasColumn($mTable, 'line_manager_id')) {
+                            foreach ($mRecords as $mr) {
+                                if (!empty($mr->line_manager_id)) {
+                                    $managerIds[] = $mr->line_manager_id;
+                                }
+                            }
+                        }
+
                         // Preload all managers in 1 query (eliminates N+1 query timeout!)
                         $managersMap = [];
                         if (!empty($managerIds)) {
@@ -230,8 +299,9 @@ class EmployeeMasterController extends Controller
                         $employees = $mRecords->map(function ($emp) use ($usersMap, $managersMap) {
                             $user = $usersMap[$emp->emp_id] ?? null;
                             $managerName = null;
-                            if ($user && !empty($user->line_manager_id)) {
-                                $managerName = $managersMap[$user->line_manager_id] ?? null;
+                            $lineMgrId = $user ? $user->line_manager_id : ($emp->line_manager_id ?? null);
+                            if (!empty($lineMgrId)) {
+                                $managerName = $managersMap[$lineMgrId] ?? null;
                             }
 
                             return [
@@ -248,7 +318,7 @@ class EmployeeMasterController extends Controller
                                 'designation' => $emp->designation ?: 'N/A',
                                 'sex' => $emp->sex,
                                 'category' => $emp->category,
-                                'line_manager_id' => $user ? $user->line_manager_id : null,
+                                'line_manager_id' => $lineMgrId,
                                 'line_manager_name' => $managerName,
                                 'full_string' => $emp->emp_id . ' - ' . $emp->employee_name . ' (' . ($emp->location ?: 'N/A') . ')',
                                 'source' => 'monthly_employees'
@@ -416,53 +486,371 @@ class EmployeeMasterController extends Controller
 
     /**
      * Sync team members for a manager.
-     * Automatically creates user accounts for employees if they don't exist.
+     * Automatically creates/updates user accounts for employees (Username: Emp ID, Password: Password)
+     * and automatically generates and assigns their FY 2026 Goals & Appraisal dossiers.
      */
     public function syncTeam(Request $request)
     {
-        $managerId = $request->input('manager_id');
-        $employees = $request->input('employees', []);
+        try {
+            $this->ensureSchema();
 
-        if (empty($managerId)) {
-            return response()->json(['status' => 'error', 'message' => 'Manager ID is required'], 400);
+            $managerId = $request->input('manager_id');
+            $employees = $request->input('employees', []);
+            $year = $request->input('year', 2026);
+
+            if (empty($managerId)) {
+                return response()->json(['status' => 'error', 'message' => 'Manager ID is required'], 400);
+            }
+
+            $manager = User::find($managerId);
+            if (!$manager) {
+                return response()->json(['status' => 'error', 'message' => 'Line Manager not found'], 404);
+            }
+
+            // Ensure manager is flagged as is_manager
+            if (!$manager->is_manager) {
+                try {
+                    $manager->update(['is_manager' => 1]);
+                } catch (\Throwable $e) {}
+            }
+
+            // Extract all codes from the payload (handles both objects and strings)
+            $selectedCodes = collect($employees)->map(function ($item) {
+                if (is_array($item)) {
+                    return $item['employee_code'] ?? ($item['emp_id'] ?? null);
+                }
+                return $item;
+            })->filter()->unique()->values()->toArray();
+
+            // Prevent self-assignment (manager cannot report to themselves)
+            $managerCodes = array_filter([$manager->employee_code, $manager->username]);
+            $selectedCodes = array_values(array_filter($selectedCodes, function ($code) use ($managerCodes) {
+                return !in_array($code, $managerCodes);
+            }));
+
+            $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+            $hasMonthlyTable = Schema::hasTable($mTable);
+            $hasMonthlyLineManager = $hasMonthlyTable && Schema::hasColumn($mTable, 'line_manager_id');
+            $hasEmpLineManager = Schema::hasTable('employees') && Schema::hasColumn('employees', 'line_manager_id');
+            $hasUserLineManager = Schema::hasTable('users') && Schema::hasColumn('users', 'line_manager_id');
+
+            // 1. UNASSIGN existing members who are no longer in this manager's team
+            if ($hasUserLineManager) {
+                User::where('line_manager_id', $managerId)
+                    ->whereNotIn('employee_code', $selectedCodes)
+                    ->whereNotIn('username', $selectedCodes)
+                    ->update(['line_manager_id' => null, 'report_to' => null]);
+            }
+
+            if ($hasEmpLineManager) {
+                DB::table('employees')
+                    ->where('line_manager_id', $managerId)
+                    ->whereNotIn('employeeid', $selectedCodes)
+                    ->whereNotIn('emp_code', $selectedCodes)
+                    ->update(['line_manager_id' => null]);
+            }
+
+            if ($hasMonthlyLineManager) {
+                DB::table($mTable)
+                    ->where('line_manager_id', $managerId)
+                    ->whereNotIn('emp_id', $selectedCodes)
+                    ->update(['line_manager_id' => null]);
+            }
+
+            if (empty($selectedCodes)) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Team roster cleared successfully for ' . $manager->name,
+                    'synced_count' => 0
+                ]);
+            }
+
+            // 2. Resolve Manager's Appraisal Template
+            $competencies = [
+                ['id' => 1, 'title' => 'Performance & Teamwork', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Overall performance based on feedback from Line or Operations Managers', 'Teamwork and people management issues']],
+                ['id' => 2, 'title' => 'Customer Service / Relationship Building', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Super saver cards and service quality', 'Google rating improvement and satisfaction']],
+                ['id' => 3, 'title' => 'Execution / Sales Results Driven', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Business driven metric set by department', 'Loss to company % mitigation and delivery']],
+                ['id' => 4, 'title' => 'Compliance & Quality Standards', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Adherence to company policies, SOPs, safety, and regulatory compliance', 'Wooqer checklist and department standards implementation']],
+                ['id' => 5, 'title' => 'Continuous Improvement in workflows/processes', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Culture of adaptability and operational innovation', 'Flexibility and problem solving']],
+            ];
+            if (!empty($manager->appraisal_template)) {
+                $saved = is_array($manager->appraisal_template) ? $manager->appraisal_template : json_decode($manager->appraisal_template, true);
+                if (!empty($saved) && is_array($saved)) {
+                    $competencies = $saved;
+                }
+            }
+
+            // 3. Preload all reference data in bulk for blazing fast execution (NO N+1)
+            $monthlyMap = [];
+            if ($hasMonthlyTable) {
+                $monthlyRows = DB::table($mTable)->whereIn('emp_id', $selectedCodes)->get();
+                foreach ($monthlyRows as $mr) {
+                    $monthlyMap[$mr->emp_id] = $mr;
+                }
+            }
+
+            $legacyEmpMap = [];
+            if (Schema::hasTable('employees')) {
+                $legacyRows = DB::table('employees')
+                    ->whereIn('employeeid', $selectedCodes)
+                    ->orWhereIn('emp_code', $selectedCodes)
+                    ->get();
+                foreach ($legacyRows as $lr) {
+                    if (!empty($lr->employeeid)) $legacyEmpMap[$lr->employeeid] = $lr;
+                    if (!empty($lr->emp_code)) $legacyEmpMap[$lr->emp_code] = $lr;
+                }
+            }
+
+            $usersMap = [];
+            $existingUsers = User::whereIn('employee_code', $selectedCodes)
+                ->orWhereIn('username', $selectedCodes)
+                ->get();
+            foreach ($existingUsers as $eu) {
+                if (!empty($eu->employee_code)) $usersMap[$eu->employee_code] = $eu;
+                if (!empty($eu->username)) $usersMap[$eu->username] = $eu;
+            }
+
+            $goalsMap = [];
+            if (Schema::hasTable('goals')) {
+                $existingGoals = Goal::where('year', $year)
+                    ->whereIn('employee_code', $selectedCodes)
+                    ->whereIn('status', ['assigned', 'draft', 'in_progress'])
+                    ->get();
+                foreach ($existingGoals as $eg) {
+                    $goalsMap[$eg->employee_code] = $eg;
+                }
+            }
+
+            // Convert request employees array to map if passed as objects
+            $payloadEmpMap = [];
+            foreach ($employees as $empObj) {
+                if (is_array($empObj) && !empty($empObj['employee_code'])) {
+                    $payloadEmpMap[$empObj['employee_code']] = $empObj;
+                }
+            }
+
+            $syncedCount = 0;
+            $accountsProvisioned = 0;
+            $goalsAssigned = 0;
+
+            $userCols = Schema::getColumnListing('users');
+            $hasEmpCodeCol = in_array('employee_code', $userCols);
+            $hasReportToCol = in_array('report_to', $userCols);
+            $hasPermsCol = in_array('permissions', $userCols);
+            $hasDeptCol = in_array('department', $userCols);
+            $hasLocCol = in_array('location', $userCols);
+            $hasDesigCol = in_array('designation', $userCols);
+            $hasRoleCol = in_array('role', $userCols);
+            $hasPosCol = in_array('position_id', $userCols);
+
+            // 4. Process each employee
+            foreach ($selectedCodes as $code) {
+                $mEmp = $monthlyMap[$code] ?? null;
+                $legEmp = $legacyEmpMap[$code] ?? null;
+                $pEmp = $payloadEmpMap[$code] ?? null;
+
+                // Resolve name
+                $candName = null;
+                if ($mEmp && !empty($mEmp->employee_name)) {
+                    $candName = $mEmp->employee_name;
+                } elseif ($legEmp) {
+                    $candName = trim(($legEmp->firstname ?? '') . ' ' . ($legEmp->surname ?? ''));
+                } elseif ($pEmp && !empty($pEmp['name'])) {
+                    $candName = $pEmp['name'];
+                } else {
+                    $candName = 'Employee ' . $code;
+                }
+
+                // Resolve location
+                $loc = $mEmp->location ?? ($legEmp->joininglocation ?? ($pEmp['location'] ?? 'N/A'));
+
+                // Resolve department
+                $dept = $mEmp->location ?? ($legEmp->department ?? ($pEmp['department'] ?? 'N/A'));
+
+                // Resolve designation
+                $designation = $mEmp->designation ?? ($legEmp->job_title ?? ($pEmp['position'] ?? ($pEmp['designation'] ?? 'Employee')));
+
+                // Clean code & email
+                $cleanCode = preg_replace('/[^a-zA-Z0-9]/', '', $code);
+                $fallbackEmail = strtolower($cleanCode) . '@melcomgroup.com';
+                $email = (!empty($legEmp->email) && filter_var($legEmp->email, FILTER_VALIDATE_EMAIL))
+                    ? $legEmp->email
+                    : $fallbackEmail;
+
+                // 4a. User Provisioning / Updating
+                $empUser = $usersMap[$code] ?? null;
+
+                if (!$empUser) {
+                    // Create new user account with default credentials: Username = Emp ID, Password = Password
+                    if (User::where('email', $email)->exists()) {
+                        $email = strtolower($cleanCode) . '_' . substr(md5(uniqid()), 0, 5) . '@melcomgroup.com';
+                    }
+
+                    $newUserData = [
+                        'name' => $candName,
+                        'username' => $code,
+                        'email' => $email,
+                        'password' => Hash::make('Password'),
+                        'is_manager' => 0,
+                        'admin' => 0,
+                        'user_id' => $manager->id,
+                    ];
+                    if ($hasEmpCodeCol) $newUserData['employee_code'] = $code;
+                    if ($hasUserLineManager) $newUserData['line_manager_id'] = $manager->id;
+                    if ($hasReportToCol) $newUserData['report_to'] = $manager->name ?: $manager->username;
+                    if ($hasDeptCol) $newUserData['department'] = $dept;
+                    if ($hasLocCol) $newUserData['location'] = $loc;
+                    if ($hasDesigCol) $newUserData['designation'] = $designation;
+                    if ($hasPosCol) $newUserData['position_id'] = 5;
+                    if ($hasRoleCol) $newUserData['role'] = 'Basic';
+                    if ($hasPermsCol) $newUserData['permissions'] = ['/pms/goals', '/pms/appraisal'];
+
+                    try {
+                        $empUser = User::create($newUserData);
+                        $usersMap[$code] = $empUser;
+                        $accountsProvisioned++;
+                    } catch (\Throwable $cuEx) {
+                        Log::error("User creation failed for {$code}: " . $cuEx->getMessage());
+                    }
+                } else {
+                    // Existing User: Update reporting line and ensure credentials
+                    $updateData = [
+                        'password' => Hash::make('Password'), // Default password reset to Password
+                    ];
+                    if ($hasEmpCodeCol) $updateData['employee_code'] = $code;
+                    if (empty($empUser->username) || is_numeric($empUser->username)) {
+                        $updateData['username'] = $code;
+                    }
+                    if ($hasUserLineManager) $updateData['line_manager_id'] = $manager->id;
+                    if ($hasReportToCol) $updateData['report_to'] = $manager->name ?: $manager->username;
+
+                    // Hierarchy preservation: Do NOT demote someone who is already a manager or admin!
+                    $isManagerOrAdmin = $empUser->admin || $empUser->is_manager || in_array($empUser->position_id, [2, 3, 4]);
+                    if (!$isManagerOrAdmin) {
+                        if ($hasDeptCol && empty($empUser->department)) $updateData['department'] = $dept;
+                        if ($hasLocCol && empty($empUser->location)) $updateData['location'] = $loc;
+                        if ($hasDesigCol && empty($empUser->designation)) $updateData['designation'] = $designation;
+                        if ($hasPosCol && empty($empUser->position_id)) $updateData['position_id'] = 5;
+                        if ($hasPermsCol && empty($empUser->permissions)) $updateData['permissions'] = ['/pms/goals', '/pms/appraisal'];
+                        if ($hasRoleCol && empty($empUser->role)) $updateData['role'] = 'Basic';
+                    }
+
+                    try {
+                        $empUser->update($updateData);
+                    } catch (\Throwable $uuEx) {
+                        Log::warning("User update notice for {$code}: " . $uuEx->getMessage());
+                    }
+                }
+
+                // 4b. Sync reporting line in Monthly_Employees & employees tables
+                if ($hasMonthlyLineManager) {
+                    try {
+                        DB::table($mTable)->where('emp_id', $code)->update(['line_manager_id' => $manager->id]);
+                    } catch (\Throwable $e) {}
+                }
+
+                if ($hasEmpLineManager) {
+                    try {
+                        DB::table('employees')
+                            ->where('employeeid', $code)
+                            ->orWhere('emp_code', $code)
+                            ->update(['line_manager_id' => $manager->id]);
+                    } catch (\Throwable $e) {}
+                }
+
+                // 4c. Automatic Goal & Appraisal Dossier Creation for FY 2026
+                if (Schema::hasTable('goals') && $empUser) {
+                    try {
+                        $empAppraisalData = [
+                            'competencies' => $competencies,
+                            'comments' => '',
+                            'impressedMost' => '',
+                            'impressedLeast' => '',
+                            'performanceRating' => 0,
+                            'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
+                            'candidate_signature_name' => $candName,
+                            'manager_signature_name' => $manager->name,
+                            'signature_date' => date('Y-m-d')
+                        ];
+
+                        $existingGoal = $goalsMap[$code] ?? null;
+                        if ($existingGoal) {
+                            $updateGoal = [
+                                'created_by' => $manager->id,
+                                'manager_name' => $manager->name,
+                                'location' => $loc,
+                                'department' => $dept,
+                                'job_title' => $designation,
+                            ];
+                            if (empty($existingGoal->appraisal_data)) {
+                                $updateGoal['appraisal_data'] = $empAppraisalData;
+                            }
+                            $existingGoal->update($updateGoal);
+                            $goalsAssigned++;
+                        } else {
+                            Goal::create([
+                                'title' => 'Yearly SMART Goals FY ' . $year,
+                                'description' => ['Achieve operational excellence, adherence to SOPs, customer satisfaction, and key departmental milestones.'],
+                                'purposes' => ['Performance review and competency evaluation for FY ' . $year],
+                                'challenges' => ['Mitigate operational losses, enhance turnaround time, and achieve team performance benchmarks.'],
+                                'category' => 'Operational',
+                                'target' => 100,
+                                'due_date' => $year . '-12-31',
+                                'year' => $year,
+                                'user_id' => $empUser->id,
+                                'created_by' => $manager->id,
+                                'candidate_name' => $candName,
+                                'employee_code' => $code,
+                                'location' => $loc,
+                                'department' => $dept,
+                                'job_title' => $designation,
+                                'manager_name' => $manager->name,
+                                'smart_criteria' => [
+                                    'specific' => true,
+                                    'measurable' => true,
+                                    'attainable' => true,
+                                    'relevant' => true,
+                                    'time_bound' => true
+                                ],
+                                'appraisal_data' => $empAppraisalData,
+                                'status' => 'assigned',
+                            ]);
+                            $goalsAssigned++;
+                        }
+                    } catch (\Throwable $gEx) {
+                        Log::error("Goal auto-assignment failed for {$code}: " . $gEx->getMessage());
+                    }
+                }
+
+                $syncedCount++;
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "Successfully synchronized {$syncedCount} team member(s) to {$manager->name}. User accounts provisioned (Username: Emp ID, Password: Password) and FY {$year} Goals & Appraisals automatically assigned.",
+                'synced_count' => $syncedCount,
+                'accounts_provisioned' => $accountsProvisioned,
+                'goals_assigned' => $goalsAssigned,
+                'manager_name' => $manager->name,
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error("EmployeeMasterController@syncTeam fatal error: " . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to synchronize team: ' . $e->getMessage()
+            ], 500);
         }
-
-        // Extract all codes from the payload
-        $selectedCodes = collect($employees)->pluck('employee_code')->filter()->toArray();
-
-        // 1. CLEAR existing assignments for this manager (only those not in the new list)
-        // This ensures the list stays clean
-        \DB::table('employees')
-            ->where('line_manager_id', $managerId)
-            ->whereNotIn('employeeid', $selectedCodes)
-            ->whereNotIn('emp_code', $selectedCodes)
-            ->update(['line_manager_id' => null]);
-
-        // 2. ASSIGN new/remaining members
-        $syncedCount = 0;
-        foreach ($selectedCodes as $code) {
-            $updated = \DB::table('employees')
-                ->where('employeeid', $code)
-                ->orWhere('emp_code', $code)
-                ->update(['line_manager_id' => $managerId]);
-            
-            if ($updated) $syncedCount++;
-        }
-
-        return response()->json([
-            'status' => 'success',
-            'message' => "Successfully synchronized team. $syncedCount members assigned to roster.",
-        ]);
     }
 
     /**
      * Parse a CSV of employee codes and return matched employee records.
-     * Accepts a CSV file with an employee_code column (or single-column with codes).
+     * Matches primarily against Monthly_Employees (all 5,920 employees), fallback to legacy employees.
      */
     public function parseTeamCsv(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:2048',
+            'file' => 'required|file|mimes:csv,txt|max:4096',
         ]);
 
         $file = $request->file('file');
@@ -476,12 +864,12 @@ class EmployeeMasterController extends Controller
         // Detect header row
         $header = str_getcsv(array_shift($lines));
         $header = array_map(function ($h) {
-            return strtolower(trim(str_replace([' ', '_'], ['_', '_'], $h)));
+            return strtolower(trim(str_replace([' ', '_', '-'], ['_', '_', '_'], $h)));
         }, $header);
 
         // Find the employee_code column index
         $codeIndex = null;
-        $possibleNames = ['employee_code', 'employeecode', 'emp_code', 'empcode', 'code', 'employeeid', 'employee_id', 'id'];
+        $possibleNames = ['employee_code', 'employeecode', 'emp_code', 'empcode', 'code', 'employeeid', 'employee_id', 'emp_id', 'empid', 'id', 'sr_no'];
         foreach ($possibleNames as $name) {
             $idx = array_search($name, $header);
             if ($idx !== false) {
@@ -493,7 +881,6 @@ class EmployeeMasterController extends Controller
         // If no matching header, assume single-column CSV (just codes)
         $codes = [];
         if ($codeIndex === null) {
-            // Try treating the header itself as a code (single-column, no header)
             $allLines = array_merge([$header[0] ?? ''], $lines);
             foreach ($allLines as $line) {
                 $val = trim(str_getcsv($line)[0] ?? '');
@@ -507,48 +894,99 @@ class EmployeeMasterController extends Controller
             }
         }
 
-        $codes = array_unique($codes);
+        $codes = array_values(array_unique(array_filter($codes)));
 
-        // Match against employees table
-        $matched = \DB::table('employees')
-            ->whereIn('employeeid', $codes)
-            ->orWhereIn('emp_code', $codes)
-            ->get();
+        $this->ensureSchema();
+        $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
 
-        $matchedCodes = $matched->pluck('employeeid')->merge($matched->pluck('emp_code'))->filter()->unique()->toArray();
-        $unmatched = array_values(array_diff($codes, $matchedCodes));
+        // 1. PRIMARY MATCH: Monthly_Employees table (contains all 5,920 current employees)
+        $matchedMonthly = collect();
+        if (\Schema::hasTable($mTable)) {
+            $matchedMonthly = DB::table($mTable)
+                ->whereIn('emp_id', $codes)
+                ->get();
+        }
 
-        // Build response in the same format as getEmployees
-        $employees = $matched->map(function ($emp) {
-            $user = User::where('employee_code', $emp->employeeid)->first();
+        $matchedMonthlyCodes = $matchedMonthly->pluck('emp_id')->filter()->unique()->toArray();
+        $remainingCodes = array_values(array_diff($codes, $matchedMonthlyCodes));
 
-            // Resolve department
+        // 2. SECONDARY MATCH: legacy employees table
+        $matchedLegacy = collect();
+        if (!empty($remainingCodes) && \Schema::hasTable('employees')) {
+            $matchedLegacy = DB::table('employees')
+                ->whereIn('employeeid', $remainingCodes)
+                ->orWhereIn('emp_code', $remainingCodes)
+                ->get();
+        }
+
+        $matchedLegacyCodes = $matchedLegacy->pluck('employeeid')->merge($matchedLegacy->pluck('emp_code'))->filter()->unique()->toArray();
+        $allMatchedCodes = array_unique(array_merge($matchedMonthlyCodes, $matchedLegacyCodes));
+        $unmatched = array_values(array_diff($codes, $allMatchedCodes));
+
+        // Preload users to attach user_id and line_manager_id
+        $usersMap = [];
+        if (!empty($allMatchedCodes) && \Schema::hasColumn('users', 'employee_code')) {
+            $users = User::whereIn('employee_code', $allMatchedCodes)->get();
+            foreach ($users as $u) {
+                $usersMap[$u->employee_code] = $u;
+            }
+        }
+
+        $employees = collect();
+
+        // Map Monthly_Employees
+        foreach ($matchedMonthly as $emp) {
+            $user = $usersMap[$emp->emp_id] ?? null;
+            $mgrId = $user ? $user->line_manager_id : ($emp->line_manager_id ?? null);
+
+            $employees->push([
+                'id' => $emp->id,
+                'user_id' => $user ? $user->id : null,
+                'employee_code' => $emp->emp_id,
+                'name' => $emp->employee_name,
+                'location' => $emp->location ?: 'N/A',
+                'department' => $emp->location ?: 'N/A',
+                'position' => $emp->designation ?: 'N/A',
+                'designation' => $emp->designation ?: 'N/A',
+                'line_manager_id' => $mgrId,
+                'full_string' => $emp->emp_id . ' - ' . $emp->employee_name . ' (' . ($emp->location ?: 'N/A') . ')',
+                'source' => 'monthly_employees'
+            ]);
+        }
+
+        // Map legacy employees (that weren't already added from Monthly_Employees)
+        foreach ($matchedLegacy as $emp) {
+            $code = $emp->employeeid ?: $emp->emp_code;
+            if ($matchedMonthlyCodes && in_array($code, $matchedMonthlyCodes)) {
+                continue;
+            }
+            $user = $usersMap[$code] ?? null;
+
             $dept = $user->department ?? $emp->department ?? null;
             if (empty($dept) || $dept === 'N/A') {
                 $dept = self::$deptLookup[$emp->joining_dept_id ?? 0] ?? 'N/A';
             }
-
-            // Resolve location from branch
             $loc = $user->location ?? $emp->joininglocation ?? null;
             if (empty($loc) || $loc === 'N/A') {
                 $loc = self::$branchLookup[$emp->joining_branch_id ?? 0] ?? 'N/A';
             }
+            $position = $emp->job_title ?? $emp->joiningposition ?? 'Employee';
+            $name = trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''));
 
-            // Resolve position
-            $position = $emp->job_title ?? $emp->joiningposition ?? 'N/A';
-
-            return [
+            $employees->push([
                 'id' => $emp->id,
                 'user_id' => $user ? $user->id : null,
-                'employee_code' => $emp->employeeid,
-                'name' => ($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''),
+                'employee_code' => $code,
+                'name' => $name,
                 'location' => $loc,
                 'department' => $dept,
                 'position' => $position,
-                'line_manager_id' => $emp->line_manager_id,
-                'full_string' => $emp->employeeid . ' - ' . ($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''),
-            ];
-        });
+                'designation' => $position,
+                'line_manager_id' => $user ? $user->line_manager_id : $emp->line_manager_id,
+                'full_string' => $code . ' - ' . $name . ' (' . $loc . ')',
+                'source' => 'employees'
+            ]);
+        }
 
         return response()->json([
             'status' => 'success',

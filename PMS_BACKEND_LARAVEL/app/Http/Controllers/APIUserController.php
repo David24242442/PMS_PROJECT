@@ -475,11 +475,27 @@ class APIUserController extends Controller
             }
         }
 
-        // 4. If user is still not found, auto-provision now
-        if (!$user && ($goal || $emp)) {
+        // 3b. If not found, look up via Monthly_Employees table
+        $monthlyEmp = null;
+        if (!$user) {
             try {
-                $empCode = $goal ? $goal->employee_code : ($emp->employeeid ?: $emp->emp_code);
-                $empName = $goal ? $goal->candidate_name : trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''));
+                \App\Http\Controllers\MonthlyEmployeeController::ensureTableExists();
+                $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+                if (\Illuminate\Support\Facades\Schema::hasTable($mTable)) {
+                    $monthlyEmp = \Illuminate\Support\Facades\DB::table($mTable)
+                        ->where('emp_id', $loginInput)
+                        ->orWhere('emp_id', $cleanCode)
+                        ->orWhereRaw('LOWER(emp_id) = ?', [strtolower($loginInput)])
+                        ->first();
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // 4. If user is still not found, auto-provision now
+        if (!$user && ($goal || $emp || $monthlyEmp)) {
+            try {
+                $empCode = $goal ? $goal->employee_code : ($emp ? ($emp->employeeid ?: $emp->emp_code) : $monthlyEmp->emp_id);
+                $empName = $goal ? $goal->candidate_name : ($emp ? trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')) : $monthlyEmp->employee_name);
                 $userEmail = ($emp && !empty($emp->email) && filter_var($emp->email, FILTER_VALIDATE_EMAIL))
                     ? $emp->email 
                     : (strtolower($cleanCode) . '@melcomgroup.com');
@@ -488,30 +504,42 @@ class APIUserController extends Controller
                     $userEmail = strtolower($cleanCode) . '_' . substr(md5(uniqid()), 0, 5) . '@melcomgroup.com';
                 }
 
+                $lineMgrId = ($goal && !empty($goal->created_by)) 
+                    ? $goal->created_by 
+                    : ($monthlyEmp ? ($monthlyEmp->line_manager_id ?? null) : ($emp ? ($emp->line_manager_id ?? null) : null));
+
                 $newUserData = [
                     'name' => $empName,
                     'username' => $empCode,
                     'email' => $userEmail,
-                    'password' => bcrypt('password'),
-                    'position_id' => 1,
-                    'user_id' => ($goal && !empty($goal->created_by)) ? $goal->created_by : 1,
+                    'password' => bcrypt('Password'),
+                    'position_id' => 5,
+                    'user_id' => $lineMgrId ?: 1,
                     'admin' => 0,
                     'is_manager' => 0,
                 ];
                 if ($hasEmployeeCode) $newUserData['employee_code'] = $empCode;
                 if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'permissions')) {
-                    $newUserData['permissions'] = ['/pms/goals'];
+                    $newUserData['permissions'] = ['/pms/goals', '/pms/appraisal'];
                 }
-                if ($goal && !empty($goal->created_by) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'line_manager_id')) {
-                    $newUserData['line_manager_id'] = $goal->created_by;
+                if ($lineMgrId && \Illuminate\Support\Facades\Schema::hasColumn('users', 'line_manager_id')) {
+                    $newUserData['line_manager_id'] = $lineMgrId;
                 }
                 if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'role')) {
                     $newUserData['role'] = 'Basic';
                 }
                 if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'position')) {
-                    $newUserData['position'] = 1;
+                    $newUserData['position'] = 5;
                 }
-                if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
+                if ($monthlyEmp && !empty($monthlyEmp->location) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'location')) {
+                    $newUserData['location'] = $monthlyEmp->location;
+                    if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'department')) {
+                        $newUserData['department'] = $monthlyEmp->location;
+                    }
+                }
+                if ($monthlyEmp && !empty($monthlyEmp->designation) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
+                    $newUserData['designation'] = $monthlyEmp->designation;
+                } elseif (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
                     $newUserData['designation'] = 'Employee';
                 }
                 $user = User::create($newUserData);
