@@ -105,6 +105,12 @@ const router = createRouter({
           name: 'hr-submissions',
           meta: { fullname: 'Appraisal Submissions', roles: [4] },
           component: () => import('@/views/app/hr/SubmissionsView.vue')
+        },
+        {
+          path: '/hr/manage-employees',
+          name: 'hr-manage-employees',
+          meta: { fullname: 'Manage Employees', roles: [3, 4] },
+          component: () => import('@/views/app/hr/ManageEmployeesView.vue')
         }
       ]
     },

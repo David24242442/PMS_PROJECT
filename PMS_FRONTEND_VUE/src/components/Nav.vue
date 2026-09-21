@@ -63,7 +63,7 @@
             openMenus.value.pms = true;
         } else if (path.startsWith('/onboarding') || path.startsWith('/employees') || path.startsWith('/employee')) {
             openMenus.value.onboarding = true;
-        } else if (path.startsWith('/users')) {
+        } else if (path.startsWith('/users') || path.startsWith('/hr/manage-employees')) {
             openMenus.value.admin = true;
         }
     };
@@ -197,7 +197,7 @@
             </div>
 
             <!-- Admin Group - Manager / Admin Only -->
-            <div v-if="isManager && ['/users', '/pms/employee-master'].some(p => loguser?.permissions?.includes(p))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.admin && isExpanded }">
+            <div v-if="isManager && (loguser?.admin || loguser?.position_id === 4 || ['/users', '/pms/employee-master', '/hr/manage-employees'].some(p => loguser?.permissions?.includes(p)))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.admin && isExpanded }">
                 <div class="menu-item" @click="toggleMenu('admin')" :title="!isExpanded ? 'HR Admin' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-users"></span>
@@ -205,13 +205,17 @@
                     <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
                 </div>
                 <div class="sub-menu" v-show="isExpanded">
-                    <router-link v-if="loguser?.permissions?.includes('/users')" to="/users">
+                    <router-link v-if="loguser?.admin || loguser?.position_id === 4 || loguser?.permissions?.includes('/users')" to="/users">
                         <span class="pi pi-user-edit"></span>
                         Manage Users
                     </router-link>
-                    <router-link v-if="loguser?.permissions?.includes('/pms/employee-master')" to="/pms/employee-master">
+                    <router-link v-if="loguser?.admin || loguser?.position_id === 4 || loguser?.permissions?.includes('/pms/employee-master')" to="/pms/employee-master">
                         <span class="pi pi-users"></span>
                         Line Manager Console
+                    </router-link>
+                    <router-link v-if="loguser?.admin || loguser?.position_id === 4 || loguser?.permissions?.includes('/hr/manage-employees')" to="/hr/manage-employees">
+                        <span class="pi pi-id-card"></span>
+                        Manage Employees
                     </router-link>
                 </div>
             </div>

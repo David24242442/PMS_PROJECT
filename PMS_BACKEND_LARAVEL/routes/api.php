@@ -393,5 +393,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/reports', [\App\Http\Controllers\ReportsController::class, 'index']);
         Route::post('/reports', [\App\Http\Controllers\ReportsController::class, 'store']);
         Route::delete('/reports/{id}', [\App\Http\Controllers\ReportsController::class, 'destroy']);
+
+        // Monthly Employees (Payroll Ingestion & Management)
+        Route::get('/monthly-employees', [\App\Http\Controllers\MonthlyEmployeeController::class, 'index']);
+        Route::get('/monthly-employees/stats', [\App\Http\Controllers\MonthlyEmployeeController::class, 'stats']);
+        Route::get('/monthly-employees/locations', [\App\Http\Controllers\MonthlyEmployeeController::class, 'locations']);
+        Route::post('/monthly-employees/upload', [\App\Http\Controllers\MonthlyEmployeeController::class, 'upload']);
+        Route::get('/monthly-employees/template', [\App\Http\Controllers\MonthlyEmployeeController::class, 'template']);
     });
 });
+
+// Public / Protected Runner to trigger Monthly_Employees table migration on Server 20
+Route::get('/pms/migrate-monthly-employees', [\App\Http\Controllers\MonthlyEmployeeController::class, 'migrateTable']);
+
