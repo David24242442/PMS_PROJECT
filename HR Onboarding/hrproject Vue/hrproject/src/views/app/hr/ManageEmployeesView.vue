@@ -272,6 +272,34 @@ const triggerLocalSync = async () => {
     }
 };
 
+// Clean Re-Ingest All 5,920 Employees (Purges corrupted records and strictly loads columns)
+const cleanReingesting = ref(false);
+const triggerCleanReingest = async () => {
+    if (!confirm('This will wipe any old/corrupted records in Monthly_Employees and cleanly load all 5,920 employees with strict relative column indexing (Emp ID strictly from Column B) from AUGUST 2026 PAYROLL DATA.xlsx on Server 20. Proceed?')) {
+        return;
+    }
+    cleanReingesting.value = true;
+    uploadSuccessMessage.value = '';
+    uploadErrorMessage.value = '';
+    try {
+        const res = await axios.get('/pms/clean-reingest', {
+            params: { month_year: uploadMonthYear.value || 'AUGUST 2026' }
+        });
+        if (res.data && res.data.status === 'success') {
+            uploadSuccessMessage.value = res.data.message;
+            await fetchEmployees(1);
+            await fetchStats();
+        } else {
+            uploadErrorMessage.value = res.data.message || 'Clean re-ingest failed.';
+        }
+    } catch (err) {
+        console.error('Clean reingest error:', err);
+        uploadErrorMessage.value = err.response?.data?.message || 'Server error during clean re-ingest. Make sure AUGUST 2026 PAYROLL DATA.xlsx is placed on the server.';
+    } finally {
+        cleanReingesting.value = false;
+    }
+};
+
 // Download Template
 const downloadTemplate = () => {
     window.open(axios.defaults.baseURL + '/pms/monthly-employees/template', '_blank');
@@ -460,7 +488,7 @@ onMounted(() => {
                         <div class="upload-actions-footer">
                             <button 
                                 class="btn btn-primary btn-block btn-upload" 
-                                :disabled="!selectedFile || uploading || quickSyncing" 
+                                :disabled="!selectedFile || uploading || quickSyncing || cleanReingesting" 
                                 @click="submitUpload"
                             >
                                 <i class="pi" :class="uploading ? 'pi-spin pi-spinner' : 'pi-check-circle'"></i>
@@ -469,12 +497,23 @@ onMounted(() => {
                             <button 
                                 type="button"
                                 class="btn btn-secondary btn-block mt-2" 
-                                :disabled="uploading || quickSyncing" 
+                                :disabled="uploading || quickSyncing || cleanReingesting" 
                                 @click="triggerLocalSync"
                                 title="Ingest directly from AUGUST 2026 PAYROLL DATA.xlsx placed on Server 20"
                             >
                                 <i class="pi" :class="quickSyncing ? 'pi-spin pi-spinner' : 'pi-bolt'"></i>
                                 {{ quickSyncing ? 'Ingesting Server Excel File...' : 'One-Click Ingest from Server Excel' }}
+                            </button>
+                            <button 
+                                type="button"
+                                class="btn btn-block mt-2" 
+                                :disabled="uploading || quickSyncing || cleanReingesting" 
+                                @click="triggerCleanReingest"
+                                title="Purge corrupted rows and freshly load all 5,920 employees with strict relative column indexing"
+                                style="background: #e11d48; color: #fff; font-weight: 700; border: none; padding: 9px 14px; border-radius: 8px; font-size: 0.85rem;"
+                            >
+                                <i class="pi" :class="cleanReingesting ? 'pi-spin pi-spinner' : 'pi-sync'"></i>
+                                {{ cleanReingesting ? 'Wiping & Ingesting 5,920 Employees...' : 'Clean Reset & Ingest All 5,920 Employees' }}
                             </button>
                         </div>
 
@@ -738,57 +777,57 @@ onMounted(() => {
     padding: 0 4px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
 }
 
 /* Header Card */
 .header-card {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    border-radius: 12px;
-    padding: 14px 20px;
+    border-radius: 10px;
+    padding: 10px 16px;
     color: white;
-    box-shadow: 0 6px 18px -4px rgba(15, 23, 42, 0.2);
+    box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.2);
 }
 
 .header-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 12px;
+    gap: 12px;
+    margin-bottom: 8px;
     flex-wrap: wrap;
 }
 
 .badge-pill {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     background: rgba(99, 102, 241, 0.2);
     border: 1px solid rgba(129, 140, 248, 0.3);
     color: #a5b4fc;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    padding: 2px 8px;
+    padding: 1px 6px;
     border-radius: 9999px;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .title-section h1 {
-    font-size: 1.3rem;
+    font-size: 1.15rem;
     font-weight: 800;
-    margin: 0 0 2px 0;
+    margin: 0;
     letter-spacing: -0.02em;
     color: #ffffff;
 }
 
 .subtitle {
-    margin: 0;
-    font-size: 0.82rem;
+    margin: 2px 0 0 0;
+    font-size: 0.78rem;
     color: #94a3b8;
     max-width: 680px;
-    line-height: 1.35;
+    line-height: 1.25;
 }
 
 .header-actions {
@@ -799,27 +838,27 @@ onMounted(() => {
 }
 
 .header-actions .btn {
-    padding: 7px 13px;
-    font-size: 0.82rem;
+    padding: 5px 11px;
+    font-size: 0.78rem;
 }
 
 /* Stats Grid */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 10px;
-    margin-top: 4px;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+    margin-top: 2px;
 }
 
 .stat-card {
     background: rgba(255, 255, 255, 0.06);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    padding: 8px 12px;
+    border-radius: 8px;
+    padding: 5px 10px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     transition: transform 0.2s ease, background 0.2s ease;
 }
 
@@ -829,13 +868,13 @@ onMounted(() => {
 }
 
 .stat-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1rem;
+    font-size: 0.85rem;
     flex-shrink: 0;
 }
 
@@ -851,7 +890,7 @@ onMounted(() => {
 }
 
 .stat-label {
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     font-weight: 600;
     color: #94a3b8;
     text-transform: uppercase;
@@ -859,13 +898,14 @@ onMounted(() => {
 }
 
 .stat-value {
-    font-size: 1.15rem;
+    font-size: 1.0rem;
     font-weight: 800;
     color: #ffffff;
+    line-height: 1.2;
 }
 
 .stat-month {
-    font-size: 0.92rem;
+    font-size: 0.82rem;
     letter-spacing: -0.01em;
 }
 

@@ -348,7 +348,14 @@ class MonthlyEmployeeController extends Controller
         self::ensureTableExists();
         $tableName = self::getActualTableName();
 
-        // Process in chunks of 500
+        // 1. Clean up any corrupted records where emp_id contains spaces (names mistakenly put in emp_id)
+        try {
+            DB::table($tableName)->where('emp_id', 'like', '% %')->delete();
+        } catch (\Throwable $e) {
+            // ignore if query fails
+        }
+
+        // 2. Process in chunks of 500
         $chunks = array_chunk($records, $batchSize);
 
         foreach ($chunks as $chunk) {
@@ -435,6 +442,28 @@ class MonthlyEmployeeController extends Controller
     }
 
     /**
+     * Wipes corrupted employee table and freshly ingests all 5,920 records from server Excel file.
+     */
+    public function cleanReingest(Request $request)
+    {
+        try {
+            self::ensureTableExists();
+            $tableName = self::getActualTableName();
+
+            // Truncate to wipe any previous corrupted rows
+            DB::table($tableName)->truncate();
+
+            return $this->syncLocalExcel($request);
+        } catch (\Throwable $e) {
+            \Log::error('cleanReingest error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Clean re-ingest failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Direct endpoint to sync from local Excel file on server filesystem.
      */
     public function syncLocalExcel(Request $request)
@@ -490,7 +519,14 @@ class MonthlyEmployeeController extends Controller
     }
 
     /**
-     * Parse an XLSX file without third-party dependencies using ZipArchive + SimpleXML.
+     * Parse an XLSX file strictly mapping the relative columns from the Excel file:
+     * Column A: Sr.No
+     * Column B: Emp Id
+     * Column C: Employee Name
+     * Column D: Location
+     * Column E: Designation
+     * Column F: Sex
+     * Column G: Category
      */
     private function parseXlsxFile($filePath)
     {
@@ -537,11 +573,14 @@ class MonthlyEmployeeController extends Controller
             return $rows;
         }
 
-        $headerMap = [];
         $rowCount = 0;
 
         foreach ($sheet->sheetData->row as $r) {
             $rowCount++;
+            if ($rowCount === 1) {
+                continue; // Skip header row
+            }
+
             $rowCells = [];
 
             foreach ($r->c as $c) {
@@ -558,137 +597,76 @@ class MonthlyEmployeeController extends Controller
                 $rowCells[$colLetter] = $val;
             }
 
-            if ($rowCount === 1) {
-                // Determine headers: Note that 'name' must be checked BEFORE 'id'/'emp' to prevent 'Employee Name' from matching 'emp'
-                foreach ($rowCells as $col => $headerName) {
-                    $norm = strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', '', $headerName)));
-                    if (strpos($norm, 'sr') !== false || $norm === 'no' || $norm === 'sno') {
-                        $headerMap[$col] = 'sr_no';
-                    } elseif (strpos($norm, 'name') !== false) {
-                        $headerMap[$col] = 'employee_name';
-                    } elseif (strpos($norm, 'id') !== false || strpos($norm, 'code') !== false || $norm === 'empid' || $norm === 'employeeid' || $norm === 'emp') {
-                        $headerMap[$col] = 'emp_id';
-                    } elseif (strpos($norm, 'loc') !== false || strpos($norm, 'branch') !== false) {
-                        $headerMap[$col] = 'location';
-                    } elseif (strpos($norm, 'desig') !== false || strpos($norm, 'title') !== false || strpos($norm, 'pos') !== false) {
-                        $headerMap[$col] = 'designation';
-                    } elseif (strpos($norm, 'sex') !== false || strpos($norm, 'gender') !== false) {
-                        $headerMap[$col] = 'sex';
-                    } elseif (strpos($norm, 'cat') !== false || strpos($norm, 'type') !== false) {
-                        $headerMap[$col] = 'category';
-                    }
-                }
-            } else {
-                if (empty($rowCells)) continue;
+            if (empty($rowCells)) continue;
 
-                $data = [
-                    'sr_no' => null,
-                    'emp_id' => '',
-                    'employee_name' => '',
-                    'location' => '',
-                    'designation' => '',
-                    'sex' => '',
-                    'category' => ''
-                ];
+            // STRICT RELATIVE COLUMNS:
+            // Column A: Sr.No
+            // Column B: Emp Id
+            // Column C: Employee Name
+            // Column D: Location
+            // Column E: Designation
+            // Column F: Sex
+            // Column G: Category
+            $empId = trim($rowCells['B'] ?? '');
+            $empName = trim($rowCells['C'] ?? '');
 
-                foreach ($rowCells as $col => $val) {
-                    if (isset($headerMap[$col])) {
-                        $field = $headerMap[$col];
-                        $data[$field] = $val;
-                    }
-                }
-
-                // Positional fallbacks (A: Sr.No, B: Emp Id, C: Employee Name, D: Location, E: Designation, F: Sex, G: Category)
-                if (empty($data['emp_id']) && isset($rowCells['B'])) {
-                    $data['emp_id'] = $rowCells['B'];
-                }
-                if (empty($data['employee_name']) && isset($rowCells['C'])) {
-                    $data['employee_name'] = $rowCells['C'];
-                }
-                if (empty($data['location']) && isset($rowCells['D'])) {
-                    $data['location'] = $rowCells['D'];
-                }
-                if (empty($data['designation']) && isset($rowCells['E'])) {
-                    $data['designation'] = $rowCells['E'];
-                }
-                if (empty($data['sex']) && isset($rowCells['F'])) {
-                    $data['sex'] = $rowCells['F'];
-                }
-                if (empty($data['category']) && isset($rowCells['G'])) {
-                    $data['category'] = $rowCells['G'];
-                }
-
-                if (!empty($data['emp_id'])) {
-                    $rows[] = $data;
-                }
+            if (empty($empId) && empty($empName)) {
+                continue;
             }
+
+            $rows[] = [
+                'sr_no' => !empty($rowCells['A']) && is_numeric($rowCells['A']) ? (int)$rowCells['A'] : null,
+                'emp_id' => $empId,
+                'employee_name' => $empName,
+                'location' => trim($rowCells['D'] ?? ''),
+                'designation' => trim($rowCells['E'] ?? ''),
+                'sex' => trim($rowCells['F'] ?? ''),
+                'category' => trim($rowCells['G'] ?? '')
+            ];
         }
 
         return $rows;
     }
 
     /**
-     * Parse a standard CSV or text file.
+     * Parse a standard CSV or text file using strict relative columns.
      */
     private function parseCsvFile($filePath)
     {
         $rows = [];
         if (($handle = fopen($filePath, 'r')) !== false) {
-            $headerMap = [];
             $lineCount = 0;
 
             while (($data = fgetcsv($handle, 4096, ',')) !== false) {
                 $lineCount++;
                 if ($lineCount === 1) {
-                    foreach ($data as $idx => $headerName) {
-                        $norm = strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', '', $headerName)));
-                        if (strpos($norm, 'sr') !== false || $norm === 'no' || $norm === 'sno') {
-                            $headerMap[$idx] = 'sr_no';
-                        } elseif (strpos($norm, 'name') !== false) {
-                            $headerMap[$idx] = 'employee_name';
-                        } elseif (strpos($norm, 'id') !== false || strpos($norm, 'code') !== false || $norm === 'empid' || $norm === 'employeeid' || $norm === 'emp') {
-                            $headerMap[$idx] = 'emp_id';
-                        } elseif (strpos($norm, 'loc') !== false || strpos($norm, 'branch') !== false) {
-                            $headerMap[$idx] = 'location';
-                        } elseif (strpos($norm, 'desig') !== false || strpos($norm, 'title') !== false || strpos($norm, 'pos') !== false) {
-                            $headerMap[$idx] = 'designation';
-                        } elseif (strpos($norm, 'sex') !== false || strpos($norm, 'gender') !== false) {
-                            $headerMap[$idx] = 'sex';
-                        } elseif (strpos($norm, 'cat') !== false || strpos($norm, 'type') !== false) {
-                            $headerMap[$idx] = 'category';
-                        }
-                    }
-                } else {
-                    $row = [
-                        'sr_no' => null,
-                        'emp_id' => '',
-                        'employee_name' => '',
-                        'location' => '',
-                        'designation' => '',
-                        'sex' => '',
-                        'category' => ''
-                    ];
-
-                    foreach ($data as $idx => $val) {
-                        $val = trim($val);
-                        if (isset($headerMap[$idx])) {
-                            $field = $headerMap[$idx];
-                            $row[$field] = $val;
-                        }
-                    }
-
-                    // Positional fallbacks
-                    if (empty($row['emp_id']) && isset($data[1])) $row['emp_id'] = trim($data[1]);
-                    if (empty($row['employee_name']) && isset($data[2])) $row['employee_name'] = trim($data[2]);
-                    if (empty($row['location']) && isset($data[3])) $row['location'] = trim($data[3]);
-                    if (empty($row['designation']) && isset($data[4])) $row['designation'] = trim($data[4]);
-                    if (empty($row['sex']) && isset($data[5])) $row['sex'] = trim($data[5]);
-                    if (empty($row['category']) && isset($data[6])) $row['category'] = trim($data[6]);
-
-                    if (!empty($row['emp_id'])) {
-                        $rows[] = $row;
-                    }
+                    continue; // Skip header
                 }
+
+                // Strict relative columns:
+                // 0: Sr.No
+                // 1: Emp Id
+                // 2: Employee Name
+                // 3: Location
+                // 4: Designation
+                // 5: Sex
+                // 6: Category
+                $empId = trim($data[1] ?? '');
+                $empName = trim($data[2] ?? '');
+
+                if (empty($empId) && empty($empName)) {
+                    continue;
+                }
+
+                $rows[] = [
+                    'sr_no' => !empty($data[0]) && is_numeric($data[0]) ? (int)$data[0] : null,
+                    'emp_id' => $empId,
+                    'employee_name' => $empName,
+                    'location' => trim($data[3] ?? ''),
+                    'designation' => trim($data[4] ?? ''),
+                    'sex' => trim($data[5] ?? ''),
+                    'category' => trim($data[6] ?? '')
+                ];
             }
             fclose($handle);
         }

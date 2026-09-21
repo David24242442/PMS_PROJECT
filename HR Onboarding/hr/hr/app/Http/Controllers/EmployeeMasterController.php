@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class EmployeeMasterController extends Controller
 {
@@ -196,28 +198,40 @@ class EmployeeMasterController extends Controller
                               ->orWhere('employee_name', 'like', "%{$term}%")
                               ->orWhere('designation', 'like', "%{$term}%")
                               ->orWhere('location', 'like', "%{$term}%");
-                        });
+                        })->limit(100);
+                    } else {
+                        // Limit initial fetch to 500 to ensure instantaneous response without PHP timeout
+                        $mQuery->limit(500);
                     }
                     
                     $mRecords = $mQuery->orderBy('sr_no', 'asc')->get();
 
                     if ($mRecords->isNotEmpty()) {
-                        // Match with users table to attach user_id and line_manager_id where existing
+                        // Match with users table in 1 single bulk query
                         $empIds = $mRecords->pluck('emp_id')->filter()->toArray();
                         $usersMap = [];
-                        if (\Schema::hasColumn('users', 'employee_code')) {
+                        $managerIds = [];
+                        if (!empty($empIds) && \Schema::hasColumn('users', 'employee_code')) {
                             $users = \App\Models\User::whereIn('employee_code', $empIds)->get();
                             foreach ($users as $u) {
                                 $usersMap[$u->employee_code] = $u;
+                                if (!empty($u->line_manager_id)) {
+                                    $managerIds[] = $u->line_manager_id;
+                                }
                             }
                         }
 
-                        $employees = $mRecords->map(function ($emp) use ($usersMap) {
+                        // Preload all managers in 1 query (eliminates N+1 query timeout!)
+                        $managersMap = [];
+                        if (!empty($managerIds)) {
+                            $managersMap = \App\Models\User::whereIn('id', array_unique($managerIds))->pluck('name', 'id')->toArray();
+                        }
+
+                        $employees = $mRecords->map(function ($emp) use ($usersMap, $managersMap) {
                             $user = $usersMap[$emp->emp_id] ?? null;
                             $managerName = null;
-                            if ($user && $user->line_manager_id) {
-                                $mgr = \App\Models\User::find($user->line_manager_id);
-                                $managerName = $mgr ? $mgr->name : null;
+                            if ($user && !empty($user->line_manager_id)) {
+                                $managerName = $managersMap[$user->line_manager_id] ?? null;
                             }
 
                             return [
@@ -240,38 +254,6 @@ class EmployeeMasterController extends Controller
                                 'source' => 'monthly_employees'
                             ];
                         });
-
-                        // Fallback merge: if any onboarding employee exists that is not in Monthly_Employees
-                        try {
-                            $monthlyCodes = $employees->pluck('employee_code')->filter()->toArray();
-                            $extraOnboarding = \App\Models\Employee::whereNotIn('employeeid', $monthlyCodes)
-                                ->get()
-                                ->map(function ($emp) {
-                                    return [
-                                        'id' => $emp->id,
-                                        'user_id' => null,
-                                        'employee_code' => $emp->employeeid,
-                                        'name' => trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
-                                        'firstname' => $emp->firstname ?? '',
-                                        'surname' => $emp->surname ?? '',
-                                        'email' => $emp->email ?? null,
-                                        'location' => $emp->location ?? 'N/A',
-                                        'department' => $emp->department ?? 'N/A',
-                                        'position' => $emp->job_title ?? $emp->joiningposition ?? 'N/A',
-                                        'designation' => $emp->job_title ?? $emp->joiningposition ?? 'N/A',
-                                        'sex' => $emp->gender ?? null,
-                                        'category' => $emp->contracttype ?? null,
-                                        'line_manager_id' => $emp->line_manager_id ?? null,
-                                        'line_manager_name' => null,
-                                        'full_string' => $emp->employeeid . ' - ' . trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? '')),
-                                        'source' => 'onboarding_fallback'
-                                    ];
-                                });
-
-                            if ($extraOnboarding->isNotEmpty()) {
-                                $employees = $employees->concat($extraOnboarding)->values();
-                            }
-                        } catch (\Throwable $t) {}
 
                         return response()->json([
                             'status' => 'success',

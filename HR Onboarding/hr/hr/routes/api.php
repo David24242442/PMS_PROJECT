@@ -403,8 +403,11 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
-// Public / Protected Runner to trigger Monthly_Employees table migration on Server 20
 Route::get('/pms/migrate-monthly-employees', [\App\Http\Controllers\MonthlyEmployeeController::class, 'migrateTable']);
 Route::get('/pms/sync-local-excel', [\App\Http\Controllers\MonthlyEmployeeController::class, 'syncLocalExcel']);
+Route::get('/pms/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
+Route::post('/pms/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
+Route::get('/pms/monthly-employees/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
+Route::post('/pms/monthly-employees/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
 
 

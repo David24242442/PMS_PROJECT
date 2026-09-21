@@ -2,8 +2,8 @@
 setlocal
 
 set "SHARE_PATH=\\192.168.0.24\it-software\IT DEV DAVID\PMS"
-set "FRONTEND_SRC=c:\Users\USER\Workspaces\htdocs\PMS\HR Onboarding\hrproject Vue\hrproject"
-set "BACKEND_SRC=c:\Users\USER\Workspaces\htdocs\PMS\HR Onboarding\hr\hr"
+set "FRONTEND_SRC=c:\Users\USER\Workspaces\htdocs\PMS\PMS_FRONTEND_VUE"
+set "BACKEND_SRC=c:\Users\USER\Workspaces\htdocs\PMS\PMS_BACKEND_LARAVEL"
 
 set "FRONTEND_DEST=%SHARE_PATH%\PMS_FRONTEND_VUE"
 set "BACKEND_DEST=%SHARE_PATH%\pms_backend_laravel"
@@ -32,13 +32,17 @@ robocopy "%FRONTEND_SRC%\dist" "%SHARE_PATH%\PMS_FRONTEND_VUE" /MIR /MT /R:2 /W:
 echo [3/4] Mirroring Backend to pms_backend and pms_backend_laravel on Share...
 robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend" /MIR /MT /R:2 /W:3 /NP /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
 robocopy "%BACKEND_SRC%" "%SHARE_PATH%\pms_backend_laravel" /MIR /MT /R:2 /W:3 /NP /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
+:: 4. Copy August 2026 Payroll Excel to Share
+echo [4/4] Copying AUGUST 2026 PAYROLL DATA.xlsx to Share...
+copy /Y "c:\Users\USER\Workspaces\htdocs\PMS\AUGUST 2026 PAYROLL DATA.xlsx" "%SHARE_PATH%\AUGUST 2026 PAYROLL DATA.xlsx"
 
 echo.
 echo ===============================================================================
-echo   SUCCESS! Frontend and Backend mirrored to Staging Share:
+echo   SUCCESS! Frontend, Backend, and Excel mirrored to Staging Share:
 echo   %SHARE_PATH%
 echo   - pms_frontend + PMS_FRONTEND_VUE
 echo   - pms_backend + pms_backend_laravel
+echo   - AUGUST 2026 PAYROLL DATA.xlsx
 echo ===============================================================================
 echo.
 echo   ================== HOW TO APPLY CHANGES ON SERVER 20 ==================
@@ -47,17 +51,13 @@ echo   OPTION 1: Pull from Share to Server 20 (Run in CMD on Server 20):
 echo   -----------------------------------------------------------------------------
 echo   robocopy "%SHARE_PATH%\pms_frontend" "C:\xampp\htdocs\PMS\pms_frontend" /MIR /NP /R:2 /W:3
 echo   robocopy "%SHARE_PATH%\pms_backend" "C:\xampp\htdocs\PMS\pms_backend" /MIR /NP /R:2 /W:3 /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
+echo   copy /Y "%SHARE_PATH%\AUGUST 2026 PAYROLL DATA.xlsx" "C:\xampp\htdocs\PMS\AUGUST 2026 PAYROLL DATA.xlsx"
 echo   cd /d "C:\xampp\htdocs\PMS\pms_backend" ^&^& php artisan optimize:clear
 echo.
-echo   OPTION 2: Pull from Git on Server 20 (if Git cloned):
+echo   OPTION 2: Clean Ingest 5,920 Employees:
 echo   -----------------------------------------------------------------------------
-echo   cd /d "C:\xampp\htdocs\PMS" ^&^& git pull origin main ^&^& cd pms_backend ^&^& php artisan optimize:clear
+echo   In Browser on Server 20 or network:
+echo   http://192.168.0.20:5050/pms_backend/api/pms/clean-reingest
 echo.
-echo   OPTION 3: Trigger Route & DB Sync via Browser:
-echo   -----------------------------------------------------------------------------
-echo   Clear Routes: http://192.168.0.20:5050/pms_backend/api/run-route-clear
-echo   Sync Logins:  http://192.168.0.20:5050/pms_backend/api/sync-pms-users
-echo   Live App:     http://192.168.0.20:5050/pms_frontend/
-echo ===============================================================================
-echo.
+if "%1"=="/nopause" goto :eof
 pause
