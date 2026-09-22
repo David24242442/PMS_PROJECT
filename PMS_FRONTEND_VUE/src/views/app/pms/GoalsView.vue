@@ -77,12 +77,38 @@ const masterEmployees = ref([]);
 const filteredMasterEmployees = ref([]);
 const selectedCandidate = ref(null); // For AutoComplete v-model
 
+const formatDepartment = (dept, jobTitle, location) => {
+    const d = (dept || '').trim();
+    const l = (location || '').trim();
+    const jt = (jobTitle || '').toUpperCase();
+    
+    // If department is generic, matches location, or is HEAD OFFICE, derive directly from designation
+    if (!d || d === 'N/A' || d.toUpperCase() === 'HEAD OFFICE' || (l && d.toLowerCase() === l.toLowerCase())) {
+        if (/HR|HUMAN RESOURCE|PERSONNEL|RECRUIT|TALENT|TRAINING/i.test(jt)) return 'Human Resources';
+        if (/ACCOUNT|FINANCE|AUDIT|TAX|PAYROLL|BILLING/i.test(jt)) return 'Accounts & Finance';
+        if (/IT|SOFTWARE|DEVELOPER|SYSTEM|NETWORK|PROGRAMMER/i.test(jt)) return 'Information Technology';
+        if (/MARKETING|BRAND|ADVERTIS|DIGITAL/i.test(jt)) return 'Marketing';
+        if (/WAREHOUSE|LOGISTICS|SUPPLY|DISPATCH|FORKLIFT/i.test(jt)) return 'Warehouse & Logistics';
+        if (/SECURITY|SURVEILLANCE|CCTV|GUARD/i.test(jt)) return 'Security';
+        if (/MAINTENANCE|ENGINEER|ELECTRIC|PLUMB|FACILIT/i.test(jt)) return 'Maintenance & Engineering';
+        if (/LEGAL|COMPLIANCE/i.test(jt)) return 'Legal & Compliance';
+        if (/PROCUREMENT|PURCHAS/i.test(jt)) return 'Procurement';
+        if (/TRANSPORT|DRIVER|FLEET/i.test(jt)) return 'Transport';
+        if (/CUSTOMER SERVICE|CALL CENTER|FRONT DESK/i.test(jt)) return 'Customer Service';
+        if (/CASHIER|TELLER/i.test(jt)) return 'Cash Office';
+        if (/RETAIL|SALES|SHOP|SUPERMARKET/i.test(jt)) return 'Retail Operations';
+        return d && d.toUpperCase() !== 'HEAD OFFICE' ? d : 'Operations';
+    }
+    return d;
+};
+
 const getRecordId = (goal) => {
     if (!goal) return 'N/A';
-    const dept = goal.department || goal.user?.department || 'NA';
+    const dept = formatDepartment(goal.department, goal.job_title, goal.location);
     const code = goal.employee_code || goal.user?.employee_code || goal.id || '---';
-    const abbr = dept.includes(' ') 
-        ? dept.split(' ').map(w => w[0]).join('').toUpperCase() 
+    const words = dept.split(' ');
+    const abbr = words.length > 1 
+        ? words.map(w => w[0]).join('').toUpperCase() 
         : (dept.length >= 3 ? dept.substring(0, 3).toUpperCase() : dept.toUpperCase());
     return `${abbr}-${code}`;
 };
@@ -342,13 +368,11 @@ const onCandidateSelect = (event) => {
         ? candidate.location 
         : (findbranch(candidate.joining_branch_id) || 'N/A');
         
-    newGoal.value.department = (candidate.department && candidate.department !== 'N/A') 
-        ? candidate.department 
-        : (candidate.location || finddept(candidate.joining_dept_id) || 'N/A');
-        
     newGoal.value.job_title = (candidate.position && candidate.position !== 'N/A')
         ? candidate.position
         : (candidate.designation || 'Employee');
+
+    newGoal.value.department = formatDepartment(candidate.department, newGoal.value.job_title, newGoal.value.location);
         
     newGoal.value.manager_name = loguser.name;
 };
@@ -369,9 +393,9 @@ const openEmployeeGoal = (goal) => {
     newGoal.value.status = goal.status;
     newGoal.value.candidate_name = goal.candidate_name || loguser.name;
     newGoal.value.employee_code = goal.employee_code || loguser.employee_code;
-    newGoal.value.job_title = goal.job_title || loguser.job_title || loguser.department || '';
-    newGoal.value.department = goal.department || loguser.department || '';
+    newGoal.value.job_title = goal.job_title || loguser.job_title || loguser.designation || '';
     newGoal.value.location = goal.location || loguser.location || '';
+    newGoal.value.department = formatDepartment(goal.department, newGoal.value.job_title, newGoal.value.location);
     newGoal.value.manager_name = goal.manager_name || 'Line Manager';
     if (!newGoal.value.appraisal_data) {
         newGoal.value.appraisal_data = defaultAppraisalData();
@@ -1920,15 +1944,15 @@ const downloadAttachment = (file) => {
                                 </td>
                                 <td class="px-6 py-4 text-right whitespace-nowrap">
                                     <div class="flex items-center justify-end gap-2">
-                                        <!-- Fill / Edit Button (Hidden once submitted or reviewed) -->
-                                        <button v-if="!isGoalSubmittedOrReviewed(goal) && (isManager || goal.status === 'assigned' || goal.status === 'draft' || goal.status === 'in_progress')" @click="editGoal(goal)" 
+                                        <!-- Fill / Edit Button (Hidden once submitted or reviewed; for managers, hidden when assigned) -->
+                                        <button v-if="!isGoalSubmittedOrReviewed(goal) && ((isManager && goal.status === 'draft') || (!isManager && (goal.status === 'assigned' || goal.status === 'draft' || goal.status === 'in_progress')))" @click="editGoal(goal)" 
                                             class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer"
                                             :title="isManager ? 'Edit SMART Goal' : (goal.status === 'assigned' ? 'Fill Goals & Self-Appraisal' : 'Edit')">
                                             <i class="pi pi-pencil text-[9px]"></i> {{ isManager ? 'Edit Goal' : (goal.status === 'assigned' ? 'Fill Goals & Appraisal' : 'Edit') }}
                                         </button>
 
-                                        <!-- Edit Appraisal Step 1 Button (Manager - Hidden once submitted or reviewed) -->
-                                        <button v-if="isManager && !isGoalSubmittedOrReviewed(goal)" @click="router.push({ path: '/pms/appraisal', query: { goal_id: goal.id, employee_code: goal.candidate_code || goal.employee_code, step: 1 } })" 
+                                        <!-- Edit Appraisal Step 1 Button (Manager - Hidden once assigned, submitted or reviewed) -->
+                                        <button v-if="isManager && !isGoalSubmittedOrReviewed(goal) && goal.status !== 'assigned' && goal.display_status !== 'assigned'" @click="router.push({ path: '/pms/appraisal', query: { goal_id: goal.id, employee_code: goal.candidate_code || goal.employee_code, step: 1 } })" 
                                             class="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white rounded-lg border border-teal-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer"
                                             title="Edit Appraisal Template & Key Competencies (Step 1)">
                                             <i class="pi pi-file-edit text-[9px]"></i> Edit Appraisal (Step 1)
@@ -2113,7 +2137,7 @@ const downloadAttachment = (file) => {
                                 </template>
                             </AutoComplete>
                             <div class="flex flex-wrap gap-2">
-                                <span class="px-3 py-1 bg-[#F1F5F9] rounded text-[10px] font-semibold text-gray-500 border border-gray-100">Joining Department: {{ newGoal.department || 'N/A' }}</span>
+                                <span class="px-3 py-1 bg-[#F1F5F9] rounded text-[10px] font-semibold text-gray-500 border border-gray-100">Joining Department: {{ formatDepartment(newGoal.department, newGoal.job_title, newGoal.location) }}</span>
                                 <span class="px-3 py-1 bg-[#F1F5F9] rounded text-[10px] font-semibold text-gray-500 border border-gray-100">Joining Location: {{ newGoal.location || 'N/A' }}</span>
                                 <span class="px-3 py-1 bg-indigo-50 rounded text-[10px] font-black text-indigo-700 border border-indigo-100">Joining Position: {{ newGoal.job_title || 'N/A' }}</span>
                             </div>

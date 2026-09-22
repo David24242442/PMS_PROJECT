@@ -533,14 +533,13 @@ class APIUserController extends Controller
                 }
                 if ($monthlyEmp && !empty($monthlyEmp->location) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'location')) {
                     $newUserData['location'] = $monthlyEmp->location;
-                    if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'department')) {
-                        $newUserData['department'] = $monthlyEmp->location;
-                    }
                 }
-                if ($monthlyEmp && !empty($monthlyEmp->designation) && \Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
-                    $newUserData['designation'] = $monthlyEmp->designation;
-                } elseif (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
-                    $newUserData['designation'] = 'Employee';
+                $desig = $monthlyEmp ? $monthlyEmp->designation : ($emp ? ($emp->job_title ?: $emp->joiningposition) : 'Employee');
+                if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
+                    $newUserData['designation'] = $desig ?: 'Employee';
+                }
+                if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'department')) {
+                    $newUserData['department'] = \App\Http\Controllers\EmployeeMasterController::inferDepartment($desig, null, null, null, $monthlyEmp ? $monthlyEmp->location : null);
                 }
                 $user = User::create($newUserData);
                 if ($goal && empty($goal->user_id)) {
@@ -580,6 +579,30 @@ class APIUserController extends Controller
                             $updates['permissions'] = array_values(array_unique(array_merge($currentPerms, ['/dashboard', '/pms/dashboard', '/pms/goals', '/pms/appraisal', '/pms/review'])));
                         } else {
                             $updates['permissions'] = ['/pms/goals'];
+                        }
+                    }
+                    // Fix department if currently HEAD OFFICE, equal to location, or missing
+                    if (\Illuminate\Support\Facades\Schema::hasColumn('users', 'department')) {
+                        $uDept = $user->department;
+                        $uLoc = $user->location ?? '';
+                        if (empty($uDept) || strcasecmp(trim($uDept), 'HEAD OFFICE') === 0 || strcasecmp(trim($uDept), trim($uLoc)) === 0 || $uDept === 'N/A') {
+                            $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+                            $mEmp = null;
+                            if (\Illuminate\Support\Facades\Schema::hasTable($mTable)) {
+                                $mEmp = \Illuminate\Support\Facades\DB::table($mTable)
+                                    ->where('emp_id', $user->employee_code ?: $user->username)
+                                    ->first();
+                            }
+                            $uDesig = $mEmp ? $mEmp->designation : ($user->designation ?: 'Employee');
+                            $inferredDept = \App\Http\Controllers\EmployeeMasterController::inferDepartment($uDesig, null, null, null, $uLoc);
+                            if ($inferredDept && $inferredDept !== 'General' && $inferredDept !== 'Operations') {
+                                $updates['department'] = $inferredDept;
+                                $user->department = $inferredDept;
+                            }
+                            if ($mEmp && (empty($user->designation) || $user->designation === 'Employee') && \Illuminate\Support\Facades\Schema::hasColumn('users', 'designation')) {
+                                $updates['designation'] = $mEmp->designation;
+                                $user->designation = $mEmp->designation;
+                            }
                         }
                     }
                     if (!empty($updates)) {

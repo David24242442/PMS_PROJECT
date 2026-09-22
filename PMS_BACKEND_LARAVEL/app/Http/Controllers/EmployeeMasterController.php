@@ -254,6 +254,59 @@ class EmployeeMasterController extends Controller
                 } catch (\Throwable $clEx) {
                     \Log::warning("Reset dummy goals notice: " . $clEx->getMessage());
                 }
+
+                // Automatic cleanup: fix goals and users where department is 'HEAD OFFICE' or empty
+                try {
+                    $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+                    if (\Schema::hasTable($mTable)) {
+                        if (\Schema::hasColumn('goals', 'department')) {
+                            $badGoals = \DB::table('goals')
+                                ->where(function($q) {
+                                    $q->whereNull('department')
+                                      ->orWhere('department', '')
+                                      ->orWhere('department', 'HEAD OFFICE')
+                                      ->orWhere('department', 'N/A');
+                                })
+                                ->get();
+                            foreach ($badGoals as $bg) {
+                                $code = $bg->employee_code;
+                                $mEmp = $code ? \DB::table($mTable)->where('emp_id', $code)->first() : null;
+                                $desig = $mEmp ? $mEmp->designation : ($bg->job_title ?? '');
+                                $inferred = self::inferDepartment($desig, null, null, null, $bg->location ?? '');
+                                if ($inferred && $inferred !== 'General' && $inferred !== 'Operations') {
+                                    \DB::table('goals')->where('id', $bg->id)->update([
+                                        'department' => $inferred,
+                                        'job_title' => $mEmp ? $mEmp->designation : $bg->job_title
+                                    ]);
+                                }
+                            }
+                        }
+                        if (\Schema::hasColumn('users', 'department')) {
+                            $badUsers = \DB::table('users')
+                                ->where(function($q) {
+                                    $q->whereNull('department')
+                                      ->orWhere('department', '')
+                                      ->orWhere('department', 'HEAD OFFICE')
+                                      ->orWhere('department', 'N/A');
+                                })
+                                ->get();
+                            foreach ($badUsers as $bu) {
+                                $code = $bu->employee_code ?: $bu->username;
+                                $mEmp = $code ? \DB::table($mTable)->where('emp_id', $code)->first() : null;
+                                $desig = $mEmp ? $mEmp->designation : ($bu->designation ?? '');
+                                $inferred = self::inferDepartment($desig, null, null, null, $bu->location ?? '');
+                                if ($inferred && $inferred !== 'General' && $inferred !== 'Operations') {
+                                    \DB::table('users')->where('id', $bu->id)->update([
+                                        'department' => $inferred,
+                                        'designation' => $mEmp ? $mEmp->designation : $bu->designation
+                                    ]);
+                                }
+                            }
+                        }
+                    }
+                } catch (\Throwable $fixDeptEx) {
+                    \Log::warning("Reset bad departments notice: " . $fixDeptEx->getMessage());
+                }
             }
         } catch (\Throwable $e) {
             \Log::warning("EmployeeMasterController ensureSchema notice: " . $e->getMessage());
@@ -266,32 +319,24 @@ class EmployeeMasterController extends Controller
     public static function getDefaultCompetencies()
     {
         return [
-            ['id' => 1, 'title' => 'Performance & Teamwork', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Overall performance based on feedback from Line or Operations Managers', 'Teamwork and people management issues']],
-            ['id' => 2, 'title' => 'Customer Service / Relationship Building', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Super saver cards and service quality', 'Google rating improvement and satisfaction']],
+            ['id' => 1, 'title' => 'Job Knowledge & Quality of Work', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Demonstrates required technical knowledge and functional skills', 'Consistently delivers accurate, high-quality, and reliable output']],
+            ['id' => 2, 'title' => 'Customer Focus / Business Acumen', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Delivers exceptional customer satisfaction (internal/external)', 'Understands business context, market needs, and company standards']],
             ['id' => 3, 'title' => 'Execution / Sales Results Driven', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Business driven metric set by department', 'Loss to company % mitigation and delivery']],
             ['id' => 4, 'title' => 'Compliance & Quality Standards', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Adherence to company policies, SOPs, safety, and regulatory compliance', 'Wooqer checklist and department standards implementation']],
-            ['id' => 5, 'title' => 'Continuous Improvement in workflows/processes', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Culture of adaptability and operational innovation', 'Flexibility and problem solving']],
+            ['id' => 5, 'title' => 'Communication & People Leadership', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Active listening, clear expression, and effective peer engagement', 'Mentorship, teamwork, problem solving, and positive contribution']]
         ];
     }
 
     /**
      * Intelligently infer department from designation, user record, or manager department,
      * ensuring it never inappropriately duplicates the location (e.g. HEAD OFFICE).
+     * Designation keywords are prioritized.
      */
     public static function inferDepartment($designation, $managerDept = null, $userDept = null, $legacyDept = null, $location = null)
     {
-        // 1. If valid user department exists and does not match location
-        if (!empty($userDept) && $userDept !== 'N/A' && strcasecmp(trim($userDept), trim($location ?? '')) !== 0) {
-            return $userDept;
-        }
-        // 2. If valid legacy department exists and does not match location
-        if (!empty($legacyDept) && $legacyDept !== 'N/A' && strcasecmp(trim($legacyDept), trim($location ?? '')) !== 0) {
-            return $legacyDept;
-        }
-
         $desig = strtoupper(trim($designation ?? ''));
 
-        // 3. Keyword / designation inference
+        // 1. Keyword / designation inference (PRIORITY: always resolve directly from designation)
         if (preg_match('/\b(HR|HUMAN RESOURCE|PERSONNEL|RECRUIT|TALENT|TRAINING)\b/i', $desig)) {
             return 'Human Resources';
         }
@@ -332,12 +377,21 @@ class EmployeeMasterController extends Controller
             return 'Retail Operations';
         }
 
+        // 2. If valid user department exists and does not match location or HEAD OFFICE
+        if (!empty($userDept) && $userDept !== 'N/A' && strcasecmp(trim($userDept), 'HEAD OFFICE') !== 0 && strcasecmp(trim($userDept), trim($location ?? '')) !== 0) {
+            return $userDept;
+        }
+        // 3. If valid legacy department exists and does not match location or HEAD OFFICE
+        if (!empty($legacyDept) && $legacyDept !== 'N/A' && strcasecmp(trim($legacyDept), 'HEAD OFFICE') !== 0 && strcasecmp(trim($legacyDept), trim($location ?? '')) !== 0) {
+            return $legacyDept;
+        }
+
         // 4. Inherit from manager if manager has a valid department
-        if (!empty($managerDept) && $managerDept !== 'N/A' && strcasecmp(trim($managerDept), trim($location ?? '')) !== 0) {
+        if (!empty($managerDept) && $managerDept !== 'N/A' && strcasecmp(trim($managerDept), 'HEAD OFFICE') !== 0 && strcasecmp(trim($managerDept), trim($location ?? '')) !== 0) {
             return $managerDept;
         }
 
-        return 'General';
+        return 'Operations';
     }
 
     public function getEmployees(Request $request)

@@ -5,8 +5,9 @@
         <!-- ════════════════════════════════════════════════════════════════ -->
         <div class="hardcopy-page" id="hardcopy-page-1">
             <!-- Header Banner -->
-            <div class="header-banner banner-grey">
-                YEARLY SMART GOALS SETTING
+            <div class="header-banner banner-grey flex justify-between items-center px-4">
+                <span>YEARLY SMART GOALS SETTING</span>
+                <span class="text-xs font-black tracking-widest uppercase py-0.5 px-2 bg-black/10 rounded">RECORD ID: {{ dossierId }}</span>
             </div>
 
             <!-- Top Metadata Table -->
@@ -232,8 +233,9 @@
         <!-- ════════════════════════════════════════════════════════════════ -->
         <div class="hardcopy-page" id="hardcopy-page-2">
             <!-- Header Banner -->
-            <div class="header-banner banner-blue">
+            <div class="header-banner banner-blue flex justify-between items-center px-4">
                 <em>YEARLY PERFORMANCE ASSESSMENT</em>
+                <span class="text-xs font-black tracking-widest uppercase py-0.5 px-2 bg-black/20 rounded">RECORD ID: {{ dossierId }}</span>
             </div>
 
             <!-- Candidate Info Grid -->
@@ -246,8 +248,8 @@
                         <td class="cell-value" style="width: 30%;"><strong>{{ formatDate(norm.appraisalDate) }}</strong></td>
                     </tr>
                     <tr>
-                        <td class="cell-label">Emp. Code:</td>
-                        <td class="cell-value"><strong>{{ norm.employeeCode }}</strong></td>
+                        <td class="cell-label">Emp. Code / Record ID:</td>
+                        <td class="cell-value"><strong>{{ norm.employeeCode }}</strong> &bull; <span class="font-mono text-[11px] font-bold text-slate-800">{{ dossierId }}</span></td>
                         <td class="cell-label">Line Manager:</td>
                         <td class="cell-value"><strong>{{ norm.lineManagerName }}</strong></td>
                     </tr>
@@ -404,7 +406,7 @@
             <!-- Page 2 Footer -->
             <div class="page-footer">
                 <span>Page 02 &bull; Yearly Performance Assessment</span>
-                <span>Melcom HR Performance Management System</span>
+                <span class="font-bold">Record ID: {{ dossierId }}</span>
                 <span>Overall: {{ canViewReviewPage ? (norm.managerOverallScore.toFixed(2) + ' / 5.00 (' + norm.managerOverallPercentage + '%)') : '--' }}</span>
             </div>
         </div>
@@ -414,24 +416,27 @@
         <!-- ════════════════════════════════════════════════════════════════ -->
         <div v-if="canViewReviewPage" class="hardcopy-page" id="hardcopy-page-3">
             <!-- Header Title -->
-            <div class="review-main-header">
-                End-Of-Year Review ( Executive Summary )
+            <div class="review-main-header flex justify-between items-center px-4">
+                <span>End-Of-Year Review ( Executive Summary )</span>
+                <span class="text-xs font-black tracking-widest uppercase py-0.5 px-2 bg-black/10 rounded">RECORD ID: {{ dossierId }}</span>
             </div>
 
             <!-- Review Metadata Bar (Cyan Header) -->
             <table class="form-table review-meta-bar">
                 <thead>
                     <tr class="header-cyan">
-                        <th style="width: 15%;">Emp. Code</th>
-                        <th style="width: 30%;">Name</th>
-                        <th style="width: 25%;">Division</th>
-                        <th style="width: 18%;">Position</th>
-                        <th style="width: 12%;">Date</th>
+                        <th style="width: 13%;">Emp. Code</th>
+                        <th style="width: 17%;">Record ID</th>
+                        <th style="width: 28%;">Name</th>
+                        <th style="width: 18%;">Division</th>
+                        <th style="width: 14%;">Position</th>
+                        <th style="width: 10%;">Date</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr class="review-meta-vals">
                         <td class="cell-center"><strong>{{ norm.employeeCode }}</strong></td>
+                        <td class="cell-center font-mono font-bold text-slate-800">{{ dossierId }}</td>
                         <td><strong>{{ norm.candidateName }}</strong></td>
                         <td>{{ norm.department }}</td>
                         <td>{{ norm.jobTitle }}</td>
@@ -637,7 +642,7 @@
             <!-- Page 3 Footer -->
             <div class="page-footer">
                 <span>Page 03 &bull; End-Of-Year Review &amp; Sign-Off</span>
-                <span>Melcom HR Performance Management System</span>
+                <span class="font-bold">Record ID: {{ dossierId }}</span>
                 <span>Verified Official Hardcopy Record</span>
             </div>
         </div>
@@ -730,6 +735,29 @@ const formatDate = (dateStr) => {
     } catch {
         return dateStr;
     }
+};
+
+const formatDepartment = (dept, jobTitle, location) => {
+    const d = (dept || '').trim();
+    const l = (location || '').trim();
+    const jt = (jobTitle || '').toUpperCase();
+    if (!d || d === 'N/A' || d.toUpperCase() === 'HEAD OFFICE' || (l && d.toLowerCase() === l.toLowerCase())) {
+        if (/HR|HUMAN RESOURCE|PERSONNEL|RECRUIT|TALENT|TRAINING/i.test(jt)) return 'Human Resources';
+        if (/ACCOUNT|FINANCE|AUDIT|TAX|PAYROLL|BILLING/i.test(jt)) return 'Accounts & Finance';
+        if (/IT|SOFTWARE|DEVELOPER|SYSTEM|NETWORK|PROGRAMMER/i.test(jt)) return 'Information Technology';
+        if (/MARKETING|BRAND|ADVERTIS|DIGITAL/i.test(jt)) return 'Marketing';
+        if (/WAREHOUSE|LOGISTICS|SUPPLY|DISPATCH|FORKLIFT/i.test(jt)) return 'Warehouse & Logistics';
+        if (/SECURITY|SURVEILLANCE|CCTV|GUARD/i.test(jt)) return 'Security';
+        if (/MAINTENANCE|ENGINEER|ELECTRIC|PLUMB|FACILIT/i.test(jt)) return 'Maintenance & Engineering';
+        if (/LEGAL|COMPLIANCE/i.test(jt)) return 'Legal & Compliance';
+        if (/PROCUREMENT|PURCHAS/i.test(jt)) return 'Procurement';
+        if (/TRANSPORT|DRIVER|FLEET/i.test(jt)) return 'Transport';
+        if (/CUSTOMER SERVICE|CALL CENTER|FRONT DESK/i.test(jt)) return 'Customer Service';
+        if (/CASHIER|TELLER/i.test(jt)) return 'Cash Office';
+        if (/RETAIL|SALES|SHOP|SUPERMARKET/i.test(jt)) return 'Retail Operations';
+        return d && d.toUpperCase() !== 'HEAD OFFICE' ? d : 'Operations';
+    }
+    return d;
 };
 
 // 5 Standard Melcom Competencies
@@ -935,7 +963,7 @@ const norm = computed(() => {
     return {
         candidateName: g.candidate_name || u.name || 'Staff Member',
         employeeCode: g.employee_code || u.employee_code || 'EMP-000',
-        department: g.department || u.department || 'Head Office',
+        department: formatDepartment(g.department || u.department, candidateJobTitle, g.location || u.location),
         location: g.location || u.location || 'Accra',
         jobTitle: candidateJobTitle,
         lineManagerName: g.manager_name || auth.line_manager_name || ad.manager_signature_name || 'Line Manager',
@@ -1012,7 +1040,12 @@ const getCompWeightedScore = (comp) => {
 
 const dossierId = computed(() => {
     const g = props.goal || {};
-    const deptPrefix = g.department ? g.department.substring(0, 3).toUpperCase() : 'PMS';
+    if (g.record_id) return g.record_id;
+    const dept = formatDepartment(g.department, g.job_title || g.joiningposition || g.designation, g.location);
+    const words = dept.split(' ');
+    const deptPrefix = words.length > 1 
+        ? words.map(w => w[0]).join('').toUpperCase() 
+        : (dept.length >= 3 ? dept.substring(0, 3).toUpperCase() : 'PMS');
     return `${deptPrefix}-${g.employee_code || g.id || '001'}`;
 });
 </script>

@@ -3,6 +3,8 @@ import { ref, computed, onMounted, watch } from 'vue';
 import axios from '@/helpers/pms_axios';
 import { useUsersStore } from '@/stores/user';
 import { showAlert } from '@/helpers/essential';
+import Dialog from 'primevue/dialog';
+import PrintableHardCopyDossier from '@/components/pms/PrintableHardCopyDossier.vue';
 
 const userstore = useUsersStore();
 const { loguser } = userstore;
@@ -11,6 +13,111 @@ const currentYear = ref(new Date().getFullYear());
 const loading = ref(true);
 const saving = ref(false);
 watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
+
+const showDossierModal = ref(false);
+const selectedGoalForDossier = ref(null);
+
+const formatDepartment = (dept, jobTitle, location) => {
+    const d = (dept || '').trim();
+    const l = (location || '').trim();
+    const jt = (jobTitle || '').toUpperCase();
+    if (!d || d === 'N/A' || d.toUpperCase() === 'HEAD OFFICE' || (l && d.toLowerCase() === l.toLowerCase())) {
+        if (/HR|HUMAN RESOURCE|PERSONNEL|RECRUIT|TALENT|TRAINING/i.test(jt)) return 'Human Resources';
+        if (/ACCOUNT|FINANCE|AUDIT|TAX|PAYROLL|BILLING/i.test(jt)) return 'Accounts & Finance';
+        if (/IT|SOFTWARE|DEVELOPER|SYSTEM|NETWORK|PROGRAMMER/i.test(jt)) return 'Information Technology';
+        if (/MARKETING|BRAND|ADVERTIS|DIGITAL/i.test(jt)) return 'Marketing';
+        if (/WAREHOUSE|LOGISTICS|SUPPLY|DISPATCH|FORKLIFT/i.test(jt)) return 'Warehouse & Logistics';
+        if (/SECURITY|SURVEILLANCE|CCTV|GUARD/i.test(jt)) return 'Security';
+        if (/MAINTENANCE|ENGINEER|ELECTRIC|PLUMB|FACILIT/i.test(jt)) return 'Maintenance & Engineering';
+        if (/LEGAL|COMPLIANCE/i.test(jt)) return 'Legal & Compliance';
+        if (/PROCUREMENT|PURCHAS/i.test(jt)) return 'Procurement';
+        if (/TRANSPORT|DRIVER|FLEET/i.test(jt)) return 'Transport';
+        if (/CUSTOMER SERVICE|CALL CENTER|FRONT DESK/i.test(jt)) return 'Customer Service';
+        if (/CASHIER|TELLER/i.test(jt)) return 'Cash Office';
+        if (/RETAIL|SALES|SHOP|SUPERMARKET/i.test(jt)) return 'Retail Operations';
+        return d && d.toUpperCase() !== 'HEAD OFFICE' ? d : 'Operations';
+    }
+    return d;
+};
+
+const getRecordId = (goal) => {
+    if (!goal) return 'PMS-000';
+    if (goal.record_id) return goal.record_id;
+    const dept = formatDepartment(goal.department, goal.job_title, goal.location);
+    const words = dept.split(' ');
+    const abbr = words.length > 1 ? words.map(w => w[0]).join('').toUpperCase() : (dept.length >= 3 ? dept.substring(0, 3).toUpperCase() : 'PMS');
+    return `${abbr}-${goal.employee_code || goal.id || '001'}`;
+};
+
+const openDossierModal = (goal) => {
+    if (!goal) return;
+    selectedGoalForDossier.value = {
+        ...goal,
+        department: formatDepartment(goal.department, goal.job_title, goal.location)
+    };
+    showDossierModal.value = true;
+};
+
+const printDossier = () => {
+    const printContainer = document.createElement('div');
+    printContainer.id = 'print-clone';
+    const original = document.getElementById('review-dossier-report');
+    if (!original) {
+        window.print();
+        return;
+    }
+    printContainer.innerHTML = original.innerHTML;
+    document.body.appendChild(printContainer);
+
+    const printStyle = document.createElement('style');
+    printStyle.id = 'dossier-print-style';
+    printStyle.innerHTML = `
+        @media print {
+            body * { visibility: hidden !important; }
+            #print-clone, #print-clone * { visibility: visible !important; }
+            #print-clone {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: white !important;
+                z-index: 999999 !important;
+            }
+            #print-clone .hardcopy-page {
+                page-break-after: always !important;
+                break-after: page !important;
+                box-shadow: none !important;
+                border: none !important;
+                margin: 0 auto !important;
+                padding: 10mm 12mm !important;
+                width: 100% !important;
+                min-height: auto !important;
+            }
+            #print-clone .hardcopy-page:last-child {
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+            }
+            #print-clone table { page-break-inside: auto !important; }
+            #print-clone tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+            #print-clone thead { display: table-header-group !important; }
+            @page { size: A4 portrait; margin: 6mm 6mm; }
+        }
+        @media screen {
+            #print-clone { display: none !important; }
+        }
+    `;
+    document.head.appendChild(printStyle);
+
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            if (document.body.contains(printContainer)) document.body.removeChild(printContainer);
+            if (document.head.contains(printStyle)) document.head.removeChild(printStyle);
+        }, 500);
+    }, 300);
+};
 
 
 const goals = ref([]);
@@ -364,8 +471,10 @@ const updateReview = async () => {
         const response = await axios.patch('pms/goals/' + selectedGoal.value.id, payload);
         if (response.data.status === 'success') {
             showAlert('Success', 'Goal reviewed and completed successfully.', 'success');
-            viewMode.value = 'list';
+            selectedGoal.value.display_status = 'review_completed';
+            selectedGoal.value.status = 'review_completed';
             fetchGoals();
+            openDossierModal(selectedGoal.value);
         }
     } catch (error) {
         console.error('Error updating goal:', error);
@@ -388,13 +497,26 @@ const filteredGoals = computed(() => {
             }
         }
         
-        // Search Filter
+        // Search Filter (Matches Candidate Name, Employee Code e.g. H664, Record ID, Designation, Dept)
         if (searchQuery.value) {
-            const query = searchQuery.value.toLowerCase();
-            const name = g.candidate_name ? g.candidate_name.toLowerCase() : '';
-            const title = g.title ? g.title.toLowerCase() : '';
-            const dept = g.department ? g.department.toLowerCase() : '';
-            return name.includes(query) || title.includes(query) || dept.includes(query);
+            const query = searchQuery.value.toLowerCase().trim();
+            const name = (g.candidate_name || '').toLowerCase();
+            const title = (g.title || '').toLowerCase();
+            const dept = formatDepartment(g.department, g.job_title, g.location).toLowerCase();
+            const rawDept = (g.department || '').toLowerCase();
+            const empCode = (g.employee_code || g.emp_code || '').toLowerCase();
+            const recId = getRecordId(g).toLowerCase();
+            const jobTitle = (g.job_title || '').toLowerCase();
+            const location = (g.location || '').toLowerCase();
+
+            return name.includes(query) || 
+                   empCode.includes(query) || 
+                   recId.includes(query) || 
+                   title.includes(query) || 
+                   dept.includes(query) || 
+                   rawDept.includes(query) || 
+                   jobTitle.includes(query) || 
+                   location.includes(query);
         }
         
         return true;
@@ -520,7 +642,7 @@ const downloadFile = (url, filename) => {
                     {{ filterStatus === 'all' ? 'FULL' : filterStatus.toUpperCase() }} LIST ({{ filteredGoals.length }})
                 </div>
                 <div class="relative w-full md:w-96">
-                    <input v-model="searchQuery" type="text" placeholder="Search Candidate Name, Title or Dept..." class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-[#1A237E] text-sm font-semibold text-slate-700 bg-white shadow-sm transition-all" />
+                    <input v-model="searchQuery" type="text" placeholder="Search Candidate Name, Employee Code (e.g. H664), Record ID, Dept..." class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-[#1A237E] text-sm font-semibold text-slate-700 bg-white shadow-sm transition-all" />
                     <i class="pi pi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 </div>
             </div>
@@ -541,8 +663,8 @@ const downloadFile = (url, filename) => {
                             <tr v-for="goal in filteredGoals" :key="goal.id" class="hover:bg-indigo-50/30 transition-all group">
                                 <td class="px-6 py-5 align-top">
                                     <div class="font-black text-slate-800 text-sm uppercase">{{ goal.candidate_name }}</div>
-                                    <div class="text-[9px] font-bold text-indigo-600 uppercase tracking-widest mt-1">{{ goal.department || 'Operations' }}</div>
-                                    <div class="text-[9px] font-bold text-slate-400 mt-0.5">{{ goal.location || 'Head Office' }} - {{ goal.employee_code || 'EMP-000' }}</div>
+                                    <div class="text-[9px] font-bold text-indigo-600 uppercase tracking-widest mt-1">{{ formatDepartment(goal.department, goal.job_title, goal.location) }}</div>
+                                    <div class="text-[9px] font-bold text-slate-400 mt-0.5">{{ goal.location || 'Head Office' }} &bull; <span class="font-mono font-bold text-slate-600">{{ getRecordId(goal) }}</span></div>
                                 </td>
                                 <td class="px-6 py-5 align-top max-w-sm">
                                     <div class="font-bold text-slate-700 text-sm leading-snug mb-2">{{ goal.title }}</div>
@@ -568,11 +690,22 @@ const downloadFile = (url, filename) => {
                                         {{ goal.display_status.replace('_', ' ') }}
                                     </span>
                                 </td>
-                                <td class="px-6 py-5 text-right">
-                                    <button @click="startReview(goal)" class="px-5 py-2.5 font-black rounded-2xl text-[10px] uppercase tracking-widest flex items-center gap-2 active:scale-95 transition-all shadow-md ml-auto"
-                                        :class="goal.display_status === 'review_completed' ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-600/20'">
-                                        <i class="pi pi-verified text-xs"></i> {{ goal.display_status === 'review_completed' ? 'Completed' : 'Review' }}
-                                    </button>
+                                <td class="px-6 py-5 text-right whitespace-nowrap">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <!-- View Dossier Button -->
+                                        <button @click="openDossierModal(goal)" 
+                                            class="px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm cursor-pointer border"
+                                            :class="goal.display_status === 'review_completed' ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border-indigo-200 shadow-indigo-100' : 'bg-slate-50 text-slate-700 hover:bg-slate-200 border-slate-200'"
+                                            title="View and Print Official Performance Dossier">
+                                            <i class="pi pi-print text-xs"></i> View Dossier
+                                        </button>
+
+                                        <!-- Review / Completed Action Button -->
+                                        <button @click="startReview(goal)" class="px-4 py-2 font-black rounded-xl text-[10px] uppercase tracking-widest flex items-center gap-1.5 active:scale-95 transition-all shadow-md cursor-pointer"
+                                            :class="goal.display_status === 'review_completed' ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-600/20'">
+                                            <i class="pi pi-verified text-xs"></i> {{ goal.display_status === 'review_completed' ? 'Completed' : 'Review' }}
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                             <tr v-if="filteredGoals.length === 0">
@@ -1274,6 +1407,14 @@ const downloadFile = (url, filename) => {
                     <button v-if="currentStep < totalSteps" @click="nextStep" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl text-xs uppercase shadow-lg shadow-indigo-300 transition-all">
                         NEXT STEP
                     </button>
+                    <!-- View Dossier Button (Available in review, especially when completed) -->
+                    <button v-if="selectedGoal.display_status === 'review_completed' || currentStep === totalSteps"
+                        @click="openDossierModal(selectedGoal)" 
+                        type="button"
+                        class="px-6 py-3 bg-[#1A237E] hover:bg-[#0D1559] text-white font-black rounded-2xl text-xs uppercase shadow-lg shadow-indigo-900/20 transition-all flex items-center gap-2 active:scale-95 cursor-pointer">
+                        <i class="pi pi-print"></i>
+                        View &amp; Print Dossier
+                    </button>
                     <button v-if="currentStep === totalSteps && selectedGoal.display_status !== 'review_completed'" 
                         @click="updateReview" 
                         :disabled="saving || (!selectedGoal.appraisal_data.manager_signature_name && !selectedGoal.appraisal_data.authorization?.line_manager_signature && !selectedGoal.appraisal_data.authorization?.line_manager_name)" 
@@ -1285,6 +1426,88 @@ const downloadFile = (url, filename) => {
                 </div>
             </div>
         </div>
+
+        <!-- Printable Performance Dossier Modal (Print preview & print controls) -->
+        <Dialog 
+            v-model:visible="showDossierModal" 
+            modal 
+            :closable="false"
+            :showHeader="false"
+            class="!p-0 overflow-hidden shadow-2xl border-none" 
+            :style="{ width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh', margin: '0' }"
+            :contentStyle="{ padding: '0', backgroundColor: '#F1F5F9', display: 'flex' }">
+            
+            <div v-if="selectedGoalForDossier" class="flex w-full h-full overflow-hidden">
+                
+                <!-- Document Viewport (Center) -->
+                <div class="flex-1 overflow-y-auto bg-slate-200 p-8 md:p-12 lg:p-16 flex flex-col items-center custom-scrollbar scroll-smooth">
+                    <div id="review-dossier-report" class="w-full max-w-[210mm] print:m-0 print:shadow-none print:w-full no-scrollbar">
+                        <PrintableHardCopyDossier :goal="selectedGoalForDossier" :showReviewPage="true" />
+                    </div>
+                </div>
+
+                <!-- Right Sidebar Controls -->
+                <div class="w-[360px] bg-slate-900 flex flex-col no-print shrink-0 border-l border-white/5">
+                    
+                    <!-- Close Button -->
+                    <div class="p-4 flex justify-end">
+                        <button @click="showDossierModal = false" class="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all cursor-pointer border-none">
+                            <i class="pi pi-times"></i>
+                        </button>
+                    </div>
+
+                    <div class="p-8 flex-1 overflow-y-auto no-scrollbar">
+                        <div class="mb-8 text-center">
+                            <div class="inline-flex w-20 h-20 rounded-3xl bg-indigo-500/10 text-indigo-400 items-center justify-center mb-4 shadow-2xl border border-indigo-500/20">
+                                <i class="pi pi-file-pdf text-3xl"></i>
+                            </div>
+                            <h2 class="text-lg font-black text-white uppercase tracking-tight mb-1">Performance Dossier</h2>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ getRecordId(selectedGoalForDossier) }} // OFFICIAL RECORD</p>
+                        </div>
+
+                        <!-- Candidate Overview Card -->
+                        <div class="p-4 rounded-2xl bg-white/5 border border-white/10 mb-6 space-y-2.5 text-xs text-slate-300">
+                            <div class="flex justify-between">
+                                <span class="text-slate-500 font-bold">Candidate:</span>
+                                <span class="text-white font-black uppercase">{{ selectedGoalForDossier.candidate_name }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500 font-bold">Staff ID:</span>
+                                <span class="text-indigo-300 font-mono font-bold">{{ selectedGoalForDossier.employee_code }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500 font-bold">Record ID:</span>
+                                <span class="text-teal-300 font-mono font-bold">{{ getRecordId(selectedGoalForDossier) }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500 font-bold">Department:</span>
+                                <span class="text-white font-bold">{{ formatDepartment(selectedGoalForDossier.department, selectedGoalForDossier.job_title, selectedGoalForDossier.location) }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-500 font-bold">Status:</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-teal-900/50 text-teal-300 border border-teal-500/30">
+                                    {{ selectedGoalForDossier.display_status?.replace('_', ' ') || 'Completed' }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Print Action Button -->
+                        <div class="space-y-3">
+                            <button @click="printDossier" 
+                                class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 border-none">
+                                <i class="pi pi-print text-sm"></i>
+                                Print / Save PDF
+                            </button>
+
+                            <button @click="showDossierModal = false" 
+                                class="w-full py-3 bg-white/5 hover:bg-white/10 text-slate-300 font-bold rounded-2xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all border border-white/10">
+                                Close Preview
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Dialog>
     </div>
 </template>
 

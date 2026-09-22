@@ -219,11 +219,27 @@ class GoalController extends Controller
                 }
             } catch (\Throwable $e) {}
 
-            // Add computed display_status to each goal and resolve job_title from employee joining position
-            $goals->each(function ($goal) use ($completedReviewEmpCodes) {
+            // Add computed display_status to each goal, resolve job_title and department from Monthly_Employees, and format record_id
+            $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+            $hasMTable = \Illuminate\Support\Facades\Schema::hasTable($mTable);
+
+            $goals->each(function ($goal) use ($completedReviewEmpCodes, $hasMTable, $mTable) {
                 try {
                     $goal->display_status = $this->computeDisplayStatus($goal, $completedReviewEmpCodes);
-                    if ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
+
+                    // Resolve designation and location from Monthly_Employees
+                    $mEmp = null;
+                    if ($hasMTable && !empty($goal->employee_code)) {
+                        $mEmp = \Illuminate\Support\Facades\DB::table($mTable)->where('emp_id', $goal->employee_code)->first();
+                    }
+                    if ($mEmp) {
+                        if (!empty($mEmp->designation)) {
+                            $goal->job_title = $mEmp->designation;
+                        }
+                        if (empty($goal->location) || $goal->location === 'N/A') {
+                            $goal->location = $mEmp->location ?: 'Head Office';
+                        }
+                    } elseif ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
                         $emp = null;
                         if (\Illuminate\Support\Facades\Schema::hasTable('employees')) {
                             if (\Illuminate\Support\Facades\Schema::hasColumn('employees', 'employeeid')) {
@@ -240,6 +256,27 @@ class GoalController extends Controller
                             }
                         }
                     }
+
+                    // Intelligently infer department from job_title / designation
+                    $currentDept = $goal->department;
+                    $loc = $goal->location ?? '';
+                    if (empty($currentDept) || strcasecmp(trim($currentDept), 'HEAD OFFICE') === 0 || strcasecmp(trim($currentDept), trim($loc)) === 0 || $currentDept === 'N/A') {
+                        $inferred = \App\Http\Controllers\EmployeeMasterController::inferDepartment($goal->job_title, null, null, null, $loc);
+                        if ($inferred && $inferred !== 'General' && $inferred !== 'Operations') {
+                            $goal->department = $inferred;
+                        }
+                    }
+
+                    // Format record_id consistently
+                    $deptStr = $goal->department ?: '';
+                    $deptAbbr = 'PMS';
+                    if (!empty($deptStr) && strcasecmp($deptStr, 'HEAD OFFICE') !== 0) {
+                        $words = explode(' ', trim($deptStr));
+                        $deptAbbr = count($words) > 1 
+                            ? strtoupper(substr($words[0], 0, 1) . substr($words[1], 0, 1))
+                            : strtoupper(substr($deptStr, 0, 3));
+                    }
+                    $goal->record_id = $deptAbbr . '-' . ($goal->employee_code ?: $goal->id);
                 } catch (\Throwable $e) {}
             });
 
