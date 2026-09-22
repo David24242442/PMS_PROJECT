@@ -23,7 +23,10 @@ const csvResult = ref(null); // { matched_count, unmatched_codes, total_parsed }
 // Modal States
 const showEditModal = ref(false);
 const showCreateModal = ref(false);
-const showTeamModal = ref(false); // New modal for viewing team
+const showTeamModal = ref(false); // Modal for viewing team
+const showPushFreshModal = ref(false); // Confirmation modal for pushing fresh goals
+const targetManagerForPush = ref(null);
+const pushingGoals = ref(false);
 const editingManager = ref(null); 
 const searchQuery = ref('');
 const teamMembers = ref([]); // Team members for the viewing manager
@@ -34,9 +37,38 @@ const filteredTeamMembers = computed(() => {
     const q = teamSearchQuery.value.toLowerCase();
     return teamMembers.value.filter(emp => 
         (emp.name && emp.name.toLowerCase().includes(q)) || 
-        (emp.employee_code && emp.employee_code.toLowerCase().includes(q))
+        (emp.employee_code && emp.employee_code.toLowerCase().includes(q)) ||
+        (emp.department && emp.department.toLowerCase().includes(q)) ||
+        (emp.position && emp.position.toLowerCase().includes(q)) ||
+        (emp.designation && emp.designation.toLowerCase().includes(q)) ||
+        (emp.location && emp.location.toLowerCase().includes(q))
     );
 });
+
+const triggerPushFreshGoals = (manager) => {
+    targetManagerForPush.value = manager;
+    showPushFreshModal.value = true;
+};
+
+const confirmPushFreshGoals = async () => {
+    if (!targetManagerForPush.value) return;
+    pushingGoals.value = true;
+    try {
+        const response = await axios.post('pms/push-fresh-goals', {
+            manager_id: targetManagerForPush.value.id,
+            year: 2026
+        });
+        if (response.data.status === 'success') {
+            showAlert('Success', response.data.message || 'Fresh Goals & Appraisal templates pushed successfully!', 'success');
+            showPushFreshModal.value = false;
+        }
+    } catch (error) {
+        console.error('Error pushing fresh goals:', error);
+        showAlert('Error', error.response?.data?.message || 'Failed to push fresh goals.', 'error');
+    } finally {
+        pushingGoals.value = false;
+    }
+};
 
 // Form Data for Manager's Team
 const form = ref({
@@ -391,10 +423,16 @@ onMounted(() => {
                             </td>
                             <td class="px-5 py-3 text-xs text-gray-600">{{ user.location || '-' }}</td>
                             <td class="px-5 py-3 text-right">
-                                <button @click="viewTeam(user)" class="p-1.5 rounded-lg text-black hover:bg-purple-300 transition-colors flex items-center gap-2 group" title="View Team">
-                                    <i class="pi pi-users text-sm"></i>
-                                    <span class="text-[10px] text-black uppercase tracking-tighter">View Team</span>
-                                </button>
+                                <div class="flex items-center justify-end gap-2">
+                                    <button @click="triggerPushFreshGoals(user)" class="px-2.5 py-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all flex items-center gap-1.5 shadow-xs" title="Push Fresh Goals & Appraisal Dossier">
+                                        <i class="pi pi-send text-xs"></i>
+                                        <span class="text-[10px] font-black uppercase tracking-tight">Push Goals</span>
+                                    </button>
+                                    <button @click="viewTeam(user)" class="px-2.5 py-1.5 rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-all flex items-center gap-1.5 shadow-xs" title="View Team">
+                                        <i class="pi pi-users text-xs"></i>
+                                        <span class="text-[10px] font-black uppercase tracking-tight">View Team</span>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>
@@ -402,91 +440,98 @@ onMounted(() => {
             </div>
         </div>
 
-        <!-- "View Team" Modal -->
-        <div v-if="showTeamModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-            <div class="bg-white w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden animate-fadeIn border border-white/20">
-                <div class="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 backdrop-blur-sm">
+        <!-- "View Team" Modal (Associated Team Members) -->
+        <div v-if="showTeamModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto">
+            <div class="bg-white w-full max-w-5xl max-h-[90vh] sm:max-h-[92vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden animate-fadeIn border border-white/20 my-auto">
+                <div class="px-6 sm:px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
                     <div>
-                        <h3 class="font-black text-2xl text-gray-800 flex items-center gap-3">
+                        <h3 class="font-black text-xl sm:text-2xl text-gray-800 flex items-center gap-3">
                             <i class="pi pi-users text-purple-600 font-black"></i> Associated Team Members
-                            <span class="text-xs bg-purple-100 text-purple-600 px-3 py-1 rounded-full font-black border border-purple-200">
+                            <span class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-black border border-purple-200">
                                 {{ teamMembers.length }} Staff
                             </span>
                         </h3>
                         <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Listing employees reporting to {{ editingManager?.name }}</p>
                     </div>
-                    <button @click="showTeamModal = false" class="w-10 h-10 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-800 hover:bg-gray-100 transition-all">
-                        <i class="pi pi-times"></i>
+                    <button @click="showTeamModal = false" class="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-800 hover:bg-gray-100 transition-all">
+                        <i class="pi pi-times text-sm"></i>
                     </button>
                 </div>
 
-                <div class="p-8">
-                    <!-- Manager Info Summary -->
-                    <div class="mb-8 p-6 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl border border-purple-100 flex items-center justify-between shadow-sm">
-                         <div class="flex items-center gap-5">
-                            <div class="relative">
-                                <div class="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center text-purple-600 font-black text-2xl border border-purple-200">
+                <div class="p-6 sm:p-8 space-y-6 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                    <!-- Manager Info Summary Card -->
+                    <div class="p-5 bg-gradient-to-r from-purple-50 via-indigo-50/40 to-white rounded-2xl border border-purple-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                         <div class="flex items-center gap-4">
+                            <div class="relative shrink-0">
+                                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1A237E] to-purple-700 text-white shadow-sm flex items-center justify-center font-black text-xl">
                                     {{ editingManager?.name?.charAt(0) }}
                                 </div>
-                                <div class="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 border-2 border-white rounded-full"></div>
+                                <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
                             </div>
                             <div>
                                 <p class="font-black text-gray-800 text-lg leading-tight">{{ editingManager?.name }}</p>
-                                <div class="flex items-center gap-3 mt-1">
-                                    <span class="text-[10px] font-black text-gray-500 uppercase tracking-wide bg-white/50 px-2 py-0.5 rounded border border-purple-100">{{ editingManager?.department }}</span>
-                                    <span class="text-[10px] font-black text-indigo-600 uppercase tracking-wide bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{{ editingManager?.employee_code }}</span>
+                                <div class="flex flex-wrap items-center gap-2 mt-1">
+                                    <span class="text-[10px] font-black text-gray-600 uppercase tracking-wide bg-white px-2 py-0.5 rounded border border-purple-100">{{ editingManager?.department || 'General' }}</span>
+                                    <span class="text-[10px] font-mono font-black text-indigo-600 uppercase tracking-wide bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{{ editingManager?.employee_code }}</span>
+                                    <span class="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">{{ teamMembers.length }} Members</span>
                                 </div>
                             </div>
                          </div>
-                         <button @click="editTeamFromView" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-purple-200 flex items-center gap-2">
-                            <i class="pi pi-user-edit"></i> Manage Team Assignments
-                         </button>
+                         <div class="flex items-center gap-2.5 shrink-0">
+                             <button @click="triggerPushFreshGoals(editingManager)" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md shadow-emerald-200 flex items-center gap-2">
+                                <i class="pi pi-send"></i>
+                                <span>Push Fresh Goals</span>
+                             </button>
+                             <button @click="editTeamFromView" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-purple-200 flex items-center gap-2">
+                                <i class="pi pi-user-edit"></i> Manage Assignments
+                             </button>
+                         </div>
                     </div>
 
                     <!-- Search within Team -->
-                    <div class="mb-4 flex justify-between items-center">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Team Membership Roster</p>
-                        <div class="relative w-64">
+                        <div class="relative w-full sm:w-80">
                             <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                            <input type="text" placeholder="Filter team list..." v-model="teamSearchQuery"
-                                class="w-full pl-9 pr-4 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
+                            <input type="text" placeholder="Filter by name, code, dept, designation..." v-model="teamSearchQuery"
+                                class="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
                         </div>
                     </div>
 
                     <!-- Team Table -->
                     <div class="border border-gray-100 rounded-2xl overflow-hidden shadow-sm bg-gray-50/30">
-                        <div class="max-h-[350px] overflow-y-auto overflow-x-hidden">
+                        <div class="max-h-[380px] overflow-y-auto overflow-x-auto">
                             <table class="w-full text-sm text-left border-collapse">
-                                <thead class="bg-white text-gray-400 uppercase font-black text-[9px] tracking-widest border-b border-gray-100 sticky top-0 z-10">
+                                <thead class="bg-white text-gray-500 uppercase font-black text-[9px] tracking-widest border-b border-gray-100 sticky top-0 z-10">
                                     <tr>
-                                        <th class="px-6 py-4">Employee Name</th>
-                                        <th class="px-6 py-4">Employee Code</th>
-                                        <th class="px-6 py-4">Department</th>
-                                        <th class="px-6 py-4">Position</th>
-                                        <th class="px-6 py-4">Location</th>
+                                        <th class="px-5 py-3.5">Employee Name</th>
+                                        <th class="px-5 py-3.5">Employee Code</th>
+                                        <th class="px-5 py-3.5">Department</th>
+                                        <th class="px-5 py-3.5">Designation</th>
+                                        <th class="px-5 py-3.5">Location</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 bg-white">
                                     <tr v-for="emp in filteredTeamMembers" :key="emp.employee_code" class="hover:bg-purple-50/30 transition-colors group">
-                                        <td class="px-6 py-4">
+                                        <td class="px-5 py-3.5">
                                             <div class="flex items-center gap-3">
-                                                <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 text-gray-400 flex items-center justify-center text-[10px] font-black group-hover:bg-white group-hover:text-purple-600 transition-colors">
+                                                <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 text-gray-500 flex items-center justify-center text-[10px] font-black group-hover:bg-purple-600 group-hover:text-white transition-colors">
                                                     {{ emp.name?.charAt(0) || '?' }}
                                                 </div>
-                                                <span class="font-bold text-gray-700">{{ emp.name }}</span>
+                                                <span class="font-bold text-gray-800 text-xs">{{ emp.name }}</span>
                                             </div>
                                         </td>
-                                        <td class="px-6 py-4">
-                                            <span class="font-mono text-[11px] text-indigo-500 font-black bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100">{{ emp.employee_code }}</span>
+                                        <td class="px-5 py-3.5">
+                                            <span class="font-mono text-[11px] text-indigo-600 font-black bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">{{ emp.employee_code }}</span>
                                         </td>
-                                        <td class="px-6 py-4 text-xs font-bold text-gray-500">{{ emp.department || '-' }}</td>
-                                        <td class="px-6 py-4 text-xs font-bold text-gray-600">{{ emp.position || '-' }}</td>
-                                        <td class="px-6 py-4 text-xs font-bold text-gray-400 italic">{{ emp.location || '-' }}</td>
+                                        <td class="px-5 py-3.5 text-xs font-bold text-gray-600">{{ emp.department || '-' }}</td>
+                                        <td class="px-5 py-3.5 text-xs font-bold text-gray-600">{{ emp.designation || emp.position || '-' }}</td>
+                                        <td class="px-5 py-3.5 text-xs font-bold text-gray-400 italic">{{ emp.location || '-' }}</td>
                                     </tr>
                                     <tr v-if="filteredTeamMembers.length === 0">
-                                        <td colspan="5" class="px-6 py-20 text-center">
-                                            <div class="bg-gray-100 inline-flex p-6 rounded-full mb-4 text-gray-300">
-                                                <i class="pi pi-users text-4xl"></i>
+                                        <td colspan="5" class="px-6 py-16 text-center">
+                                            <div class="bg-gray-100 inline-flex p-5 rounded-full mb-3 text-gray-300">
+                                                <i class="pi pi-users text-3xl"></i>
                                             </div>
                                             <p class="text-gray-400 font-black text-xs uppercase tracking-widest">
                                                 {{ teamSearchQuery ? 'No members match your search' : 'No team members assigned yet' }}
@@ -499,93 +544,98 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <div class="px-8 py-6 border-t border-gray-100 flex justify-end bg-gray-50/50 gap-4">
-                     <button @click="showTeamModal = false" class="px-8 py-2.5 rounded-xl bg-gray-800 text-white font-black text-xs uppercase tracking-widest hover:bg-gray-900 transition-all shadow-lg shadow-gray-200">Close Roster</button>
+                <div class="px-6 sm:px-8 py-4 border-t border-gray-100 flex justify-end bg-gray-50/80 shrink-0">
+                     <button @click="showTeamModal = false" class="px-6 py-2.5 rounded-xl bg-gray-800 text-white font-black text-xs uppercase tracking-widest hover:bg-gray-900 transition-all shadow-md shadow-gray-200">Close Roster</button>
                 </div>
             </div>
         </div>
 
-        <!-- "Manage Team" Modal -->
-        <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-            <div class="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-fadeIn border border-white/20">
-                <div class="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 backdrop-blur-sm">
+        <!-- "Manage Team" Modal (Manage Associated Team) -->
+        <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto">
+            <div class="bg-white w-full max-w-4xl max-h-[90vh] sm:max-h-[92vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden animate-fadeIn border border-white/20 my-auto">
+                <!-- Sticky Modal Header -->
+                <div class="px-6 sm:px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
                     <div>
-                        <h3 class="font-black text-2xl text-gray-800 flex items-center gap-3">
-                            <i class="pi pi-users text-purple-600"></i> Manage Associated Team
+                        <h3 class="font-black text-xl sm:text-2xl text-gray-800 flex items-center gap-3">
+                            <i class="pi pi-users text-purple-600 font-black"></i> Manage Associated Team
                         </h3>
                         <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Assign employees to this manager's reporting line</p>
                     </div>
-                    <button @click="showEditModal = false" class="w-10 h-10 rounded-full flex items-center justify-center text-gray-100 hover:text-gray-800 hover:bg-gray-100 transition-all">
-                        <i class="pi pi-times"></i>
+                    <button @click="showEditModal = false" class="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-800 hover:bg-gray-100 transition-all">
+                        <i class="pi pi-times text-sm"></i>
                     </button>
                 </div>
                 
-                <div class="p-8 space-y-8">
-                    <!-- Selected Manager Card -->
-                    <div class="p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl border border-purple-100/50 shadow-sm transition-all hover:shadow-md">
-                        <div class="flex items-center gap-6">
-                            <div class="w-20 h-20 rounded-2xl bg-white shadow-sm flex items-center justify-center group overflow-hidden relative">
-                                <div class="absolute inset-0 bg-purple-600 scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-500 opacity-5"></div>
-                                <span class="font-black text-3xl text-purple-600 relative z-10">{{ editingManager.name.charAt(0) }}</span>
+                <!-- Scrollable Modal Body -->
+                <div class="p-6 sm:p-8 space-y-5 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                    <!-- Selected Manager Executive Card -->
+                    <div class="p-5 bg-gradient-to-br from-purple-50 via-indigo-50/40 to-white rounded-2xl border border-purple-100 shadow-sm transition-all hover:shadow-md">
+                        <div class="flex items-center gap-4">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#1A237E] to-purple-700 text-white shadow-md flex items-center justify-center text-xl font-black shrink-0">
+                                {{ editingManager?.name?.charAt(0) }}
                             </div>
                             <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-[10px] bg-purple-600 text-white font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Selected Manager</span>
-                                    <span class="text-[10px] bg-indigo-100 text-indigo-700 font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">{{ editingManager.employee_code }}</span>
+                                <div class="flex flex-wrap items-center gap-2 mb-1">
+                                    <span class="text-[9px] bg-purple-600 text-white font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-xs">Selected Line Manager</span>
+                                    <span class="text-[10px] bg-indigo-50 text-indigo-700 font-mono font-black px-2 py-0.5 rounded border border-indigo-100">{{ editingManager?.employee_code }}</span>
+                                    <span class="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded border border-emerald-100">{{ form.team_members.length }} Member(s) In Selection</span>
                                 </div>
-                                <h4 class="font-black text-2xl text-gray-800 leading-none mb-2">{{ editingManager.name }}</h4>
-                                <div class="flex items-center gap-4 text-xs font-bold text-gray-500">
-                                    <span class="flex items-center gap-1.5"><i class="pi pi-briefcase text-purple-400"></i> {{ editingManager.department || 'No Department' }}</span>
-                                    <span class="flex items-center gap-1.5"><i class="pi pi-envelope text-indigo-400"></i> {{ editingManager.email }}</span>
+                                <h4 class="font-black text-xl text-gray-800 leading-tight">{{ editingManager?.name }}</h4>
+                                <div class="flex flex-wrap items-center gap-3 text-xs font-bold text-gray-500 mt-1">
+                                    <span class="flex items-center gap-1"><i class="pi pi-briefcase text-purple-500"></i> {{ editingManager?.department || 'General' }}</span>
+                                    <span v-if="editingManager?.email" class="flex items-center gap-1"><i class="pi pi-envelope text-indigo-500"></i> {{ editingManager?.email }}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Automatic Provisioning & Goals Badge -->
-                    <div class="p-4 bg-purple-50/80 rounded-2xl border border-purple-200 flex items-start gap-3.5 shadow-sm">
+                    <!-- Automatic Provisioning & Goals Dossier Banner -->
+                    <div class="p-4 bg-gradient-to-r from-purple-50 via-indigo-50/30 to-purple-50 rounded-2xl border border-purple-200/80 shadow-xs flex items-start gap-3.5">
                         <div class="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
                             <i class="pi pi-bolt text-sm"></i>
                         </div>
                         <div class="flex-1 text-xs">
-                            <p class="font-black text-purple-900 uppercase tracking-wide">Automatic Account Provisioning & Goals Assignment</p>
-                            <p class="text-purple-700 font-medium mt-1 leading-relaxed">
+                            <div class="flex items-center gap-2">
+                                <p class="font-black text-purple-950 uppercase tracking-wide">Automatic Account Provisioning &amp; Goals Dossier</p>
+                                <span class="bg-emerald-100 text-emerald-800 text-[9px] font-black px-2 py-0.5 rounded uppercase">Automated</span>
+                            </div>
+                            <p class="text-purple-900 font-medium mt-1 leading-relaxed">
                                 When you finalize team assignments, all members automatically receive their portal credentials:
-                                <span class="font-mono font-black bg-white px-2 py-0.5 rounded border border-purple-200 text-purple-900">Username: Emp ID</span> &
+                                <span class="font-mono font-black bg-white px-2 py-0.5 rounded border border-purple-200 text-purple-900">Username: Emp ID</span> &amp;
                                 <span class="font-mono font-black bg-white px-2 py-0.5 rounded border border-purple-200 text-purple-900">Password: Password</span>.
-                                Their <strong>FY 2026 SMART Goals & Appraisal dossier</strong> is automatically initialized for them to complete self-assessment and submit for <strong>{{ editingManager?.name }}</strong> to review.
+                                A fresh, clean <strong>FY 2026 SMART Goals &amp; Appraisal dossier</strong> is automatically initialized for each employee to complete self-assessment and submit for <strong>{{ editingManager?.name }}</strong> to review.
                             </p>
                         </div>
                     </div>
 
                     <!-- CSV Bulk Upload Section -->
-                    <div class="p-5 bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200/60 shadow-sm">
-                        <div class="flex items-center justify-between mb-3">
+                    <div class="p-4 sm:p-5 bg-gradient-to-r from-amber-50 to-orange-50/60 rounded-2xl border border-amber-200/80 shadow-xs">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                             <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-amber-600 border border-amber-200">
+                                <div class="w-9 h-9 rounded-xl bg-white shadow-xs flex items-center justify-center text-amber-600 border border-amber-200 shrink-0">
                                     <i class="pi pi-file-import text-sm font-bold"></i>
                                 </div>
                                 <div>
                                     <p class="text-[10px] font-black text-gray-800 uppercase tracking-widest">Bulk Upload via CSV</p>
-                                    <p class="text-[9px] text-gray-500 font-bold">Upload a CSV with employee codes to assign in bulk</p>
+                                    <p class="text-[9px] text-gray-500 font-bold">Upload a CSV with employee codes to auto-assign in bulk</p>
                                 </div>
                             </div>
-                            <button @click="downloadCsvTemplate" class="flex items-center gap-1.5 text-[9px] font-black text-amber-700 bg-white hover:bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-200 transition-all uppercase tracking-widest">
+                            <button @click="downloadCsvTemplate" class="inline-flex items-center gap-1.5 text-[9px] font-black text-amber-800 bg-white hover:bg-amber-100 px-3 py-1.5 rounded-lg border border-amber-200 transition-all uppercase tracking-widest shadow-xs shrink-0 self-start sm:self-auto">
                                 <i class="pi pi-download text-[10px]"></i> Download Format
                             </button>
                         </div>
                         <div class="flex items-center gap-3">
-                            <label class="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-dashed border-amber-300 rounded-xl cursor-pointer hover:bg-amber-50 hover:border-amber-400 transition-all group">
+                            <label class="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-dashed border-amber-300 rounded-xl cursor-pointer hover:bg-amber-50/70 hover:border-amber-400 transition-all group">
                                 <i class="pi pi-upload text-amber-500 group-hover:text-amber-600 text-sm"></i>
                                 <span class="text-xs font-bold text-gray-600 group-hover:text-gray-800">
-                                    {{ csvUploading ? 'Processing...' : 'Choose CSV File' }}
+                                    {{ csvUploading ? 'Processing CSV Roster...' : 'Choose CSV File with Employee Codes' }}
                                 </span>
                                 <input type="file" accept=".csv,.txt" @change="handleCsvUpload" class="hidden" :disabled="csvUploading">
                             </label>
                         </div>
                         <!-- CSV Result Feedback -->
                         <div v-if="csvResult" class="mt-3 p-3 bg-white rounded-xl border border-gray-100 text-xs">
-                            <div class="flex items-center gap-4">
+                            <div class="flex flex-wrap items-center gap-4">
                                 <span class="font-black text-emerald-600"><i class="pi pi-check-circle mr-1"></i>{{ csvResult.new_added }} added</span>
                                 <span class="font-bold text-gray-500">{{ csvResult.matched_count }}/{{ csvResult.total_parsed }} matched</span>
                                 <span v-if="csvResult.unmatched_codes.length" class="font-bold text-red-500">
@@ -604,61 +654,98 @@ onMounted(() => {
                         <div class="flex-1 border-t border-gray-200"></div>
                     </div>
 
-                    <div class="grid grid-cols-1 gap-6">
-                        <div>
-                            <div class="flex items-center justify-between mb-3">
-                                <label class="block text-sm font-black text-gray-700 uppercase tracking-wide">Assign Team Members</label>
-                                <span class="text-[10px] font-black text-purple-500 bg-purple-50 px-2 py-1 rounded-lg border border-purple-100">
-                                    {{ form.team_members.length }} members selected
-                                </span>
-                            </div>
-                            <MultiSelect 
-                                v-model="form.team_members" 
-                                :options="masterEmployees" 
-                                optionLabel="full_string" 
-                                filter 
-                                filterBy="name,employee_code,full_string"
-                                placeholder="Search by Name or Employee Code..."
-                                class="custom-pms-multiselect w-full"
-                                panelClass="custom-pms-panel"
-                                :maxSelectedLabels="3"
-                                display="chip"
-                                :virtualScrollerOptions="{ itemSize: 55 }"
-                            >
-                                <template #option="slotProps">
-                                    <div class="flex items-center gap-3 py-1">
-                                        <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 text-gray-500 flex items-center justify-center text-[10px] font-black">
-                                            {{ slotProps.option.name.charAt(0) }}
-                                        </div>
-                                        <div class="flex-1">
-                                            <div class="font-black text-gray-800 text-sm italic">{{ slotProps.option.name }}</div>
-                                            <div class="text-[10px] font-semibold text-gray-400 flex items-center gap-2">
-                                                <span>{{ slotProps.option.employee_code }}</span>
-                                                <span v-if="slotProps.option.department">&bull; {{ slotProps.option.department }}</span>
-                                            </div>
-                                        </div>
-                                        <div v-if="slotProps.option.line_manager_id" class="ml-2">
-                                            <span v-if="slotProps.option.line_manager_id === editingManager.id" class="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">Current Team</span>
-                                            <span v-else class="text-[8px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-100">Other Manager</span>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-xs font-black text-gray-700 uppercase tracking-wider">Assign Team Members</label>
+                            <span class="text-[10px] font-black text-purple-600 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-100">
+                                {{ form.team_members.length }} members selected
+                            </span>
+                        </div>
+                        <MultiSelect 
+                            v-model="form.team_members" 
+                            :options="masterEmployees" 
+                            optionLabel="full_string" 
+                            filter 
+                            filterBy="name,employee_code,full_string,department,designation,position,location"
+                            placeholder="Search by Name or Employee Code..."
+                            class="custom-pms-multiselect w-full"
+                            panelClass="custom-pms-panel"
+                            :maxSelectedLabels="3"
+                            display="chip"
+                            :virtualScrollerOptions="{ itemSize: 55 }"
+                        >
+                            <template #option="slotProps">
+                                <div class="flex items-center gap-3 py-1">
+                                    <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 text-gray-500 flex items-center justify-center text-[10px] font-black">
+                                        {{ slotProps.option.name?.charAt(0) }}
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="font-black text-gray-800 text-xs">{{ slotProps.option.name }}</div>
+                                        <div class="text-[10px] font-semibold text-gray-400 flex flex-wrap items-center gap-2">
+                                            <span class="font-mono text-indigo-600 font-bold">{{ slotProps.option.employee_code }}</span>
+                                            <span v-if="slotProps.option.department">&bull; {{ slotProps.option.department }}</span>
+                                            <span v-if="slotProps.option.designation">&bull; {{ slotProps.option.designation }}</span>
+                                            <span v-if="slotProps.option.location">&bull; <span class="italic text-gray-400">{{ slotProps.option.location }}</span></span>
                                         </div>
                                     </div>
-                                </template>
-                            </MultiSelect>
-                            <div class="mt-4 p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                                <p class="text-[11px] text-gray-500 font-medium leading-relaxed italic">
-                                    <i class="pi pi-info-circle text-purple-500 mr-1"></i>
-                                    Managers can oversee multiple employees. Note: Assigning an employee who is already in another team will automatically transfer them to this manager once saved.
-                                </p>
-                            </div>
+                                    <div v-if="slotProps.option.line_manager_id" class="ml-2">
+                                        <span v-if="slotProps.option.line_manager_id === editingManager.id" class="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">Current Team</span>
+                                        <span v-else class="text-[8px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-100">Other Manager</span>
+                                    </div>
+                                </div>
+                            </template>
+                        </MultiSelect>
+                        <div class="p-3.5 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                            <p class="text-[11px] text-gray-500 font-medium leading-relaxed">
+                                <i class="pi pi-info-circle text-purple-500 mr-1"></i>
+                                Managers can oversee multiple employees. Note: Assigning an employee who is already in another team will automatically transfer them to this manager once saved.
+                            </p>
                         </div>
                     </div>
                 </div>
 
-                <div class="px-8 py-6 border-t border-gray-100 flex justify-end gap-4 bg-gray-50/50">
-                    <button @click="showEditModal = false; showTeamModal = true" class="px-6 py-2.5 rounded-xl bg-slate-200 text-slate-600 font-black text-xs uppercase tracking-widest hover:bg-slate-300 hover:text-slate-800 transition-all">Back to List</button>
-                    <button @click="updateTeam" :disabled="saving" class="px-8 py-2.5 rounded-xl bg-purple-600 text-white font-black text-xs uppercase tracking-widest hover:bg-purple-700 hover:shadow-xl hover:shadow-purple-200 transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-purple-100">
+                <!-- Sticky Modal Footer -->
+                <div class="px-6 sm:px-8 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/80 shrink-0">
+                    <button @click="showEditModal = false; showTeamModal = true" class="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-700 font-black text-xs uppercase tracking-widest hover:bg-slate-300 transition-all">Back to List</button>
+                    <button @click="updateTeam" :disabled="saving" class="px-7 py-2.5 rounded-xl bg-purple-600 text-white font-black text-xs uppercase tracking-widest hover:bg-purple-700 hover:shadow-xl hover:shadow-purple-200 transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-purple-100">
                         <i v-if="saving" class="pi pi-spin pi-spinner"></i>
                         <span>{{ saving ? 'Syncing Team...' : 'Finalize Assignments' }}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- "Push Fresh Goals" Confirmation Modal -->
+        <div v-if="showPushFreshModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md overflow-y-auto">
+            <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-fadeIn border border-white/20 my-auto">
+                <div class="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <h3 class="font-black text-lg text-gray-800 flex items-center gap-2.5">
+                        <i class="pi pi-send text-emerald-600"></i> Push Fresh Goals &amp; Appraisal
+                    </h3>
+                    <button @click="showPushFreshModal = false" class="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-800 hover:bg-gray-100 transition-all">
+                        <i class="pi pi-times text-xs"></i>
+                    </button>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div class="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-xs text-emerald-900 leading-relaxed">
+                        <p class="font-black text-sm text-emerald-950 mb-1">
+                            Push Fresh Blank Template to {{ targetManagerForPush?.name }}'s Team?
+                        </p>
+                        <p class="text-emerald-800 text-[11px] mt-2">
+                            &bull; All assigned team members will receive a clean blank Goals &amp; Appraisal dossier ready for their self-assessment.<br>
+                            &bull; Any historical completed reviews will remain safely preserved in review history.
+                        </p>
+                    </div>
+                    <p class="text-xs text-gray-500 font-medium">
+                        Are you sure you want to proceed with pushing fresh templates?
+                    </p>
+                </div>
+                <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
+                    <button @click="showPushFreshModal = false" :disabled="pushingGoals" class="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase hover:bg-white transition-all">Cancel</button>
+                    <button @click="confirmPushFreshGoals" :disabled="pushingGoals" class="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-md shadow-emerald-200 flex items-center gap-2 disabled:opacity-50">
+                        <i v-if="pushingGoals" class="pi pi-spin pi-spinner"></i>
+                        <i v-else class="pi pi-check"></i>
+                        <span>{{ pushingGoals ? 'Pushing...' : 'Confirm & Push Now' }}</span>
                     </button>
                 </div>
             </div>

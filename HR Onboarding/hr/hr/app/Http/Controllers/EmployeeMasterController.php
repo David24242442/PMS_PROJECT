@@ -229,10 +229,115 @@ class EmployeeMasterController extends Controller
                         $table->string('employee_code')->nullable()->index();
                     }
                 });
+
+                // Automatic cleanup: reset any assigned goals with dummy text so fields and SMART criteria start blank
+                try {
+                    \DB::table('goals')
+                        ->where('status', 'assigned')
+                        ->where(function ($q) {
+                            $q->where('description', 'like', '%Achieve operational excellence%')
+                              ->orWhere('purposes', 'like', '%Performance review and competency evaluation%')
+                              ->orWhere('challenges', 'like', '%Mitigate operational losses%');
+                        })
+                        ->update([
+                            'description' => json_encode(['']),
+                            'purposes' => json_encode(['']),
+                            'challenges' => json_encode(['']),
+                            'smart_criteria' => json_encode([
+                                'specific' => false,
+                                'measurable' => false,
+                                'attainable' => false,
+                                'relevant' => false,
+                                'time_bound' => false
+                            ]),
+                        ]);
+                } catch (\Throwable $clEx) {
+                    \Log::warning("Reset dummy goals notice: " . $clEx->getMessage());
+                }
             }
         } catch (\Throwable $e) {
             \Log::warning("EmployeeMasterController ensureSchema notice: " . $e->getMessage());
         }
+    }
+
+    /**
+     * Standard 5 appraisal competencies weighted at 20% each.
+     */
+    public static function getDefaultCompetencies()
+    {
+        return [
+            ['id' => 1, 'title' => 'Performance & Teamwork', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Overall performance based on feedback from Line or Operations Managers', 'Teamwork and people management issues']],
+            ['id' => 2, 'title' => 'Customer Service / Relationship Building', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Super saver cards and service quality', 'Google rating improvement and satisfaction']],
+            ['id' => 3, 'title' => 'Execution / Sales Results Driven', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Business driven metric set by department', 'Loss to company % mitigation and delivery']],
+            ['id' => 4, 'title' => 'Compliance & Quality Standards', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Adherence to company policies, SOPs, safety, and regulatory compliance', 'Wooqer checklist and department standards implementation']],
+            ['id' => 5, 'title' => 'Continuous Improvement in workflows/processes', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Culture of adaptability and operational innovation', 'Flexibility and problem solving']],
+        ];
+    }
+
+    /**
+     * Intelligently infer department from designation, user record, or manager department,
+     * ensuring it never inappropriately duplicates the location (e.g. HEAD OFFICE).
+     */
+    public static function inferDepartment($designation, $managerDept = null, $userDept = null, $legacyDept = null, $location = null)
+    {
+        // 1. If valid user department exists and does not match location
+        if (!empty($userDept) && $userDept !== 'N/A' && strcasecmp(trim($userDept), trim($location ?? '')) !== 0) {
+            return $userDept;
+        }
+        // 2. If valid legacy department exists and does not match location
+        if (!empty($legacyDept) && $legacyDept !== 'N/A' && strcasecmp(trim($legacyDept), trim($location ?? '')) !== 0) {
+            return $legacyDept;
+        }
+
+        $desig = strtoupper(trim($designation ?? ''));
+
+        // 3. Keyword / designation inference
+        if (preg_match('/\b(HR|HUMAN RESOURCE|PERSONNEL|RECRUIT|TALENT|TRAINING)\b/i', $desig)) {
+            return 'Human Resources';
+        }
+        if (preg_match('/\b(ACCOUNT|ACCOUNTS|AUDIT|FINANCE|TAX|TREASURY|PAYROLL|CREDIT|BILLING|COST)\b/i', $desig)) {
+            return 'Accounts & Finance';
+        }
+        if (preg_match('/\b(IT|SOFTWARE|DEVELOPER|SYSTEM|NETWORK|DATABASE|PROGRAMMER|TECHNICAL|HARDWARE|EDP)\b/i', $desig)) {
+            return 'Information Technology';
+        }
+        if (preg_match('/\b(MARKETING|BRAND|ADVERTIS|CREATIVE|DIGITAL|PROMOTION|GRAPHIC)\b/i', $desig)) {
+            return 'Marketing';
+        }
+        if (preg_match('/\b(WAREHOUSE|LOGISTICS|SUPPLY CHAIN|INVENTORY|DISPATCH|FORKLIFT|STORES?|PACKING)\b/i', $desig)) {
+            return 'Warehouse & Logistics';
+        }
+        if (preg_match('/\b(SECURITY|LOSS PREVENTION|SURVEILLANCE|CCTV|GUARD)\b/i', $desig)) {
+            return 'Security';
+        }
+        if (preg_match('/\b(MAINTENANCE|ENGINEER|ELECTRIC|PLUMB|FACILIT|ESTATE|FITTER|CARPENTER)\b/i', $desig)) {
+            return 'Maintenance & Engineering';
+        }
+        if (preg_match('/\b(LEGAL|COMPLIANCE|GOVERNANCE)\b/i', $desig)) {
+            return 'Legal & Compliance';
+        }
+        if (preg_match('/\b(PROCUREMENT|PURCHAS|BUYER|SOURCING)\b/i', $desig)) {
+            return 'Procurement';
+        }
+        if (preg_match('/\b(TRANSPORT|DRIVER|VEHICLE|FLEET|CHAUFFEUR)\b/i', $desig)) {
+            return 'Transport';
+        }
+        if (preg_match('/\b(CUSTOMER SERVICE|CALL CENTER|FRONT DESK|RECEPTION)\b/i', $desig)) {
+            return 'Customer Service';
+        }
+        if (preg_match('/\b(CASHIER|TELLER|TILL)\b/i', $desig)) {
+            return 'Cash Office';
+        }
+        if (preg_match('/\b(SHOP|RETAIL|SUPERMARKET|BRANCH|SALES|MERCHANDISE|SECTION HEAD)\b/i', $desig)) {
+            return 'Retail Operations';
+        }
+
+        // 4. Inherit from manager if manager has a valid department
+        if (!empty($managerDept) && $managerDept !== 'N/A' && strcasecmp(trim($managerDept), trim($location ?? '')) !== 0) {
+            return $managerDept;
+        }
+
+        return 'General';
     }
 
     public function getEmployees(Request $request)
@@ -293,16 +398,23 @@ class EmployeeMasterController extends Controller
                         // Preload all managers in 1 query (eliminates N+1 query timeout!)
                         $managersMap = [];
                         if (!empty($managerIds)) {
-                            $managersMap = \App\Models\User::whereIn('id', array_unique($managerIds))->pluck('name', 'id')->toArray();
+                            $managersMap = \App\Models\User::whereIn('id', array_unique($managerIds))->get()->keyBy('id');
                         }
 
                         $employees = $mRecords->map(function ($emp) use ($usersMap, $managersMap) {
                             $user = $usersMap[$emp->emp_id] ?? null;
                             $managerName = null;
+                            $managerDept = null;
                             $lineMgrId = $user ? $user->line_manager_id : ($emp->line_manager_id ?? null);
-                            if (!empty($lineMgrId)) {
-                                $managerName = $managersMap[$lineMgrId] ?? null;
+                            if (!empty($lineMgrId) && isset($managersMap[$lineMgrId])) {
+                                $mgr = $managersMap[$lineMgrId];
+                                $managerName = $mgr->name;
+                                $managerDept = $mgr->department;
                             }
+
+                            $loc = $emp->location ?: 'N/A';
+                            $desig = $emp->designation ?: 'N/A';
+                            $dept = self::inferDepartment($desig, $managerDept, $user ? $user->department : null, null, $loc);
 
                             return [
                                 'id' => $emp->id,
@@ -312,15 +424,15 @@ class EmployeeMasterController extends Controller
                                 'firstname' => explode(' ', $emp->employee_name)[0] ?? '',
                                 'surname' => substr(strstr($emp->employee_name, ' '), 1) ?: '',
                                 'email' => $user ? $user->email : null,
-                                'location' => $emp->location ?: 'N/A',
-                                'department' => $emp->location ?: 'N/A',
-                                'position' => $emp->designation ?: 'N/A',
-                                'designation' => $emp->designation ?: 'N/A',
+                                'location' => $loc,
+                                'department' => $dept,
+                                'position' => $desig,
+                                'designation' => $desig,
                                 'sex' => $emp->sex,
                                 'category' => $emp->category,
                                 'line_manager_id' => $lineMgrId,
                                 'line_manager_name' => $managerName,
-                                'full_string' => $emp->emp_id . ' - ' . $emp->employee_name . ' (' . ($emp->location ?: 'N/A') . ')',
+                                'full_string' => $emp->emp_id . ' - ' . $emp->employee_name . ' (' . $loc . ')',
                                 'source' => 'monthly_employees'
                             ];
                         });
@@ -566,13 +678,7 @@ class EmployeeMasterController extends Controller
             }
 
             // 2. Resolve Manager's Appraisal Template
-            $competencies = [
-                ['id' => 1, 'title' => 'Performance & Teamwork', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Overall performance based on feedback from Line or Operations Managers', 'Teamwork and people management issues']],
-                ['id' => 2, 'title' => 'Customer Service / Relationship Building', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Super saver cards and service quality', 'Google rating improvement and satisfaction']],
-                ['id' => 3, 'title' => 'Execution / Sales Results Driven', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Business driven metric set by department', 'Loss to company % mitigation and delivery']],
-                ['id' => 4, 'title' => 'Compliance & Quality Standards', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Adherence to company policies, SOPs, safety, and regulatory compliance', 'Wooqer checklist and department standards implementation']],
-                ['id' => 5, 'title' => 'Continuous Improvement in workflows/processes', 'weight' => 20, 'selfRating' => 0, 'managerRating' => 0, 'descriptions' => ['Culture of adaptability and operational innovation', 'Flexibility and problem solving']],
-            ];
+            $competencies = self::getDefaultCompetencies();
             if (!empty($manager->appraisal_template)) {
                 $saved = is_array($manager->appraisal_template) ? $manager->appraisal_template : json_decode($manager->appraisal_template, true);
                 if (!empty($saved) && is_array($saved)) {
@@ -664,11 +770,11 @@ class EmployeeMasterController extends Controller
                 // Resolve location
                 $loc = $mEmp->location ?? ($legEmp->joininglocation ?? ($pEmp['location'] ?? 'N/A'));
 
-                // Resolve department
-                $dept = $mEmp->location ?? ($legEmp->department ?? ($pEmp['department'] ?? 'N/A'));
-
                 // Resolve designation
                 $designation = $mEmp->designation ?? ($legEmp->job_title ?? ($pEmp['position'] ?? ($pEmp['designation'] ?? 'Employee')));
+
+                // Resolve department intelligently
+                $dept = self::inferDepartment($designation, $manager->department, $empUser ? $empUser->department : null, $legEmp->department ?? null, $loc);
 
                 // Clean code & email
                 $cleanCode = preg_replace('/[^a-zA-Z0-9]/', '', $code);
@@ -773,6 +879,14 @@ class EmployeeMasterController extends Controller
                             'signature_date' => date('Y-m-d')
                         ];
 
+                        $blankSmartCriteria = [
+                            'specific' => false,
+                            'measurable' => false,
+                            'attainable' => false,
+                            'relevant' => false,
+                            'time_bound' => false
+                        ];
+
                         $existingGoal = $goalsMap[$code] ?? null;
                         if ($existingGoal) {
                             $updateGoal = [
@@ -782,6 +896,16 @@ class EmployeeMasterController extends Controller
                                 'department' => $dept,
                                 'job_title' => $designation,
                             ];
+                            // If currently in assigned status, ensure clean blank inputs for employee
+                            if ($existingGoal->status === 'assigned') {
+                                $descStr = is_array($existingGoal->description) ? ($existingGoal->description[0] ?? '') : (string)$existingGoal->description;
+                                if (empty($descStr) || str_contains($descStr, 'Achieve operational excellence')) {
+                                    $updateGoal['description'] = [''];
+                                    $updateGoal['purposes'] = [''];
+                                    $updateGoal['challenges'] = [''];
+                                    $updateGoal['smart_criteria'] = $blankSmartCriteria;
+                                }
+                            }
                             if (empty($existingGoal->appraisal_data)) {
                                 $updateGoal['appraisal_data'] = $empAppraisalData;
                             }
@@ -790,9 +914,9 @@ class EmployeeMasterController extends Controller
                         } else {
                             Goal::create([
                                 'title' => 'Yearly SMART Goals FY ' . $year,
-                                'description' => ['Achieve operational excellence, adherence to SOPs, customer satisfaction, and key departmental milestones.'],
-                                'purposes' => ['Performance review and competency evaluation for FY ' . $year],
-                                'challenges' => ['Mitigate operational losses, enhance turnaround time, and achieve team performance benchmarks.'],
+                                'description' => [''],
+                                'purposes' => [''],
+                                'challenges' => [''],
                                 'category' => 'Operational',
                                 'target' => 100,
                                 'due_date' => $year . '-12-31',
@@ -805,13 +929,7 @@ class EmployeeMasterController extends Controller
                                 'department' => $dept,
                                 'job_title' => $designation,
                                 'manager_name' => $manager->name,
-                                'smart_criteria' => [
-                                    'specific' => true,
-                                    'measurable' => true,
-                                    'attainable' => true,
-                                    'relevant' => true,
-                                    'time_bound' => true
-                                ],
+                                'smart_criteria' => $blankSmartCriteria,
                                 'appraisal_data' => $empAppraisalData,
                                 'status' => 'assigned',
                             ]);
@@ -938,18 +1056,21 @@ class EmployeeMasterController extends Controller
         foreach ($matchedMonthly as $emp) {
             $user = $usersMap[$emp->emp_id] ?? null;
             $mgrId = $user ? $user->line_manager_id : ($emp->line_manager_id ?? null);
+            $loc = $emp->location ?: 'N/A';
+            $desig = $emp->designation ?: 'N/A';
+            $dept = self::inferDepartment($desig, null, $user ? $user->department : null, null, $loc);
 
             $employees->push([
                 'id' => $emp->id,
                 'user_id' => $user ? $user->id : null,
                 'employee_code' => $emp->emp_id,
                 'name' => $emp->employee_name,
-                'location' => $emp->location ?: 'N/A',
-                'department' => $emp->location ?: 'N/A',
-                'position' => $emp->designation ?: 'N/A',
-                'designation' => $emp->designation ?: 'N/A',
+                'location' => $loc,
+                'department' => $dept,
+                'position' => $desig,
+                'designation' => $desig,
                 'line_manager_id' => $mgrId,
-                'full_string' => $emp->emp_id . ' - ' . $emp->employee_name . ' (' . ($emp->location ?: 'N/A') . ')',
+                'full_string' => $emp->emp_id . ' - ' . $emp->employee_name . ' (' . $loc . ')',
                 'source' => 'monthly_employees'
             ]);
         }
@@ -995,5 +1116,187 @@ class EmployeeMasterController extends Controller
             'unmatched_codes' => $unmatched,
             'total_parsed' => count($codes),
         ]);
+    }
+
+    /**
+     * Push fresh blank Goals & Appraisal templates to all team members under a Line Manager.
+     * Preserves any existing completed reviews while setting up fresh blank templates for the new period.
+     */
+    public function pushFreshGoals(Request $request)
+    {
+        try {
+            $this->ensureSchema();
+            $managerId = $request->input('manager_id');
+            $year = $request->input('year', 2026);
+
+            if (empty($managerId)) {
+                $authUser = $request->user();
+                if ($authUser) {
+                    $managerId = $authUser->id;
+                } else {
+                    return response()->json(['status' => 'error', 'message' => 'Manager ID is required'], 400);
+                }
+            }
+
+            $manager = User::find($managerId);
+            if (!$manager) {
+                return response()->json(['status' => 'error', 'message' => 'Line Manager not found'], 404);
+            }
+
+            // Find all assigned team members
+            $assignedUsers = User::where('line_manager_id', $managerId)->get();
+            $assignedCodes = $assignedUsers->pluck('employee_code')->filter()->unique()->toArray();
+
+            // Also check Monthly_Employees for members assigned to this manager
+            $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+            if (Schema::hasTable($mTable) && Schema::hasColumn($mTable, 'line_manager_id')) {
+                $monthlyCodes = DB::table($mTable)->where('line_manager_id', $managerId)->pluck('emp_id')->filter()->unique()->toArray();
+                $assignedCodes = array_values(array_unique(array_merge($assignedCodes, $monthlyCodes)));
+            }
+
+            if (empty($assignedCodes)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No team members are currently assigned to ' . $manager->name . '.'
+                ], 400);
+            }
+
+            // Load manager custom competencies or standard defaults
+            $competencies = null;
+            if (!empty($manager->appraisal_template)) {
+                $saved = is_array($manager->appraisal_template) ? $manager->appraisal_template : json_decode($manager->appraisal_template, true);
+                if (!empty($saved) && is_array($saved)) {
+                    $competencies = $saved;
+                }
+            }
+            if (!$competencies) {
+                $competencies = self::getDefaultCompetencies();
+            }
+
+            // Map employees
+            $monthlyMap = [];
+            if (Schema::hasTable($mTable)) {
+                $monthlyMap = DB::table($mTable)->whereIn('emp_id', $assignedCodes)->get()->keyBy('emp_id');
+            }
+            $userMap = User::whereIn('employee_code', $assignedCodes)->get()->keyBy('employee_code');
+
+            $pushedCount = 0;
+
+            foreach ($assignedCodes as $code) {
+                $mEmp = $monthlyMap[$code] ?? null;
+                $empUser = $userMap[$code] ?? null;
+
+                $candName = $mEmp ? $mEmp->employee_name : ($empUser ? $empUser->name : 'Employee ' . $code);
+                $loc = $mEmp ? $mEmp->location : ($empUser ? $empUser->location : 'N/A');
+                $designation = $mEmp ? $mEmp->designation : ($empUser ? $empUser->designation : 'Employee');
+                $dept = self::inferDepartment($designation, $manager->department, $empUser ? $empUser->department : null, null, $loc);
+
+                $empAppraisalData = [
+                    'competencies' => $competencies,
+                    'comments' => '',
+                    'impressedMost' => '',
+                    'impressedLeast' => '',
+                    'performanceRating' => 0,
+                    'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
+                    'candidate_signature_name' => $candName,
+                    'manager_signature_name' => $manager->name,
+                    'signature_date' => date('Y-m-d')
+                ];
+
+                $blankSmartCriteria = [
+                    'specific' => false,
+                    'measurable' => false,
+                    'attainable' => false,
+                    'relevant' => false,
+                    'time_bound' => false
+                ];
+
+                // Check existing goal
+                $existingGoal = Goal::where(function($q) use ($code, $empUser) {
+                    $q->where('employee_code', $code);
+                    if ($empUser) {
+                        $q->orWhere('user_id', $empUser->id);
+                    }
+                })->where('year', $year)->orderBy('id', 'desc')->first();
+
+                if ($existingGoal) {
+                    // If existing goal is already completed or submitted, create a fresh new one so history is preserved
+                    if (in_array($existingGoal->status, ['submitted', 'in_progress', 'appraisal_completed', 'review_completed', 'completed'])) {
+                        Goal::create([
+                            'title' => 'Yearly SMART Goals FY ' . $year,
+                            'description' => [''],
+                            'purposes' => [''],
+                            'challenges' => [''],
+                            'category' => 'Operational',
+                            'target' => 100,
+                            'due_date' => $year . '-12-31',
+                            'year' => $year,
+                            'user_id' => $empUser ? $empUser->id : null,
+                            'created_by' => $manager->id,
+                            'candidate_name' => $candName,
+                            'employee_code' => $code,
+                            'location' => $loc,
+                            'department' => $dept,
+                            'job_title' => $designation,
+                            'manager_name' => $manager->name,
+                            'smart_criteria' => $blankSmartCriteria,
+                            'appraisal_data' => $empAppraisalData,
+                            'status' => 'assigned',
+                        ]);
+                        $pushedCount++;
+                    } else {
+                        // Reset existing assigned/draft goal to fresh blank state
+                        $existingGoal->update([
+                            'title' => 'Yearly SMART Goals FY ' . $year,
+                            'description' => [''],
+                            'purposes' => [''],
+                            'challenges' => [''],
+                            'smart_criteria' => $blankSmartCriteria,
+                            'appraisal_data' => $empAppraisalData,
+                            'status' => 'assigned',
+                            'created_by' => $manager->id,
+                            'manager_name' => $manager->name,
+                            'department' => $dept,
+                            'location' => $loc,
+                            'job_title' => $designation,
+                        ]);
+                        $pushedCount++;
+                    }
+                } else {
+                    Goal::create([
+                        'title' => 'Yearly SMART Goals FY ' . $year,
+                        'description' => [''],
+                        'purposes' => [''],
+                        'challenges' => [''],
+                        'category' => 'Operational',
+                        'target' => 100,
+                        'due_date' => $year . '-12-31',
+                        'year' => $year,
+                        'user_id' => $empUser ? $empUser->id : null,
+                        'created_by' => $manager->id,
+                        'candidate_name' => $candName,
+                        'employee_code' => $code,
+                        'location' => $loc,
+                        'department' => $dept,
+                        'job_title' => $designation,
+                        'manager_name' => $manager->name,
+                        'smart_criteria' => $blankSmartCriteria,
+                        'appraisal_data' => $empAppraisalData,
+                        'status' => 'assigned',
+                    ]);
+                    $pushedCount++;
+                }
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "Successfully pushed fresh blank Goals & Appraisal templates to {$pushedCount} team member(s) under {$manager->name}.",
+                'pushed_count' => $pushedCount,
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error("EmployeeMasterController@pushFreshGoals error: " . $e->getMessage());
+            return response()->json(['status' => 'error', 'message' => 'Failed to push fresh goals: ' . $e->getMessage()], 500);
+        }
     }
 }
