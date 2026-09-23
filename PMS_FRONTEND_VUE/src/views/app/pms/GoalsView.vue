@@ -72,6 +72,33 @@ const pendingAssignedGoal = computed(() => {
     return goals.value.find(g => g.status === 'assigned' || g.display_status === 'assigned') || null;
 });
 
+// Professional Assigned Goal Notification Popup Modal State
+const showAssignedNotificationModal = ref(false);
+
+watch(pendingAssignedGoal, (goal) => {
+    if (goal && isEmployee.value && (goal.status === 'assigned' || goal.display_status === 'assigned')) {
+        const dismissedKey = `pms_notified_goal_${goal.id}_${goal.year || 2026}`;
+        if (!sessionStorage.getItem(dismissedKey)) {
+            showAssignedNotificationModal.value = true;
+        }
+    }
+}, { immediate: true });
+
+const dismissAssignedModal = () => {
+    if (pendingAssignedGoal.value) {
+        const dismissedKey = `pms_notified_goal_${pendingAssignedGoal.value.id}_${pendingAssignedGoal.value.year || 2026}`;
+        sessionStorage.setItem(dismissedKey, '1');
+    }
+    showAssignedNotificationModal.value = false;
+};
+
+const handleStartAssignedGoal = () => {
+    showAssignedNotificationModal.value = false;
+    if (pendingAssignedGoal.value) {
+        openEmployeeGoal(pendingAssignedGoal.value);
+    }
+};
+
 // Master Employee Data for Dropdown
 const masterEmployees = ref([]);
 const filteredMasterEmployees = ref([]);
@@ -1628,33 +1655,90 @@ const downloadAttachment = (file) => {
     <div class="h-full pb-6">
         <!-- LIST VIEW -->
         <template v-if="viewMode === 'list'">
-            <!-- TOP BLINKING ALERT FOR EMPLOYEES: NEW GOAL & APPRAISAL ASSIGNED -->
-            <div v-if="isEmployee && pendingAssignedGoal && (pendingAssignedGoal.status === 'assigned' || pendingAssignedGoal.display_status === 'assigned')" class="mb-6 p-5 bg-gradient-to-r from-red-600 via-rose-600 to-indigo-950 rounded-2xl text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-2 border-red-400 relative overflow-hidden animate-pulse">
-                <div class="flex items-center gap-3.5 z-10">
-                    <span class="relative flex h-5 w-5 shrink-0">
-                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-90"></span>
-                        <span class="relative inline-flex rounded-full h-5 w-5 bg-amber-400 text-slate-900 items-center justify-center text-[10px] font-black shadow-sm">
-                            <i class="pi pi-bell text-[10px]"></i>
-                        </span>
-                    </span>
-                    <div>
-                        <div class="flex items-center gap-2 mb-0.5 flex-wrap">
-                            <span class="px-2.5 py-0.5 bg-amber-400 text-slate-900 rounded-md text-[10px] font-black uppercase tracking-widest shadow-xs">
-                                ACTION REQUIRED
-                            </span>
-                            <span class="text-xs font-black uppercase tracking-wider text-rose-100">
-                                NEW GOAL &amp; PERFORMANCE APPRAISAL ASSIGNED!
-                            </span>
+            <!-- PROFESSIONAL POPUP: NEW GOAL & APPRAISAL ASSIGNED NOTIFICATION (EMPLOYEE) -->
+            <div v-if="isEmployee && pendingAssignedGoal && (pendingAssignedGoal.status === 'assigned' || pendingAssignedGoal.display_status === 'assigned') && showAssignedNotificationModal" 
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fadeIn">
+                <div class="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col my-auto transform transition-all animate-scaleUp">
+                    <!-- Modal Top Header Banner -->
+                    <div class="bg-gradient-to-r from-[#1A237E] via-indigo-900 to-[#0D47A1] p-6 text-white relative overflow-hidden">
+                        <div class="absolute -right-8 -bottom-8 opacity-10 text-white pointer-events-none">
+                            <i class="pi pi-check-square text-9xl"></i>
                         </div>
-                        <p class="text-xs font-medium text-white/95 leading-snug">
-                            Your Line Manager <strong>({{ pendingAssignedGoal.manager_name || 'Line Manager' }})</strong> has assigned your performance goals and appraisal template for FY {{ pendingAssignedGoal.year || currentYear }}. Please click below to fill your SMART objectives, quarterly tracking, and self-appraisal.
-                        </p>
+                        <div class="flex items-center justify-between gap-3 relative z-10">
+                            <div class="flex items-center gap-3">
+                                <div class="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-400/30 font-black text-xl shrink-0">
+                                    <i class="pi pi-bell animate-bounce text-lg"></i>
+                                </div>
+                                <div>
+                                    <span class="px-2.5 py-0.5 bg-amber-400/20 text-amber-300 border border-amber-400/30 rounded-full text-[10px] font-black uppercase tracking-widest inline-block mb-1">
+                                        Action Required • Performance Cycle
+                                    </span>
+                                    <h2 class="text-xl font-black text-white tracking-tight">New Goals &amp; Appraisal Assigned</h2>
+                                </div>
+                            </div>
+                            <button @click="dismissAssignedModal" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all cursor-pointer">
+                                <i class="pi pi-times text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Modal Body -->
+                    <div class="p-6 md:p-7 space-y-5 bg-slate-50/50">
+                        <!-- Context Card -->
+                        <div class="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Assigned By Line Manager</p>
+                                    <p class="text-sm font-black text-slate-800 flex items-center gap-1.5 mt-0.5">
+                                        <i class="pi pi-user text-indigo-600 text-xs"></i>
+                                        {{ pendingAssignedGoal.manager_name || 'Line Manager' }}
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Record ID</p>
+                                    <span class="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-md font-mono text-xs font-black inline-block mt-0.5">
+                                        {{ getRecordId(pendingAssignedGoal) }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3 pt-2.5 border-t border-slate-100 text-xs">
+                                <div>
+                                    <span class="text-[10px] font-bold text-slate-400 block uppercase">Department</span>
+                                    <span class="font-bold text-slate-700">{{ formatDepartment(pendingAssignedGoal.department, pendingAssignedGoal.job_title, pendingAssignedGoal.location) }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] font-bold text-slate-400 block uppercase">Performance Period</span>
+                                    <span class="font-bold text-slate-700">FY {{ pendingAssignedGoal.year || currentYear }} Annual Review</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Steps Guidance -->
+                        <div class="p-4 bg-indigo-50/60 rounded-2xl border border-indigo-100 text-xs text-indigo-950 space-y-2">
+                            <p class="font-black text-xs text-indigo-950 flex items-center gap-2">
+                                <i class="pi pi-info-circle text-indigo-600"></i>
+                                Next Steps for Employee Self-Evaluation:
+                            </p>
+                            <ul class="space-y-1.5 text-indigo-900 text-[11px] ml-5 list-disc leading-relaxed">
+                                <li>Review and refine your SMART goals, challenges, and core purpose.</li>
+                                <li>Provide your self-evaluation ratings across the 5 core performance competencies.</li>
+                                <li>Sign and submit the completed dossier for your Line Manager's review.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Modal Footer -->
+                    <div class="px-6 py-4.5 bg-white border-t border-slate-100 flex items-center justify-between gap-3">
+                        <button @click="dismissAssignedModal" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 font-bold text-xs uppercase tracking-wider hover:bg-slate-100 transition-all cursor-pointer">
+                            Review Later
+                        </button>
+                        <button @click="handleStartAssignedGoal" class="px-6 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-amber-400/25 flex items-center gap-2 transition-all cursor-pointer">
+                            <i class="pi pi-pencil text-xs"></i>
+                            <span>Fill Goals &amp; Self-Appraisal</span>
+                        </button>
                     </div>
                 </div>
-                <button @click="openEmployeeGoal(pendingAssignedGoal)" class="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg flex items-center gap-2 transition-all flex-shrink-0 cursor-pointer z-10">
-                    <i class="pi pi-pencil text-xs"></i>
-                    <span>Fill Goals &amp; Self-Appraisal</span>
-                </button>
             </div>
 
             <!-- Page Header -->

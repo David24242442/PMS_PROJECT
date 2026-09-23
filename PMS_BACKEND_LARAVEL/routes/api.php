@@ -371,6 +371,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/sync-team', [\App\Http\Controllers\EmployeeMasterController::class, 'syncTeam']);
         Route::post('/parse-team-csv', [\App\Http\Controllers\EmployeeMasterController::class, 'parseTeamCsv']);
         Route::post('/push-fresh-goals', [\App\Http\Controllers\EmployeeMasterController::class, 'pushFreshGoals']);
+        Route::post('/push-all-fresh-goals', [\App\Http\Controllers\EmployeeMasterController::class, 'pushAllFreshGoals']);
         
         Route::get('/goals', [\App\Http\Controllers\GoalController::class, 'index']);
         Route::post('/goals', [\App\Http\Controllers\GoalController::class, 'store']);

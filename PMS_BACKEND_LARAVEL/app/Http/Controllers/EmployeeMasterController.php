@@ -1353,4 +1353,295 @@ class EmployeeMasterController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Failed to push fresh goals: ' . $e->getMessage()], 500);
         }
     }
+
+    /**
+     * Push fresh blank Goals & Appraisal templates to all team members across ALL Line Managers.
+     * Admin access only.
+     * Safely preserves any existing submitted or completed reviews.
+     */
+    public function pushAllFreshGoals(Request $request)
+    {
+        try {
+            $this->ensureSchema();
+            
+            // 1. Strict Administrator Authorization Check
+            $currentUser = $request->user();
+            $isUserAdmin = $currentUser && (
+                $currentUser->admin || 
+                (isset($currentUser->position_id) && $currentUser->position_id == 4) || 
+                (isset($currentUser->role) && in_array(strtolower($currentUser->role), ['admin', 'superadmin'])) || 
+                strtolower($currentUser->username ?? '') === 'admin'
+            );
+
+            if (!$isUserAdmin) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthorized: Only system administrators can push goals and appraisals to all employees.'
+                ], 403);
+            }
+
+            $year = $request->input('year', 2026);
+            $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+            $hasMonthly = Schema::hasTable($mTable);
+
+            // 2. Discover all managers who have team members assigned
+            $managerIds = [];
+            if (Schema::hasColumn('users', 'line_manager_id')) {
+                $uMgrIds = User::whereNotNull('line_manager_id')->pluck('line_manager_id')->toArray();
+                $managerIds = array_merge($managerIds, $uMgrIds);
+            }
+            if ($hasMonthly && Schema::hasColumn($mTable, 'line_manager_id')) {
+                $mMgrIds = DB::table($mTable)->whereNotNull('line_manager_id')->pluck('line_manager_id')->toArray();
+                $managerIds = array_merge($managerIds, $mMgrIds);
+            }
+            if (Schema::hasTable('employees') && Schema::hasColumn('employees', 'line_manager_id')) {
+                $eMgrIds = DB::table('employees')->whereNotNull('line_manager_id')->pluck('line_manager_id')->toArray();
+                $managerIds = array_merge($managerIds, $eMgrIds);
+            }
+
+            // Also include any user flagged explicitly as is_manager
+            $explicitMgrIds = User::where('is_manager', 1)->pluck('id')->toArray();
+            $managerIds = array_values(array_unique(array_filter(array_merge($managerIds, $explicitMgrIds))));
+
+            if (empty($managerIds)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No line managers found with assigned team members.'
+                ], 400);
+            }
+
+            $managers = User::whereIn('id', $managerIds)->get()->keyBy('id');
+
+            // 3. Collect all assigned team members per manager
+            $managerTeamMap = [];
+            foreach ($managerIds as $mId) {
+                $managerTeamMap[$mId] = [];
+            }
+
+            if (Schema::hasColumn('users', 'line_manager_id')) {
+                $uRows = User::whereIn('line_manager_id', $managerIds)
+                    ->select('id', 'employee_code', 'username', 'line_manager_id')
+                    ->get();
+                foreach ($uRows as $ur) {
+                    $c = $ur->employee_code ?: $ur->username;
+                    if ($c) $managerTeamMap[$ur->line_manager_id][] = $c;
+                }
+            }
+
+            if ($hasMonthly && Schema::hasColumn($mTable, 'line_manager_id')) {
+                $mRows = DB::table($mTable)->whereIn('line_manager_id', $managerIds)->select('emp_id', 'line_manager_id')->get();
+                foreach ($mRows as $mr) {
+                    if ($mr->emp_id) $managerTeamMap[$mr->line_manager_id][] = $mr->emp_id;
+                }
+            }
+
+            // Flatten all unique employee codes to preload data in bulk
+            $allEmpCodes = [];
+            foreach ($managerTeamMap as $mId => $codes) {
+                $managerTeamMap[$mId] = array_values(array_unique(array_filter($codes)));
+                $allEmpCodes = array_merge($allEmpCodes, $managerTeamMap[$mId]);
+            }
+            $allEmpCodes = array_values(array_unique(array_filter($allEmpCodes)));
+
+            if (empty($allEmpCodes)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No team members are currently assigned to any line manager.'
+                ], 400);
+            }
+
+            // Preload monthly employees and users
+            $monthlyMap = [];
+            if ($hasMonthly) {
+                $mRecords = DB::table($mTable)->whereIn('emp_id', $allEmpCodes)->get();
+                foreach ($mRecords as $mr) {
+                    $monthlyMap[$mr->emp_id] = $mr;
+                }
+            }
+            $userMap = User::whereIn('employee_code', $allEmpCodes)
+                ->orWhereIn('username', $allEmpCodes)
+                ->get()
+                ->keyBy(function ($u) { return $u->employee_code ?: $u->username; });
+
+            // Preload existing goals for year
+            $goalsMap = [];
+            if (Schema::hasTable('goals')) {
+                $existingGoals = Goal::where('year', $year)
+                    ->whereIn('employee_code', $allEmpCodes)
+                    ->orderBy('id', 'asc')
+                    ->get();
+                foreach ($existingGoals as $eg) {
+                    $goalsMap[$eg->employee_code] = $eg;
+                }
+            }
+
+            $blankSmartCriteria = [
+                'specific' => false,
+                'measurable' => false,
+                'attainable' => false,
+                'relevant' => false,
+                'time_bound' => false
+            ];
+
+            $defaultComps = self::getDefaultCompetencies();
+
+            $totalGoalsPushed = 0;
+            $managersProcessed = 0;
+
+            foreach ($managerTeamMap as $mId => $teamCodes) {
+                if (empty($teamCodes)) continue;
+                $manager = $managers[$mId] ?? null;
+                if (!$manager) continue;
+
+                $managersProcessed++;
+
+                // Resolve manager appraisal competencies
+                $competencies = null;
+                if (!empty($manager->appraisal_template)) {
+                    $saved = is_array($manager->appraisal_template) ? $manager->appraisal_template : json_decode($manager->appraisal_template, true);
+                    if (!empty($saved) && is_array($saved)) {
+                        $competencies = $saved;
+                    }
+                }
+                if (!$competencies) {
+                    $competencies = $defaultComps;
+                }
+
+                foreach ($teamCodes as $code) {
+                    $mEmp = $monthlyMap[$code] ?? null;
+                    $empUser = $userMap[$code] ?? null;
+
+                    $candName = $mEmp ? $mEmp->employee_name : ($empUser ? $empUser->name : 'Employee ' . $code);
+                    $loc = $mEmp ? $mEmp->location : ($empUser ? $empUser->location : 'N/A');
+                    $designation = $mEmp ? $mEmp->designation : ($empUser ? $empUser->designation : 'Employee');
+                    $dept = self::inferDepartment($designation, $manager->department, $empUser ? $empUser->department : null, null, $loc);
+
+                    // Ensure user account exists
+                    if (!$empUser) {
+                        try {
+                            $cleanCode = preg_replace('/[^a-zA-Z0-9]/', '', $code);
+                            $email = strtolower($cleanCode) . '@melcomgroup.com';
+                            if (User::where('email', $email)->exists()) {
+                                $email = strtolower($cleanCode) . '_' . substr(md5(uniqid()), 0, 5) . '@melcomgroup.com';
+                            }
+                            $empUser = User::create([
+                                'name' => $candName,
+                                'username' => $code,
+                                'employee_code' => $code,
+                                'email' => $email,
+                                'password' => Hash::make('Password'),
+                                'is_manager' => 0,
+                                'admin' => 0,
+                                'user_id' => $manager->id,
+                                'line_manager_id' => $manager->id,
+                                'report_to' => $manager->name ?: $manager->username,
+                                'department' => $dept,
+                                'location' => $loc,
+                                'designation' => $designation,
+                                'position_id' => 5,
+                                'role' => 'Basic',
+                                'permissions' => ['/pms/goals', '/pms/appraisal']
+                            ]);
+                            $userMap[$code] = $empUser;
+                        } catch (\Throwable $e) {}
+                    }
+
+                    $empAppraisalData = [
+                        'competencies' => $competencies,
+                        'comments' => '',
+                        'impressedMost' => '',
+                        'impressedLeast' => '',
+                        'performanceRating' => 0,
+                        'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
+                        'candidate_signature_name' => $candName,
+                        'manager_signature_name' => $manager->name,
+                        'signature_date' => date('Y-m-d')
+                    ];
+
+                    $existingGoal = $goalsMap[$code] ?? null;
+
+                    if ($existingGoal) {
+                        if (in_array($existingGoal->status, ['submitted', 'in_progress', 'appraisal_completed', 'review_completed', 'completed'])) {
+                            // Preserve submitted/completed goal history; create a fresh active template
+                            Goal::create([
+                                'title' => 'Yearly SMART Goals FY ' . $year,
+                                'description' => [''],
+                                'purposes' => [''],
+                                'challenges' => [''],
+                                'category' => 'Operational',
+                                'target' => 100,
+                                'due_date' => $year . '-12-31',
+                                'year' => $year,
+                                'user_id' => $empUser ? $empUser->id : null,
+                                'created_by' => $manager->id,
+                                'candidate_name' => $candName,
+                                'employee_code' => $code,
+                                'location' => $loc,
+                                'department' => $dept,
+                                'job_title' => $designation,
+                                'manager_name' => $manager->name,
+                                'smart_criteria' => $blankSmartCriteria,
+                                'appraisal_data' => $empAppraisalData,
+                                'status' => 'assigned',
+                            ]);
+                            $totalGoalsPushed++;
+                        } else {
+                            // Refresh existing assigned/draft goal to clean blank template
+                            $existingGoal->update([
+                                'title' => 'Yearly SMART Goals FY ' . $year,
+                                'description' => [''],
+                                'purposes' => [''],
+                                'challenges' => [''],
+                                'smart_criteria' => $blankSmartCriteria,
+                                'appraisal_data' => $empAppraisalData,
+                                'status' => 'assigned',
+                                'created_by' => $manager->id,
+                                'manager_name' => $manager->name,
+                                'department' => $dept,
+                                'location' => $loc,
+                                'job_title' => $designation,
+                            ]);
+                            $totalGoalsPushed++;
+                        }
+                    } else {
+                        Goal::create([
+                            'title' => 'Yearly SMART Goals FY ' . $year,
+                            'description' => [''],
+                            'purposes' => [''],
+                            'challenges' => [''],
+                            'category' => 'Operational',
+                            'target' => 100,
+                            'due_date' => $year . '-12-31',
+                            'year' => $year,
+                            'user_id' => $empUser ? $empUser->id : null,
+                            'created_by' => $manager->id,
+                            'candidate_name' => $candName,
+                            'employee_code' => $code,
+                            'location' => $loc,
+                            'department' => $dept,
+                            'job_title' => $designation,
+                            'manager_name' => $manager->name,
+                            'smart_criteria' => $blankSmartCriteria,
+                            'appraisal_data' => $empAppraisalData,
+                            'status' => 'assigned',
+                        ]);
+                        $totalGoalsPushed++;
+                    }
+                }
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "Successfully pushed fresh Goals & Appraisal templates to {$totalGoalsPushed} team member(s) across {$managersProcessed} line manager(s).",
+                'total_managers' => $managersProcessed,
+                'total_goals_pushed' => $totalGoalsPushed,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('pushAllFreshGoals error: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to push all goals: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

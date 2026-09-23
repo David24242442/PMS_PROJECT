@@ -27,6 +27,21 @@ const showTeamModal = ref(false); // Modal for viewing team
 const showPushFreshModal = ref(false); // Confirmation modal for pushing fresh goals
 const targetManagerForPush = ref(null);
 const pushingGoals = ref(false);
+
+// Admin-only Push All Goals & Appraisal States
+const showPushAllModal = ref(false);
+const pushingAllGoals = ref(false);
+const pushAllResult = ref(null);
+
+const isAdmin = computed(() => {
+    return !!(
+        loguser?.admin || 
+        loguser?.position_id === 4 || 
+        (loguser?.role && ['admin', 'superadmin'].includes(loguser.role.toLowerCase())) || 
+        loguser?.username?.toLowerCase() === 'admin'
+    );
+});
+
 const editingManager = ref(null); 
 const searchQuery = ref('');
 const teamMembers = ref([]); // Team members for the viewing manager
@@ -67,6 +82,31 @@ const confirmPushFreshGoals = async () => {
         showAlert('Error', error.response?.data?.message || 'Failed to push fresh goals.', 'error');
     } finally {
         pushingGoals.value = false;
+    }
+};
+
+const triggerPushAllFreshGoals = () => {
+    showPushAllModal.value = true;
+    pushAllResult.value = null;
+};
+
+const confirmPushAllFreshGoals = async () => {
+    pushingAllGoals.value = true;
+    try {
+        const response = await axios.post('pms/push-all-fresh-goals', {
+            year: 2026
+        });
+        if (response.data.status === 'success') {
+            pushAllResult.value = response.data;
+            showAlert('Success', response.data.message || 'Fresh Goals & Appraisal templates pushed to all team members across all line managers successfully!', 'success');
+            showPushAllModal.value = false;
+            fetchInitialData();
+        }
+    } catch (error) {
+        console.error('Error pushing all fresh goals:', error);
+        showAlert('Error', error.response?.data?.message || 'Failed to push fresh goals company-wide.', 'error');
+    } finally {
+        pushingAllGoals.value = false;
     }
 };
 
@@ -362,7 +402,10 @@ onMounted(() => {
                     <p class="text-xs font-bold text-white">Manage line manager accounts and their associated teams.</p>
                 </div>
                 <div class="flex items-center gap-3">   
-                    <button @click="showCreateModal = true" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg  transition-all flex items-center gap-2">
+                    <button v-if="isAdmin" @click="triggerPushAllFreshGoals" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg shadow-emerald-900/20 transition-all flex items-center gap-2 cursor-pointer">
+                        <i class="pi pi-send"></i> Push All Goals & Appraisal
+                    </button>
+                    <button @click="showCreateModal = true" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg  transition-all flex items-center gap-2 cursor-pointer">
                         <i class="pi pi-user-plus"></i> Create Manager User
                     </button>
                     <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
@@ -741,11 +784,66 @@ onMounted(() => {
                     </p>
                 </div>
                 <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
-                    <button @click="showPushFreshModal = false" :disabled="pushingGoals" class="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase hover:bg-white transition-all">Cancel</button>
-                    <button @click="confirmPushFreshGoals" :disabled="pushingGoals" class="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-md shadow-emerald-200 flex items-center gap-2 disabled:opacity-50">
+                    <button @click="showPushFreshModal = false" :disabled="pushingGoals" class="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase hover:bg-white transition-all cursor-pointer">Cancel</button>
+                    <button @click="confirmPushFreshGoals" :disabled="pushingGoals" class="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-md shadow-emerald-200 flex items-center gap-2 disabled:opacity-50 cursor-pointer">
                         <i v-if="pushingGoals" class="pi pi-spin pi-spinner"></i>
                         <i v-else class="pi pi-check"></i>
                         <span>{{ pushingGoals ? 'Pushing...' : 'Confirm & Push Now' }}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- "Push All Goals & Appraisals" Modal (Admin Only) -->
+        <div v-if="showPushAllModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-fadeIn border border-white/20 my-auto">
+                <div class="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-black">
+                            <i class="pi pi-send text-base"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-black text-base text-gray-800 leading-tight">Push All Goals & Appraisal</h3>
+                            <span class="text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 inline-block mt-0.5">
+                                Admin Access Only • Company-Wide
+                            </span>
+                        </div>
+                    </div>
+                    <button @click="showPushAllModal = false" :disabled="pushingAllGoals" class="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-800 hover:bg-gray-100 transition-all cursor-pointer">
+                        <i class="pi pi-times text-xs"></i>
+                    </button>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div class="p-4 bg-gradient-to-br from-emerald-50 to-teal-50/40 rounded-2xl border border-emerald-100 text-xs text-emerald-950 leading-relaxed shadow-xs">
+                        <p class="font-black text-sm text-emerald-950 mb-2 flex items-center gap-2">
+                            <i class="pi pi-info-circle text-emerald-600"></i>
+                            Push Fresh 2026 Templates to ALL Teams?
+                        </p>
+                        <div class="space-y-2 text-emerald-900 text-[11px]">
+                            <div class="flex items-start gap-2">
+                                <i class="pi pi-check-circle text-emerald-600 mt-0.5 text-xs"></i>
+                                <span>Pushes clean blank <strong>FY 2026 Goals & Appraisal templates</strong> to all team members under every line manager.</span>
+                            </div>
+                            <div class="flex items-start gap-2">
+                                <i class="pi pi-check-circle text-emerald-600 mt-0.5 text-xs"></i>
+                                <span>Auto-provisions employee accounts if not yet created (Username = Emp ID, Password = Password).</span>
+                            </div>
+                            <div class="flex items-start gap-2">
+                                <i class="pi pi-shield text-emerald-600 mt-0.5 text-xs"></i>
+                                <span><strong>Audit-Safe</strong>: Any existing submitted or completed appraisal reviews remain strictly preserved.</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 font-medium">
+                        Are you sure you want to proceed? This will distribute the appraisal cycle across all departments at once.
+                    </p>
+                </div>
+                <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
+                    <button @click="showPushAllModal = false" :disabled="pushingAllGoals" class="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-500 font-bold text-xs uppercase hover:bg-white transition-all cursor-pointer disabled:opacity-50">Cancel</button>
+                    <button @click="confirmPushAllFreshGoals" :disabled="pushingAllGoals" class="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-md shadow-emerald-200 flex items-center gap-2 disabled:opacity-50 cursor-pointer">
+                        <i v-if="pushingAllGoals" class="pi pi-spin pi-spinner"></i>
+                        <i v-else class="pi pi-send"></i>
+                        <span>{{ pushingAllGoals ? 'Pushing to All Teams...' : 'Confirm & Push All Now' }}</span>
                     </button>
                 </div>
             </div>
