@@ -357,6 +357,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/fetchemployeesdumpforexport', [EmployeeController::class, 'fetchemployeesdumpforexport']);
     Route::post('/searchemp', [EmployeeController::class, 'search']);
     Route::post('/employee', [EmployeeController::class, 'show']);
+    Route::post('/fetchemp', [EmployeeController::class, 'show']);
     Route::post('/updateempstatus', [EmployeeController::class, 'updateempstatus']);
 
     // PMS Routes

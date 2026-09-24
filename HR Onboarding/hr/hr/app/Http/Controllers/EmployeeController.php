@@ -195,8 +195,16 @@ class EmployeeController extends Controller
     }
     public function fetchemployeesforexport(Request $request)
     {
-        
-        $employees = Employee::select('id', 'firstname', 'surname', 'employeeid', 'company', 'joining_branch_id', 'joining_dept_id', 'joiningposition', 'status')->with(
+        // Try central DB first, fallback to local
+        try {
+            \Illuminate\Support\Facades\DB::connection('central')->getPdo();
+            $employees = Employee::on('central');
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Central DB Connection Error: ' . $e->getMessage());
+            $employees = Employee::query();
+        }
+
+        $employees = $employees->select('id', 'firstname', 'surname', 'employeeid', 'company', 'joining_branch_id', 'joining_dept_id', 'joiningposition', 'status')->with(
             ['ghcard','appletters','appointmentletters','probationconfs','cv','petratrust','nhis','birthcert','pclearanceform','ssnit','irrguarantor','banksocial'
             ]
         )->orderBy('id', 'DESC');
@@ -289,8 +297,14 @@ class EmployeeController extends Controller
 
     public function fetchemployeesdumpforexport(Request $request)
     {
-        
-        $employees = Employee::query();
+        // Try central DB first, fallback to local
+        try {
+            \Illuminate\Support\Facades\DB::connection('central')->getPdo();
+            $employees = Employee::on('central');
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Central DB Connection Error: ' . $e->getMessage());
+            $employees = Employee::query();
+        }
 
         if($request->employeeinfo){
             $search = $request->employeeinfo;
@@ -429,11 +443,22 @@ class EmployeeController extends Controller
     {
         $search = $request->data;
 
-        // echo $search;
-        $employees = Employee::select('id','firstname','employeeid','emp_code')
-            ->where('firstname', 'like', "%$search%")
-            ->orWhere('employeeid', 'like', "%$search%")
-            ->orWhere('emp_code', 'like', "%$search%")
+        // Try central DB first, fallback to local
+        try {
+            \Illuminate\Support\Facades\DB::connection('central')->getPdo();
+            $query = Employee::on('central');
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Central DB Connection Error: ' . $e->getMessage());
+            $query = Employee::query();
+        }
+
+        $employees = $query->select('id','firstname','surname','employeeid','emp_code')
+            ->where(function($q) use ($search) {
+                $q->where('firstname', 'like', "%$search%")
+                  ->orWhere('surname', 'like', "%$search%")
+                  ->orWhere('employeeid', 'like', "%$search%")
+                  ->orWhere('emp_code', 'like', "%$search%");
+            })
             ->orderBy('id', 'DESC')
             ->take(10)->get();
         return $employees;
@@ -1426,15 +1451,18 @@ class EmployeeController extends Controller
             $empQuery = Employee::query();
         }
 
+        $data = $request->data;
         $emp = $empQuery->with(
             ['educations.files', 'workexps', 'refs', 'childrens', 'wives', 'soccontact', 'econs.files', 'guarantos.files', 'presentjob', 'banksocial.lasthistory.creator:id,name', 'profilepicture', 'ghcard', 'signature', 'guarsignature', 'appletters','appointmentletters','probationconfs','cv','petratrust','nhis','birthcert','pclearanceform','ssnit','unioninfo','workpermit','driverlicense.files', 'nominee.files','lasthistory.creator:id,name',
             'irrguarantor' => function ($query) {
                 $query->with(['witnesses', 'signature', 'idcard','profilepicture', 'guarforms', 'lasthistory.creator:id,name']);   // Each child's picture
-            }/* ,'irrguarantor' => function ($query) {
-                $query->with(['witnesses', 'signature', 'idcard','profilepicture', 'guarforms']);   // Each child's picture
-            } */
+            }
             ]
-        )->find($request->data);
+        )->where(function($q) use ($data) {
+            $q->where('id', $data)
+              ->orWhere('employeeid', $data)
+              ->orWhere('emp_code', $data);
+        })->first();
         return $emp;
 
     }
