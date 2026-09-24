@@ -341,7 +341,10 @@ const fetchGoals = async () => {
 
 const fetchMasterEmployees = async () => {
     try {
-        const response = await axios.get('pms/get-employees');
+        const isAdm = !!(loguser?.admin || loguser?.position_id === 4 || ['admin', 'superadmin'].includes(loguser?.role?.toLowerCase()) || loguser?.username?.toLowerCase() === 'admin');
+        const response = await axios.get('pms/get-employees', {
+            params: { team_only: isManager.value && !isAdm ? 1 : 0 }
+        });
         if (response.data.status === 'success') {
             masterEmployees.value = response.data.data;
         }
@@ -372,14 +375,19 @@ const searchCandidate = async (event) => {
         return;
     }
 
-    // 2. Dynamic server search fallback to Monthly_Employees
-    try {
-        const response = await axios.get('pms/get-employees', { params: { search: query } });
-        if (response.data && response.data.status === 'success') {
-            filteredMasterEmployees.value = (response.data.data || []).slice(0, 100);
+    // 2. Dynamic server search fallback - STRICTLY ADMIN ONLY! Line Managers NEVER search outside their team!
+    const isAdm = !!(loguser?.admin || loguser?.position_id === 4 || ['admin', 'superadmin'].includes(loguser?.role?.toLowerCase()) || loguser?.username?.toLowerCase() === 'admin');
+    if (isAdm) {
+        try {
+            const response = await axios.get('pms/get-employees', { params: { search: query } });
+            if (response.data && response.data.status === 'success') {
+                filteredMasterEmployees.value = (response.data.data || []).slice(0, 100);
+            }
+        } catch (err) {
+            console.error('Error dynamic searchCandidate:', err);
         }
-    } catch (err) {
-        console.error('Error dynamic searchCandidate:', err);
+    } else {
+        filteredMasterEmployees.value = [];
     }
 };
 
@@ -2852,6 +2860,15 @@ const downloadAttachment = (file) => {
 
                 <!-- Modal Body (Scrollable / Flex 1) -->
                 <div class="p-5 md:p-6 space-y-5 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                    <!-- No Team Members Assigned Notice -->
+                    <div v-if="masterEmployees.length === 0" class="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex items-start gap-3 text-amber-900">
+                        <i class="pi pi-exclamation-triangle text-amber-600 text-lg mt-0.5 shrink-0"></i>
+                        <div class="text-xs">
+                            <p class="font-black uppercase tracking-tight text-amber-950">No Team Members Assigned</p>
+                            <p class="text-amber-800 mt-0.5 leading-relaxed font-medium">You do not currently have any team members assigned under your supervision. Please contact HR or the Administrator to map your team in the Line Manager Console before assigning goals.</p>
+                        </div>
+                    </div>
+
                     <!-- Assignment Target Toggle -->
                     <div>
                         <label class="text-xs font-black text-slate-700 uppercase tracking-wide block mb-2">Assignment Scope</label>
@@ -2870,7 +2887,7 @@ const downloadAttachment = (file) => {
                                 <input type="radio" v-model="assignForm.assign_type" value="all_team" class="accent-[#1A237E] w-4 h-4" />
                                 <div>
                                     <p class="text-xs font-black text-slate-800 uppercase">All Team Members</p>
-                                    <p class="text-[10px] text-slate-500 font-medium">Bulk assign to entire team</p>
+                                    <p class="text-[10px] text-slate-500 font-medium">Bulk assign to entire team ({{ masterEmployees.length }} members)</p>
                                 </div>
                             </label>
                         </div>
@@ -3034,7 +3051,7 @@ const downloadAttachment = (file) => {
                         class="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-500 hover:bg-slate-100 transition-all uppercase tracking-wider cursor-pointer">
                         Cancel
                     </button>
-                    <button @click="submitAssignGoal" :disabled="assigning"
+                    <button @click="submitAssignGoal" :disabled="assigning || masterEmployees.length === 0"
                         class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2 cursor-pointer">
                         <i v-if="assigning" class="pi pi-spin pi-spinner"></i>
                         <i v-else class="pi pi-check"></i>

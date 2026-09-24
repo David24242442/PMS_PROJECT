@@ -608,29 +608,106 @@ class GoalController extends Controller
 
             // Resolve target employee list
             $targetList = [];
+            $isAdmin = $user && (
+                $user->admin == 1 ||
+                $user->position_id == 4 ||
+                in_array(strtolower($user->role ?? ''), ['admin', 'superadmin']) ||
+                strtolower($user->username ?? '') === 'admin'
+            );
+
             if ($assignType === 'all_team') {
-                $empQuery = \App\Models\Employee::query();
-                if (!$user->admin) {
-                    $empQuery->where('line_manager_id', $user->id);
+                $teamCodes = [];
+                if (\Schema::hasTable('users') && \Schema::hasColumn('users', 'line_manager_id')) {
+                    $uCodes = \App\Models\User::where('line_manager_id', $user->id)
+                        ->whereNotNull('employee_code')
+                        ->pluck('employee_code')
+                        ->toArray();
+                    $teamCodes = array_merge($teamCodes, $uCodes);
                 }
-                $targetEmployees = $empQuery->get();
-                foreach ($targetEmployees as $emp) {
-                    $targetList[] = [
-                        'employee_code' => $emp->employeeid,
-                        'name' => trim($emp->firstname . ' ' . $emp->surname),
-                        'firstname' => $emp->firstname,
-                        'surname' => $emp->surname,
-                        'department' => $emp->department ?: ($emp->joiningdepartment ?? 'N/A'),
-                        'location' => $emp->location ?: ($emp->joininglocation ?? 'N/A'),
-                        'job_title' => $emp->job_title ?: ($emp->joiningposition ?? 'Employee'),
-                        'email' => $emp->email,
-                    ];
+
+                $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+                if (\Schema::hasTable($mTable) && \Schema::hasColumn($mTable, 'line_manager_id')) {
+                    $mCodes = \DB::table($mTable)
+                        ->where('line_manager_id', $user->id)
+                        ->whereNotNull('emp_id')
+                        ->pluck('emp_id')
+                        ->toArray();
+                    $teamCodes = array_merge($teamCodes, $mCodes);
+                }
+
+                if (\Schema::hasTable('employees') && \Schema::hasColumn('employees', 'line_manager_id')) {
+                    if (\Schema::hasColumn('employees', 'employeeid')) {
+                        $eCodes = \App\Models\Employee::where('line_manager_id', $user->id)
+                            ->whereNotNull('employeeid')
+                            ->pluck('employeeid')
+                            ->toArray();
+                        $teamCodes = array_merge($teamCodes, $eCodes);
+                    }
+                }
+
+                $teamCodes = array_values(array_unique(array_filter($teamCodes)));
+
+                if (!empty($teamCodes)) {
+                    if (\Schema::hasTable($mTable)) {
+                        $mEmps = \DB::table($mTable)->whereIn('emp_id', $teamCodes)->get();
+                        foreach ($mEmps as $me) {
+                            $targetList[] = [
+                                'employee_code' => $me->emp_id,
+                                'name' => $me->employee_name,
+                                'firstname' => explode(' ', $me->employee_name)[0] ?? '',
+                                'surname' => substr(strstr($me->employee_name, ' '), 1) ?: '',
+                                'department' => $me->designation ?: 'N/A',
+                                'location' => $me->location ?: 'N/A',
+                                'job_title' => $me->designation ?: 'Employee',
+                                'email' => null,
+                            ];
+                        }
+                    }
+
+                    $foundCodes = collect($targetList)->pluck('employee_code')->toArray();
+                    $missingCodes = array_diff($teamCodes, $foundCodes);
+                    if (!empty($missingCodes) && \Schema::hasTable('employees')) {
+                        $legEmps = \App\Models\Employee::whereIn('employeeid', $missingCodes)->get();
+                        foreach ($legEmps as $emp) {
+                            $targetList[] = [
+                                'employee_code' => $emp->employeeid,
+                                'name' => trim($emp->firstname . ' ' . $emp->surname),
+                                'firstname' => $emp->firstname,
+                                'surname' => $emp->surname,
+                                'department' => $emp->department ?: ($emp->joiningdepartment ?? 'N/A'),
+                                'location' => $emp->location ?: ($emp->joininglocation ?? 'N/A'),
+                                'job_title' => $emp->job_title ?: ($emp->joiningposition ?? 'Employee'),
+                                'email' => $emp->email,
+                            ];
+                        }
+                    }
                 }
             } else {
                 if (is_array($selectedEmployees) && isset($selectedEmployees[0])) {
                     $targetList = $selectedEmployees;
                 } elseif (!empty($selectedEmployees)) {
                     $targetList = [$selectedEmployees];
+                }
+
+                // Strict Manager Isolation: Non-admin managers can ONLY assign to employees in their assigned team
+                if (!$isAdmin) {
+                    $allowedCodes = [];
+                    if (\Schema::hasTable('users') && \Schema::hasColumn('users', 'line_manager_id')) {
+                        $allowedCodes = array_merge($allowedCodes, \App\Models\User::where('line_manager_id', $user->id)->pluck('employee_code')->toArray());
+                    }
+                    $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+                    if (\Schema::hasTable($mTable) && \Schema::hasColumn($mTable, 'line_manager_id')) {
+                        $allowedCodes = array_merge($allowedCodes, \DB::table($mTable)->where('line_manager_id', $user->id)->pluck('emp_id')->toArray());
+                    }
+                    if (\Schema::hasTable('employees') && \Schema::hasColumn('employees', 'line_manager_id') && \Schema::hasColumn('employees', 'employeeid')) {
+                        $allowedCodes = array_merge($allowedCodes, \App\Models\Employee::where('line_manager_id', $user->id)->pluck('employeeid')->toArray());
+                    }
+                    $allowedCodes = array_filter(array_unique($allowedCodes));
+
+                    $targetList = array_values(array_filter($targetList, function ($t) use ($allowedCodes) {
+                        $code = is_array($t) ? ($t['employee_code'] ?? ($t['emp_id'] ?? null)) : null;
+                        return in_array($code, $allowedCodes);
+                    }));
                 }
             }
 

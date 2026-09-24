@@ -397,10 +397,75 @@ class EmployeeMasterController extends Controller
     public function getEmployees(Request $request)
     {
         try {
+            @ini_set('memory_limit', '512M');
+            @set_time_limit(300);
+
             $this->ensureSchema();
             $user = $request->user();
-            $isAdmin = $user && $user->admin;
+            $isAdmin = $user && ($user->admin == 1 || $user->position_id == 4 || in_array(strtolower($user->role ?? ''), ['admin', 'superadmin']) || strtolower($user->username ?? '') === 'admin');
             $search = $request->input('search');
+            $teamOnly = $request->boolean('team_only', false);
+
+            // STRICT LINE MANAGER ISOLATION:
+            // Non-admin managers (or any caller requesting team_only) must ONLY see their assigned team!
+            $mustScopeToTeam = (!$isAdmin || $teamOnly) && $user;
+
+            $teamCodes = [];
+            if ($mustScopeToTeam) {
+                // Collect all employee codes assigned to this manager across all sources
+                if (\Schema::hasTable('users') && \Schema::hasColumn('users', 'line_manager_id')) {
+                    $uCodes = DB::table('users')
+                        ->where('line_manager_id', $user->id)
+                        ->whereNotNull('employee_code')
+                        ->pluck('employee_code')
+                        ->toArray();
+                    $uNames = DB::table('users')
+                        ->where('line_manager_id', $user->id)
+                        ->whereNotNull('username')
+                        ->pluck('username')
+                        ->toArray();
+                    $teamCodes = array_merge($teamCodes, $uCodes, $uNames);
+                }
+
+                $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
+                if (\Schema::hasTable($mTable) && \Schema::hasColumn($mTable, 'line_manager_id')) {
+                    $mCodes = DB::table($mTable)
+                        ->where('line_manager_id', $user->id)
+                        ->whereNotNull('emp_id')
+                        ->pluck('emp_id')
+                        ->toArray();
+                    $teamCodes = array_merge($teamCodes, $mCodes);
+                }
+
+                if (\Schema::hasTable('employees') && \Schema::hasColumn('employees', 'line_manager_id')) {
+                    if (\Schema::hasColumn('employees', 'employeeid')) {
+                        $eCodes = DB::table('employees')
+                            ->where('line_manager_id', $user->id)
+                            ->whereNotNull('employeeid')
+                            ->pluck('employeeid')
+                            ->toArray();
+                        $teamCodes = array_merge($teamCodes, $eCodes);
+                    }
+                    if (\Schema::hasColumn('employees', 'emp_code')) {
+                        $eCodes2 = DB::table('employees')
+                            ->where('line_manager_id', $user->id)
+                            ->whereNotNull('emp_code')
+                            ->pluck('emp_code')
+                            ->toArray();
+                        $teamCodes = array_merge($teamCodes, $eCodes2);
+                    }
+                }
+
+                $teamCodes = array_values(array_unique(array_filter($teamCodes)));
+
+                // If manager has no team members assigned yet, return empty list immediately
+                if (empty($teamCodes)) {
+                    return response()->json([
+                        'status' => 'success',
+                        'data' => []
+                    ]);
+                }
+            }
 
             // 1. PRIMARY SOURCE: Query Monthly_Employees table
             $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
@@ -409,6 +474,10 @@ class EmployeeMasterController extends Controller
                 $monthlyCount = DB::table($mTable)->count();
                 if ($monthlyCount > 0) {
                     $mQuery = DB::table($mTable);
+
+                    if ($mustScopeToTeam) {
+                        $mQuery->whereIn('emp_id', $teamCodes);
+                    }
                     if (!empty($search)) {
                         $term = trim($search);
                         $mQuery->where(function ($q) use ($term) {
@@ -426,16 +495,23 @@ class EmployeeMasterController extends Controller
                     $mRecords = $mQuery->orderBy('sr_no', 'asc')->get();
 
                     if ($mRecords->isNotEmpty()) {
-                        // Match with users table in 1 single bulk query
+                        // Match with users table in chunked query (to avoid PDO placeholder/memory limits)
                         $empIds = $mRecords->pluck('emp_id')->filter()->toArray();
                         $usersMap = [];
                         $managerIds = [];
+
                         if (!empty($empIds) && \Schema::hasColumn('users', 'employee_code')) {
-                            $users = \App\Models\User::whereIn('employee_code', $empIds)->get();
-                            foreach ($users as $u) {
-                                $usersMap[$u->employee_code] = $u;
-                                if (!empty($u->line_manager_id)) {
-                                    $managerIds[] = $u->line_manager_id;
+                            $chunks = array_chunk($empIds, 500);
+                            foreach ($chunks as $chunk) {
+                                $uRows = DB::table('users')
+                                    ->whereIn('employee_code', $chunk)
+                                    ->select(['id', 'employee_code', 'line_manager_id', 'name', 'department', 'email', 'location'])
+                                    ->get();
+                                foreach ($uRows as $u) {
+                                    $usersMap[$u->employee_code] = $u;
+                                    if (!empty($u->line_manager_id)) {
+                                        $managerIds[] = $u->line_manager_id;
+                                    }
                                 }
                             }
                         }
@@ -452,7 +528,11 @@ class EmployeeMasterController extends Controller
                         // Preload all managers in 1 query (eliminates N+1 query timeout!)
                         $managersMap = [];
                         if (!empty($managerIds)) {
-                            $managersMap = \App\Models\User::whereIn('id', array_unique($managerIds))->get()->keyBy('id');
+                            $managersMap = DB::table('users')
+                                ->whereIn('id', array_unique($managerIds))
+                                ->select(['id', 'name', 'department'])
+                                ->get()
+                                ->keyBy('id');
                         }
 
                         $employees = $mRecords->map(function ($emp) use ($usersMap, $managersMap) {
@@ -494,6 +574,11 @@ class EmployeeMasterController extends Controller
                         return response()->json([
                             'status' => 'success',
                             'data' => $employees
+                        ]);
+                    } elseif ($mustScopeToTeam) {
+                        return response()->json([
+                            'status' => 'success',
+                            'data' => []
                         ]);
                     }
                 }
@@ -542,8 +627,14 @@ class EmployeeMasterController extends Controller
             }
 
             // Non-admin users only see their assigned team members if column exists
-            if (!$isAdmin && $user && $hasLineManager) {
-                $query->where('employees.line_manager_id', $user->id);
+            if ($mustScopeToTeam) {
+                if (!empty($teamCodes)) {
+                    $query->whereIn('employees.employeeid', $teamCodes);
+                } else if ($hasLineManager) {
+                    $query->where('employees.line_manager_id', $user->id);
+                } else {
+                    return response()->json(['status' => 'success', 'data' => []]);
+                }
             }
 
             $employees = $query->orderBy('employees.firstname')->get();
@@ -699,28 +790,45 @@ class EmployeeMasterController extends Controller
             $hasMonthlyLineManager = $hasMonthlyTable && Schema::hasColumn($mTable, 'line_manager_id');
             $hasEmpLineManager = Schema::hasTable('employees') && Schema::hasColumn('employees', 'line_manager_id');
             $hasUserLineManager = Schema::hasTable('users') && Schema::hasColumn('users', 'line_manager_id');
+            $empHasEmpCode = Schema::hasTable('employees') && Schema::hasColumn('employees', 'emp_code');
+            $empHasEmployeeId = Schema::hasTable('employees') && Schema::hasColumn('employees', 'employeeid');
 
             // 1. UNASSIGN existing members who are no longer in this manager's team
             if ($hasUserLineManager) {
-                User::where('line_manager_id', $managerId)
-                    ->whereNotIn('employee_code', $selectedCodes)
-                    ->whereNotIn('username', $selectedCodes)
-                    ->update(['line_manager_id' => null, 'report_to' => null]);
+                try {
+                    User::where('line_manager_id', $managerId)
+                        ->whereNotIn('employee_code', $selectedCodes)
+                        ->whereNotIn('username', $selectedCodes)
+                        ->update(['line_manager_id' => null, 'report_to' => null]);
+                } catch (\Throwable $e) {
+                    Log::warning('User unassign notice: ' . $e->getMessage());
+                }
             }
 
             if ($hasEmpLineManager) {
-                DB::table('employees')
-                    ->where('line_manager_id', $managerId)
-                    ->whereNotIn('employeeid', $selectedCodes)
-                    ->whereNotIn('emp_code', $selectedCodes)
-                    ->update(['line_manager_id' => null]);
+                try {
+                    $empUnassignQ = DB::table('employees')->where('line_manager_id', $managerId);
+                    if ($empHasEmployeeId) {
+                        $empUnassignQ->whereNotIn('employeeid', $selectedCodes);
+                    }
+                    if ($empHasEmpCode) {
+                        $empUnassignQ->whereNotIn('emp_code', $selectedCodes);
+                    }
+                    $empUnassignQ->update(['line_manager_id' => null]);
+                } catch (\Throwable $e) {
+                    Log::warning('employees unassign notice: ' . $e->getMessage());
+                }
             }
 
             if ($hasMonthlyLineManager) {
-                DB::table($mTable)
-                    ->where('line_manager_id', $managerId)
-                    ->whereNotIn('emp_id', $selectedCodes)
-                    ->update(['line_manager_id' => null]);
+                try {
+                    DB::table($mTable)
+                        ->where('line_manager_id', $managerId)
+                        ->whereNotIn('emp_id', $selectedCodes)
+                        ->update(['line_manager_id' => null]);
+                } catch (\Throwable $e) {
+                    Log::warning('Monthly unassign notice: ' . $e->getMessage());
+                }
             }
 
             if (empty($selectedCodes)) {
@@ -750,14 +858,26 @@ class EmployeeMasterController extends Controller
             }
 
             $legacyEmpMap = [];
-            if (Schema::hasTable('employees')) {
-                $legacyRows = DB::table('employees')
-                    ->whereIn('employeeid', $selectedCodes)
-                    ->orWhereIn('emp_code', $selectedCodes)
-                    ->get();
-                foreach ($legacyRows as $lr) {
-                    if (!empty($lr->employeeid)) $legacyEmpMap[$lr->employeeid] = $lr;
-                    if (!empty($lr->emp_code)) $legacyEmpMap[$lr->emp_code] = $lr;
+            if (Schema::hasTable('employees') && ($empHasEmployeeId || $empHasEmpCode)) {
+                try {
+                    $legacyQ = DB::table('employees');
+                    if ($empHasEmployeeId && $empHasEmpCode) {
+                        $legacyQ->where(function($q) use ($selectedCodes) {
+                            $q->whereIn('employeeid', $selectedCodes)
+                              ->orWhereIn('emp_code', $selectedCodes);
+                        });
+                    } elseif ($empHasEmployeeId) {
+                        $legacyQ->whereIn('employeeid', $selectedCodes);
+                    } elseif ($empHasEmpCode) {
+                        $legacyQ->whereIn('emp_code', $selectedCodes);
+                    }
+                    $legacyRows = $legacyQ->get();
+                    foreach ($legacyRows as $lr) {
+                        if ($empHasEmployeeId && !empty($lr->employeeid)) $legacyEmpMap[$lr->employeeid] = $lr;
+                        if ($empHasEmpCode && !empty($lr->emp_code)) $legacyEmpMap[$lr->emp_code] = $lr;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('legacy employees query notice: ' . $e->getMessage());
                 }
             }
 
@@ -808,6 +928,7 @@ class EmployeeMasterController extends Controller
                 $mEmp = $monthlyMap[$code] ?? null;
                 $legEmp = $legacyEmpMap[$code] ?? null;
                 $pEmp = $payloadEmpMap[$code] ?? null;
+                $empUser = $usersMap[$code] ?? null;
 
                 // Resolve name
                 $candName = null;
@@ -838,8 +959,6 @@ class EmployeeMasterController extends Controller
                     : $fallbackEmail;
 
                 // 4a. User Provisioning / Updating
-                $empUser = $usersMap[$code] ?? null;
-
                 if (!$empUser) {
                     // Create new user account with default credentials: Username = Emp ID, Password = Password
                     if (User::where('email', $email)->exists()) {
@@ -909,12 +1028,19 @@ class EmployeeMasterController extends Controller
                     } catch (\Throwable $e) {}
                 }
 
-                if ($hasEmpLineManager) {
+                if ($hasEmpLineManager && ($empHasEmployeeId || $empHasEmpCode)) {
                     try {
-                        DB::table('employees')
-                            ->where('employeeid', $code)
-                            ->orWhere('emp_code', $code)
-                            ->update(['line_manager_id' => $manager->id]);
+                        $empUp = DB::table('employees');
+                        if ($empHasEmployeeId && $empHasEmpCode) {
+                            $empUp->where(function($q) use ($code) {
+                                $q->where('employeeid', $code)->orWhere('emp_code', $code);
+                            });
+                        } elseif ($empHasEmployeeId) {
+                            $empUp->where('employeeid', $code);
+                        } elseif ($empHasEmpCode) {
+                            $empUp->where('emp_code', $code);
+                        }
+                        $empUp->update(['line_manager_id' => $manager->id]);
                     } catch (\Throwable $e) {}
                 }
 
@@ -1085,13 +1211,35 @@ class EmployeeMasterController extends Controller
         // 2. SECONDARY MATCH: legacy employees table
         $matchedLegacy = collect();
         if (!empty($remainingCodes) && \Schema::hasTable('employees')) {
-            $matchedLegacy = DB::table('employees')
-                ->whereIn('employeeid', $remainingCodes)
-                ->orWhereIn('emp_code', $remainingCodes)
-                ->get();
+            $hasLegacyId = \Schema::hasColumn('employees', 'employeeid');
+            $hasLegacyCode = \Schema::hasColumn('employees', 'emp_code');
+            if ($hasLegacyId || $hasLegacyCode) {
+                try {
+                    $legQ = DB::table('employees');
+                    if ($hasLegacyId && $hasLegacyCode) {
+                        $legQ->where(function($q) use ($remainingCodes) {
+                            $q->whereIn('employeeid', $remainingCodes)->orWhereIn('emp_code', $remainingCodes);
+                        });
+                    } elseif ($hasLegacyId) {
+                        $legQ->whereIn('employeeid', $remainingCodes);
+                    } elseif ($hasLegacyCode) {
+                        $legQ->whereIn('emp_code', $remainingCodes);
+                    }
+                    $matchedLegacy = $legQ->get();
+                } catch (\Throwable $e) {}
+            }
         }
 
-        $matchedLegacyCodes = $matchedLegacy->pluck('employeeid')->merge($matchedLegacy->pluck('emp_code'))->filter()->unique()->toArray();
+        $matchedLegacyCodes = collect();
+        if ($matchedLegacy->isNotEmpty()) {
+            if (\Schema::hasColumn('employees', 'employeeid')) {
+                $matchedLegacyCodes = $matchedLegacyCodes->merge($matchedLegacy->pluck('employeeid'));
+            }
+            if (\Schema::hasColumn('employees', 'emp_code')) {
+                $matchedLegacyCodes = $matchedLegacyCodes->merge($matchedLegacy->pluck('emp_code'));
+            }
+        }
+        $matchedLegacyCodes = $matchedLegacyCodes->filter()->unique()->toArray();
         $allMatchedCodes = array_unique(array_merge($matchedMonthlyCodes, $matchedLegacyCodes));
         $unmatched = array_values(array_diff($codes, $allMatchedCodes));
 
@@ -1131,7 +1279,7 @@ class EmployeeMasterController extends Controller
 
         // Map legacy employees (that weren't already added from Monthly_Employees)
         foreach ($matchedLegacy as $emp) {
-            $code = $emp->employeeid ?: $emp->emp_code;
+            $code = (!empty($emp->employeeid)) ? $emp->employeeid : ($emp->emp_code ?? null);
             if ($matchedMonthlyCodes && in_array($code, $matchedMonthlyCodes)) {
                 continue;
             }
