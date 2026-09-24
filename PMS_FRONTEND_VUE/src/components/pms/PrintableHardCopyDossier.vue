@@ -298,6 +298,9 @@
                                     {{ d }}
                                 </div>
                             </div>
+                            <div v-else-if="comp.descriptionText" class="comp-criteria-list">
+                                <div class="comp-crit-item whitespace-pre-line">{{ comp.descriptionText }}</div>
+                            </div>
                         </td>
                         <td class="cell-center font-bold text-blue">{{ comp.weight }}%</td>
                         <td class="cell-center font-bold">{{ comp.selfRating || '0' }}</td>
@@ -694,8 +697,54 @@ const canViewReviewPage = computed(() => {
 });
 
 const localEmployees = ref([]);
+const managerTemplate = ref(null);
+
+const fetchManagerTemplate = async () => {
+    try {
+        const g = props.goal || {};
+        const empCode = g.employee_code || g.user?.employee_code;
+        const params = {};
+        if (g.created_by) {
+            params.manager_id = g.created_by;
+        } else if (empCode) {
+            params.employee_code = empCode;
+        }
+        const res = await axios.get('pms/manager-template', { params });
+        if (res.data?.status === 'success' && Array.isArray(res.data.template) && res.data.template.length > 0) {
+            managerTemplate.value = res.data.template;
+        } else {
+            const currentUserId = g.created_by || (props.goal?.user?.line_manager_id);
+            const storageKey = currentUserId ? `pms_custom_competency_template_${currentUserId}` : null;
+            const saved = (storageKey ? localStorage.getItem(storageKey) : null) || localStorage.getItem('pms_custom_competency_template_default');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    managerTemplate.value = parsed;
+                }
+            }
+        }
+    } catch (e) {
+        try {
+            const g = props.goal || {};
+            const currentUserId = g.created_by || (props.goal?.user?.line_manager_id);
+            const storageKey = currentUserId ? `pms_custom_competency_template_${currentUserId}` : null;
+            const saved = (storageKey ? localStorage.getItem(storageKey) : null) || localStorage.getItem('pms_custom_competency_template_default');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    managerTemplate.value = parsed;
+                }
+            }
+        } catch (err) {}
+    }
+};
+
+watch(() => props.goal, () => {
+    fetchManagerTemplate();
+}, { deep: true });
 
 onMounted(async () => {
+    fetchManagerTemplate();
     if (props.employees && props.employees.length > 0) {
         localEmployees.value = props.employees;
     } else {
@@ -822,18 +871,74 @@ const norm = computed(() => {
 
     // Competencies normalization
     let rawComps = ad.competencies || [];
+
+    // Fallback if goal has no competencies saved yet
+    if (!Array.isArray(rawComps) || rawComps.length === 0) {
+        if (managerTemplate.value && Array.isArray(managerTemplate.value) && managerTemplate.value.length > 0) {
+            rawComps = managerTemplate.value;
+        } else {
+            try {
+                const currentUserId = u.line_manager_id || g.created_by;
+                const storageKey = currentUserId ? `pms_custom_competency_template_${currentUserId}` : null;
+                const savedTpl = (storageKey ? localStorage.getItem(storageKey) : null) || localStorage.getItem('pms_custom_competency_template_default');
+                if (savedTpl) {
+                    const parsed = JSON.parse(savedTpl);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        rawComps = parsed;
+                    }
+                }
+            } catch (e) {}
+        }
+    }
+
     if (!Array.isArray(rawComps) || rawComps.length === 0) {
         rawComps = defaultCompetencies;
     }
 
-    const competencies = defaultCompetencies.map((def, idx) => {
-        const existing = rawComps.find(c => (c.title || '').trim().toLowerCase() === def.title.toLowerCase()) || rawComps[idx] || {};
+    const competencies = rawComps.map((comp, idx) => {
+        const def = defaultCompetencies[idx] || {};
+        const tpl = (managerTemplate.value && (managerTemplate.value.find(t => t.id === comp.id) || managerTemplate.value[idx])) || null;
+
+        // Resolve title: prefer comp.title, but if comp.title is default and tpl has custom title, use tpl.title
+        let finalTitle = (comp.title || def.title || `Competency ${idx + 1}`).trim();
+        if (tpl && tpl.title && (finalTitle === def.title || !comp.title)) {
+            finalTitle = tpl.title.trim();
+        }
+
+        // Resolve descriptions: prefer comp.descriptions/comp.descriptionText, else tpl, else def
+        let descList = [];
+        if (Array.isArray(comp.descriptions) && comp.descriptions.length > 0) {
+            descList = comp.descriptions;
+        } else if (comp.descriptionText && typeof comp.descriptionText === 'string') {
+            descList = comp.descriptionText.split('\n').map(s => s.trim()).filter(Boolean);
+        } else if (tpl) {
+            if (Array.isArray(tpl.descriptions) && tpl.descriptions.length > 0) {
+                descList = tpl.descriptions;
+            } else if (tpl.descriptionText && typeof tpl.descriptionText === 'string') {
+                descList = tpl.descriptionText.split('\n').map(s => s.trim()).filter(Boolean);
+            }
+        }
+
+        // If descList still matches default but manager template has custom criteria, upgrade to template criteria
+        if (tpl && Array.isArray(tpl.descriptions) && tpl.descriptions.length > 0) {
+            const isDef = JSON.stringify(descList) === JSON.stringify(def.descriptions || []);
+            if (isDef && JSON.stringify(tpl.descriptions) !== JSON.stringify(def.descriptions || [])) {
+                descList = tpl.descriptions;
+            }
+        }
+
+        if (descList.length === 0 && Array.isArray(def.descriptions)) {
+            descList = def.descriptions;
+        }
+
         return {
-            title: def.title,
-            weight: Number(existing.weight || def.weight || 20),
-            selfRating: Number(existing.selfRating !== undefined ? existing.selfRating : def.selfRating),
-            managerRating: Number(existing.managerRating !== undefined ? existing.managerRating : def.managerRating),
-            descriptions: def.descriptions
+            id: comp.id || (idx + 1),
+            title: finalTitle,
+            weight: Number(comp.weight !== undefined ? comp.weight : (tpl?.weight !== undefined ? tpl.weight : (def.weight || 20))),
+            selfRating: Number(comp.selfRating !== undefined ? comp.selfRating : (def.selfRating !== undefined ? def.selfRating : 0)),
+            managerRating: Number(comp.managerRating !== undefined ? comp.managerRating : (def.managerRating !== undefined ? def.managerRating : 0)),
+            descriptions: descList,
+            descriptionText: comp.descriptionText || descList.join('\n')
         };
     });
 
@@ -1403,6 +1508,7 @@ const dossierId = computed(() => {
     font-size: 7.5pt;
     line-height: 1.25;
     color: #222222 !important;
+    white-space: pre-line;
 }
 .cell-center { text-align: center !important; }
 .font-bold { font-weight: bold !important; }

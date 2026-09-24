@@ -560,13 +560,22 @@ const openAssignModal = async () => {
         const tplRes = await axios.get('pms/manager-template');
         if (tplRes.data.status === 'success' && tplRes.data.template && Array.isArray(tplRes.data.template) && tplRes.data.template.length > 0) {
             const raw = tplRes.data.template;
-            managerCompetencies.value = defaultAssignCompetencies.map((def, idx) => {
-                const m = raw.find(c => c.id === def.id) || raw[idx] || def;
+            managerCompetencies.value = raw.map((m, idx) => {
+                const def = defaultAssignCompetencies[idx] || {};
+                let descList = [];
+                if (Array.isArray(m.descriptions) && m.descriptions.length > 0) {
+                    descList = m.descriptions;
+                } else if (m.descriptionText) {
+                    descList = m.descriptionText.split('\n').map(s => s.trim()).filter(Boolean);
+                } else if (def.descriptions) {
+                    descList = def.descriptions;
+                }
                 return {
-                    ...def,
-                    title: m.title || def.title,
-                    weight: m.weight !== undefined ? Number(m.weight) : def.weight,
-                    descriptions: m.descriptions || def.descriptions
+                    id: m.id || (idx + 1),
+                    title: m.title || def.title || `Competency ${idx + 1}`,
+                    weight: m.weight !== undefined ? Number(m.weight) : (def.weight || 20),
+                    descriptions: descList,
+                    descriptionText: m.descriptionText || descList.join('\n')
                 };
             });
             assignForm.value.weights = managerCompetencies.value.map(c => c.weight || 20);
@@ -576,13 +585,22 @@ const openAssignModal = async () => {
             if (savedTpl) {
                 const parsed = JSON.parse(savedTpl);
                 if (Array.isArray(parsed) && parsed.length > 0) {
-                    managerCompetencies.value = defaultAssignCompetencies.map((def, idx) => {
-                        const m = parsed.find(c => c.id === def.id) || parsed[idx] || def;
+                    managerCompetencies.value = parsed.map((m, idx) => {
+                        const def = defaultAssignCompetencies[idx] || {};
+                        let descList = [];
+                        if (Array.isArray(m.descriptions) && m.descriptions.length > 0) {
+                            descList = m.descriptions;
+                        } else if (m.descriptionText) {
+                            descList = m.descriptionText.split('\n').map(s => s.trim()).filter(Boolean);
+                        } else if (def.descriptions) {
+                            descList = def.descriptions;
+                        }
                         return {
-                            ...def,
-                            title: m.title || def.title,
-                            weight: m.weight !== undefined ? Number(m.weight) : def.weight,
-                            descriptions: m.descriptions || def.descriptions
+                            id: m.id || (idx + 1),
+                            title: m.title || def.title || `Competency ${idx + 1}`,
+                            weight: m.weight !== undefined ? Number(m.weight) : (def.weight || 20),
+                            descriptions: descList,
+                            descriptionText: m.descriptionText || descList.join('\n')
                         };
                     });
                     assignForm.value.weights = managerCompetencies.value.map(c => c.weight || 20);

@@ -1071,12 +1071,24 @@ class GoalController extends Controller
 
         // Also propagate updated template to any active unsubmitted assigned/draft goals for this manager
         try {
-            $activeGoals = \App\Models\Goal::where(function ($q) use ($user) {
+            $teamEmpCodes = [];
+            if (\Schema::hasTable('users') && \Schema::hasColumn('users', 'line_manager_id')) {
+                $teamEmpCodes = array_merge($teamEmpCodes, \App\Models\User::where('line_manager_id', $user->id)->pluck('employee_code')->toArray());
+            }
+            if (\Schema::hasTable('employees') && \Schema::hasColumn('employees', 'line_manager_id')) {
+                $teamEmpCodes = array_merge($teamEmpCodes, \App\Models\Employee::where('line_manager_id', $user->id)->pluck('employeeid')->toArray());
+            }
+            $teamEmpCodes = array_filter(array_unique($teamEmpCodes));
+
+            $activeGoals = \App\Models\Goal::where(function ($q) use ($user, $teamEmpCodes) {
                     $q->where('created_by', $user->id)
                       ->orWhere('manager_name', $user->name)
                       ->orWhere('manager_name', 'like', '%' . trim($user->name) . '%');
+                    if (!empty($teamEmpCodes)) {
+                        $q->orWhereIn('employee_code', $teamEmpCodes);
+                    }
                 })
-                ->whereIn('status', ['assigned', 'draft'])
+                ->whereIn('status', ['assigned', 'draft', 'in_progress'])
                 ->get();
 
             foreach ($activeGoals as $ag) {
@@ -1086,8 +1098,8 @@ class GoalController extends Controller
                     $updatedComps = [];
                     foreach ($parsedTemplate as $idx => $nc) {
                         $match = null;
-                        foreach ($currentComps as $cc) {
-                            if (($cc['id'] ?? null) == ($nc['id'] ?? null)) {
+                        foreach ($currentComps as $cIdx => $cc) {
+                            if ((isset($cc['id']) && isset($nc['id']) && $cc['id'] == $nc['id']) || $cIdx === $idx) {
                                 $match = $cc;
                                 break;
                             }

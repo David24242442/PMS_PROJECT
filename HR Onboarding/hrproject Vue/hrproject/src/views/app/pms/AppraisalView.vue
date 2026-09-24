@@ -298,16 +298,26 @@ const populateFromGoalAndAppraisal = (goal, appraisalData) => {
                 const rawSum = rawComps.reduce((s, c) => s + (parseFloat(c.weight) || 0), 0);
                 const isSum100 = Math.round(rawSum) === 100;
 
-                performanceCompetencies.value = defaultCompetencyList.map((def, idx) => {
-                    let match = rawComps.find(c => c.id === def.id) || rawComps[idx];
+                performanceCompetencies.value = rawComps.map((comp, idx) => {
+                    const def = defaultCompetencyList[idx] || {};
+                    let descList = [];
+                    if (Array.isArray(comp.descriptions) && comp.descriptions.length > 0) {
+                        descList = comp.descriptions;
+                    } else if (comp.descriptionText) {
+                        descList = comp.descriptionText.split('\n').map(s => s.trim()).filter(Boolean);
+                    } else if (def.descriptions) {
+                        descList = def.descriptions;
+                    }
+                    const descText = comp.descriptionText || descList.join('\n');
+
                     return {
-                        ...def,
-                        title: match?.title || def.title,
-                        descriptions: match?.descriptions || def.descriptions,
-                        descriptionText: match?.descriptionText || (match?.descriptions ? (Array.isArray(match.descriptions) ? match.descriptions.join('\n') : match.descriptions) : def.descriptionText),
-                        selfRating: match?.selfRating || 0,
-                        managerRating: match?.managerRating || 0,
-                        weight: isSum100 ? (match?.weight !== undefined ? Number(match.weight) : def.weight) : 20
+                        id: comp.id || (idx + 1),
+                        title: comp.title || def.title || `Competency ${idx + 1}`,
+                        weight: isSum100 ? (comp.weight !== undefined ? Number(comp.weight) : (def.weight || 20)) : 20,
+                        selfRating: Number(comp.selfRating || 0),
+                        managerRating: Number(comp.managerRating || 0),
+                        descriptions: descList,
+                        descriptionText: descText
                     };
                 });
             }
@@ -362,14 +372,24 @@ const fetchAppraisal = async () => {
                 const tplRes = await axios.get('pms/manager-template', { params });
                 if (tplRes.data.status === 'success' && tplRes.data.template && Array.isArray(tplRes.data.template) && tplRes.data.template.length > 0) {
                     const rawComps = tplRes.data.template;
-                    performanceCompetencies.value = defaultCompetencyList.map((def, idx) => {
-                        const m = rawComps.find(c => c.id === def.id) || rawComps[idx] || def;
+                    performanceCompetencies.value = rawComps.map((comp, idx) => {
+                        const def = defaultCompetencyList[idx] || {};
+                        let descList = [];
+                        if (Array.isArray(comp.descriptions) && comp.descriptions.length > 0) {
+                            descList = comp.descriptions;
+                        } else if (comp.descriptionText) {
+                            descList = comp.descriptionText.split('\n').map(s => s.trim()).filter(Boolean);
+                        } else if (def.descriptions) {
+                            descList = def.descriptions;
+                        }
+                        const descText = comp.descriptionText || descList.join('\n');
+
                         return {
-                            ...def,
-                            title: m.title || def.title,
-                            weight: m.weight !== undefined ? Number(m.weight) : def.weight,
-                            descriptions: m.descriptions || def.descriptions,
-                            descriptionText: m.descriptions ? (Array.isArray(m.descriptions) ? m.descriptions.join('\n') : m.descriptions) : (m.descriptionText || def.descriptionText),
+                            id: comp.id || (idx + 1),
+                            title: comp.title || def.title || `Competency ${idx + 1}`,
+                            weight: comp.weight !== undefined ? Number(comp.weight) : (def.weight || 20),
+                            descriptions: descList,
+                            descriptionText: descText,
                             selfRating: 0,
                             managerRating: 0
                         };
@@ -379,14 +399,25 @@ const fetchAppraisal = async () => {
                     const savedTpl = localStorage.getItem(storageKey);
                     if (savedTpl) {
                         const parsed = JSON.parse(savedTpl);
-                        performanceCompetencies.value = defaultCompetencyList.map((def, idx) => {
-                            const m = parsed.find(c => c.id === def.id) || parsed[idx] || def;
+                        const listToMap = Array.isArray(parsed) && parsed.length > 0 ? parsed : defaultCompetencyList;
+                        performanceCompetencies.value = listToMap.map((comp, idx) => {
+                            const def = defaultCompetencyList[idx] || {};
+                            let descList = [];
+                            if (Array.isArray(comp.descriptions) && comp.descriptions.length > 0) {
+                                descList = comp.descriptions;
+                            } else if (comp.descriptionText) {
+                                descList = comp.descriptionText.split('\n').map(s => s.trim()).filter(Boolean);
+                            } else if (def.descriptions) {
+                                descList = def.descriptions;
+                            }
+                            const descText = comp.descriptionText || descList.join('\n');
+
                             return {
-                                ...def,
-                                title: m.title || def.title,
-                                weight: m.weight !== undefined ? Number(m.weight) : def.weight,
-                                descriptions: m.descriptions || def.descriptions,
-                                descriptionText: m.descriptions ? (Array.isArray(m.descriptions) ? m.descriptions.join('\n') : m.descriptions) : (m.descriptionText || def.descriptionText),
+                                id: comp.id || (idx + 1),
+                                title: comp.title || def.title || `Competency ${idx + 1}`,
+                                weight: comp.weight !== undefined ? Number(comp.weight) : (def.weight || 20),
+                                descriptions: descList,
+                                descriptionText: descText,
                                 selfRating: 0,
                                 managerRating: 0
                             };
@@ -489,14 +520,20 @@ const saveAppraisal = async (submit = false) => {
             director_remarks: appraisal.value.director_remarks,
             director_signature_name: appraisal.value.director_signature_name,
             director_signature_date: appraisal.value.director_signature_date,
-            competencies: performanceCompetencies.value.map(c => ({
-                id: c.id,
-                title: c.title,
-                weight: c.weight,
-                selfRating: c.selfRating,
-                managerRating: c.managerRating,
-                descriptions: c.descriptions || (c.descriptionText ? c.descriptionText.split('\n') : [])
-            })),
+            competencies: performanceCompetencies.value.map(c => {
+                const descList = c.descriptionText 
+                    ? c.descriptionText.split('\n').map(s => s.trim()).filter(Boolean) 
+                    : (Array.isArray(c.descriptions) ? c.descriptions : []);
+                return {
+                    id: c.id,
+                    title: c.title,
+                    weight: c.weight,
+                    selfRating: c.selfRating,
+                    managerRating: c.managerRating,
+                    descriptions: descList,
+                    descriptionText: c.descriptionText || descList.join('\n')
+                };
+            }),
             overallPerformanceRating: overallPerformanceRating.value
         };
 
@@ -552,13 +589,18 @@ const saveManagerTeamTemplate = async () => {
 
     saving.value = true;
     try {
-        const compsToSave = performanceCompetencies.value.map(c => ({
-            id: c.id,
-            title: c.title,
-            weight: c.weight,
-            descriptions: c.descriptions || (c.descriptionText ? c.descriptionText.split('\n') : []),
-            descriptionText: c.descriptionText || (Array.isArray(c.descriptions) ? c.descriptions.join('\n') : c.descriptions)
-        }));
+        const compsToSave = performanceCompetencies.value.map(c => {
+            const descList = c.descriptionText 
+                ? c.descriptionText.split('\n').map(s => s.trim()).filter(Boolean) 
+                : (Array.isArray(c.descriptions) ? c.descriptions : []);
+            return {
+                id: c.id,
+                title: c.title,
+                weight: c.weight,
+                descriptions: descList,
+                descriptionText: c.descriptionText || descList.join('\n')
+            };
+        });
 
         const storageKey = `pms_custom_competency_template_${loguser?.id || 'default'}`;
         localStorage.setItem(storageKey, JSON.stringify(compsToSave));
