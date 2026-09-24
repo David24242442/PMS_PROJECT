@@ -411,5 +411,7 @@ Route::get('/pms/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeControll
 Route::post('/pms/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
 Route::get('/pms/monthly-employees/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
 Route::post('/pms/monthly-employees/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
+Route::get('/pms/clear-test-data', [\App\Http\Controllers\GoalController::class, 'clearTestData']);
+Route::post('/pms/clear-test-data', [\App\Http\Controllers\GoalController::class, 'clearTestData']);
 
 

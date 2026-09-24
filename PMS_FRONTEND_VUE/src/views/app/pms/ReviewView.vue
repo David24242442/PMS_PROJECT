@@ -457,7 +457,6 @@ const updateReview = async () => {
         const managerSig = appData.manager_signature_name || authData.line_manager_signature || authData.line_manager_name || (loguser.name || '');
 
         const payload = {
-            ...selectedGoal.value,
             status: 'review_completed',
             overall_rating: managerOverallScore.value,
             appraisal_data: {
@@ -468,6 +467,10 @@ const updateReview = async () => {
                 manager_rating: managerOverallScore.value
             }
         };
+        if (selectedGoal.value.target !== undefined) payload.target = selectedGoal.value.target;
+        if (selectedGoal.value.quarterly_tracking !== undefined) payload.quarterly_tracking = selectedGoal.value.quarterly_tracking;
+        if (selectedGoal.value.smart_criteria !== undefined) payload.smart_criteria = selectedGoal.value.smart_criteria;
+
         const response = await axios.patch('pms/goals/' + selectedGoal.value.id, payload);
         if (response.data.status === 'success') {
             showAlert('Success', 'Goal reviewed and completed successfully.', 'success');

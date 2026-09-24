@@ -331,13 +331,34 @@ class GoalController extends Controller
         try {
             $goal = \App\Models\Goal::findOrFail($id);
             
-            $data = $request->except(['display_status']);
+            $raw = $request->except([
+                'display_status', 'user', 'creator', 'record_id', 'progress_percentage',
+                'id', 'created_at', 'updated_at'
+            ]);
+
+            // Filter data by columns actually present in goals table to prevent SQL errors
+            $data = $raw;
+            if (\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+                $columns = \Illuminate\Support\Facades\Schema::getColumnListing('goals');
+                $data = array_intersect_key($raw, array_flip($columns));
+            }
+
             if ((empty($data['job_title']) || in_array($data['job_title'], ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
                 $emp = \App\Models\Employee::where('employeeid', $goal->employee_code)->first();
                 if ($emp) {
                     $pos = $emp->job_title ?: ($emp->joiningposition ?? null);
                     if ($pos && $pos !== 'N/A' && $pos !== 'Employee') {
                         $data['job_title'] = $pos;
+                    }
+                }
+            }
+
+            // Ensure JSON arrays are properly handled
+            foreach (['appraisal_data', 'smart_criteria', 'quarterly_tracking', 'description', 'purposes', 'challenges'] as $jsonField) {
+                if (isset($data[$jsonField]) && is_string($data[$jsonField])) {
+                    $decoded = json_decode($data[$jsonField], true);
+                    if (is_array($decoded)) {
+                        $data[$jsonField] = $decoded;
                     }
                 }
             }
@@ -350,8 +371,8 @@ class GoalController extends Controller
                 'message' => 'Goal updated successfully',
                 'data' => $goal
             ]);
-        } catch (\Exception $e) {
-            \Log::error('GoalController@update failed: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            \Log::error('GoalController@update failed: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to update goal: ' . $e->getMessage()
@@ -1123,5 +1144,49 @@ class GoalController extends Controller
             'message' => 'Appraisal template saved successfully for line manager ' . $user->name,
             'template' => $user->appraisal_template
         ]);
+    }
+
+    /**
+     * Clear all test goals and appraisal records for a fresh start.
+     */
+    public function clearTestData(Request $request)
+    {
+        try {
+            \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+            
+            $deletedGoals = 0;
+            if (\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+                $deletedGoals = \Illuminate\Support\Facades\DB::table('goals')->count();
+                \Illuminate\Support\Facades\DB::table('goals')->truncate();
+            }
+
+            $deletedReviews = 0;
+            if (\Illuminate\Support\Facades\Schema::hasTable('reviews')) {
+                $deletedReviews = \Illuminate\Support\Facades\DB::table('reviews')->count();
+                \Illuminate\Support\Facades\DB::table('reviews')->truncate();
+            }
+
+            $resetTemplates = $request->input('reset_templates', false);
+            if ($resetTemplates && \Illuminate\Support\Facades\Schema::hasColumn('users', 'appraisal_template')) {
+                \Illuminate\Support\Facades\DB::table('users')->update(['appraisal_template' => null]);
+            }
+
+            \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+            return response()->json([
+                'status' => 'success',
+                'message' => "Successfully cleared all test data for a fresh start. ({$deletedGoals} goals and {$deletedReviews} reviews removed)",
+                'deleted_goals' => $deletedGoals,
+                'deleted_reviews' => $deletedReviews,
+                'templates_reset' => (bool)$resetTemplates
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+            \Log::error('GoalController@clearTestData failed: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to clear test data: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
