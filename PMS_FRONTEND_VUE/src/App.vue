@@ -1,6 +1,7 @@
 <script setup>
   import { RouterLink, RouterView } from 'vue-router'
   import { useUsersStore } from '@/stores/user';
+  import LoadingOverlay from '@/components/LoadingOverlay.vue';
   const userstore = useUsersStore()
 
   let { setloguser, settoken } = userstore
@@ -15,7 +16,7 @@
 </script>
 
 <template>
-
+  <LoadingOverlay />
   <RouterView />
 </template>
 

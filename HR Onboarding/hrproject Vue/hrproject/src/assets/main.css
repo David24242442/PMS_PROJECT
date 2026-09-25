@@ -775,3 +775,9 @@ body.dark-mode .p-dropdown-item.p-focus {
     color: #818cf8 !important;
 }
 
+/* Base button reset: eliminate browser user-agent dark/outset borders */
+button:not([class*="border"]):not([class*="btn-outline"]) {
+    border: none;
+}
+
+

@@ -3,15 +3,12 @@
     import { log, calculateAge, toastt, numberToWords, aToday, aDate, imgburl} from '@/helpers/essential'
     import { useRoute, useRouter } from 'vue-router';
     import { findrelation, findmarital, findqual, finddept, findgender, findregion, findbranch, findbankaccounttype, findbank, findfamilyrelation, findcountry, findidtypes, findcompany, findconttypes, findstatus } from '@/data/masterdata'
-    import axios from 'axios';
+    import axios from '@/helpers/pms_axios';
     import { useUsersStore } from '@/stores/user';
     const userstore = useUsersStore()
     const router = useRouter()
     const route = useRoute()
-    const { loguser, getloguser, authtoken, getauthtoken } = userstore
-
-    const bearer = `Bearer ${authtoken}`;
-    axios.defaults.headers.common['Authorization'] = bearer
+    const { loguser } = userstore
 
     const empid = route.params.empid
 
@@ -60,6 +57,7 @@
     })
 
     onMounted(() => {
+        console.log("--- DEBUGGER --- imgburl:", imgburl);
         
         axios.post('employee',{
                 data: empid
@@ -95,8 +93,12 @@
                 
             })
 
-        
     })
+
+    const getImgUrl = (path, folder) => {
+        if (!path) return '';
+        return path.includes('/') ? `${imgburl}${path}` : `${imgburl}${folder}/${path}`;
+    }
 
 </script>
 <template>
@@ -127,8 +129,8 @@
                             <div>
                                 <label for="">Profile Picture:</label>
                                 <img
-                                    v-if="emp.id"
-                                    :src="`${imgburl}${emp.profilepicture[0]?.path}`"
+                                    v-if="emp.id && emp.profilepicture && emp.profilepicture.length && emp.profilepicture[0]?.path"
+                                    :src="`http://192.168.0.20:5050/pms_backend/api/file/profilepicture/` + (emp.profilepicture[0].path.includes('/') ? emp.profilepicture[0].path.split('/').pop() : emp.profilepicture[0].path)"
                                     width="150px"
                                 >
                                 
@@ -874,7 +876,7 @@
                         <p>
                             Signature: 
                             <div v-if="emp.id">
-                                <img :src="`${imgburl}${emp.signature.path}`" width="200" >
+                                <img v-if="emp.signature" :src="`${imgburl}${emp.signature.path}`" width="200" >
                             </div>
                             
                             Date: <strong> {{ aDate(emp.created_at)  }} </strong>
@@ -883,7 +885,7 @@
                         <p>
                             Guarantor Signature: 
                             <div v-if="emp.id">
-                                <img :src="`${imgburl}${emp.guarsignature?.path}`" width="200" >
+                                <img v-if="emp.guarsignature?.path" :src="`${imgburl}${emp.guarsignature.path}`" width="200" >
                             </div>
                             
                             
@@ -952,7 +954,7 @@
                     <h3>Information Form</h3>
 
                     
-                    <div class="one" v-if="irrguar.id">
+                    <div class="one" v-if="irrguar.id && irrguar.profilepicture?.path">
                         <img
                             :src="`${imgburl}${irrguar.profilepicture.path}`"
                             width="150px"
@@ -1113,7 +1115,7 @@
                             <div style="margin: 10px 0px;">
                                 
                                 <div v-if="irrguar.id">
-                                    <img :src="`${imgburl}${irrguar.signature.path}`" width="200" >
+                                    <img v-if="irrguar.signature" :src="`${imgburl}${irrguar.signature.path}`" width="200" >
                                 </div>
 
                                 

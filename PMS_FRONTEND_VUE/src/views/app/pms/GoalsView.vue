@@ -1792,7 +1792,7 @@ const downloadAttachment = (file) => {
                                 <i class="pi pi-file-edit font-black text-xs"></i>
                                 <span class="font-black tracking-tight uppercase">Edit Appraisal Template (Step 1)</span>
                             </button>
-                            <button @click="startCreateGoal" class="prof-button !bg-[#334155] hover:!bg-slate-700 px-5 py-2.5 flex items-center gap-2 group border-none shadow-lg text-sm text-white font-bold transition-all">
+                            <button @click="startCreateGoal" class="prof-button !bg-indigo-600 hover:!bg-indigo-700 px-5 py-2.5 flex items-center gap-2 group border-none shadow-lg text-sm text-white font-bold transition-all">
                                 <i class="pi pi-plus font-black text-xs"></i>
                                 <span class="font-black tracking-tight text-xs uppercase">NEW SMART GOAL</span>
                             </button>
@@ -1897,41 +1897,41 @@ const downloadAttachment = (file) => {
                     <!-- Filters Toolbar -->
                     <div class="flex flex-col md:flex-row justify-between items-center gap-6 mt-6">
                         <!-- Status Filter Tabs -->
-                        <div class="flex bg-gray-200 p-1.5 rounded-xl border border-gray-100 flex-wrap">
+                        <div class="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 flex-wrap gap-1">
                             <button @click="filterStatus = 'all'" 
-                                :class="filterStatus === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-indigo-600'" 
-                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                :class="filterStatus === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-white hover:text-indigo-600 hover:shadow-sm'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal border-0 cursor-pointer">
                                 All
                             </button>
                             <button @click="filterStatus = 'assigned'" 
-                                :class="filterStatus === 'assigned' ? 'bg-indigo-700 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-indigo-700'" 
-                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                :class="filterStatus === 'assigned' ? 'bg-indigo-700 text-white shadow-md' : 'text-slate-600 hover:bg-white hover:text-indigo-700 hover:shadow-sm'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal border-0 cursor-pointer">
                                 Assigned
                             </button>
                             <button @click="filterStatus = 'submitted'" 
-                                :class="filterStatus === 'submitted' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-amber-600'" 
-                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                :class="filterStatus === 'submitted' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-600 hover:bg-white hover:text-amber-600 hover:shadow-sm'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal border-0 cursor-pointer">
                                 Submitted
                             </button>
                             <template v-if="isManager">
                                 <button @click="filterStatus = 'goal_created'" 
-                                    :class="filterStatus === 'goal_created' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-blue-600'" 
-                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                    :class="filterStatus === 'goal_created' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-white hover:text-blue-600 hover:shadow-sm'" 
+                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal border-0 cursor-pointer">
                                     In Progress
                                 </button>
                                 <button @click="filterStatus = 'appraisal_completed'" 
-                                    :class="filterStatus === 'appraisal_completed' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-teal-600'" 
-                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                    :class="filterStatus === 'appraisal_completed' ? 'bg-teal-600 text-white shadow-md' : 'text-slate-600 hover:bg-white hover:text-teal-600 hover:shadow-sm'" 
+                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal border-0 cursor-pointer">
                                     Appraisal Done
                                 </button>
                                 <button @click="filterStatus = 'review_completed'" 
-                                    :class="filterStatus === 'review_completed' ? 'bg-green-700 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-green-700'" 
-                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                    :class="filterStatus === 'review_completed' ? 'bg-green-700 text-white shadow-md' : 'text-slate-600 hover:bg-white hover:text-green-700 hover:shadow-sm'" 
+                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal border-0 cursor-pointer">
                                     Review Done
                                 </button>
                                 <button @click="filterStatus = 'draft'" 
-                                    :class="filterStatus === 'draft' ? 'bg-gray-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100 hover:text-gray-800'" 
-                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal">
+                                    :class="filterStatus === 'draft' ? 'bg-slate-600 text-white shadow-md' : 'text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm'" 
+                                    class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal border-0 cursor-pointer">
                                     Drafts
                                 </button>
                             </template>
