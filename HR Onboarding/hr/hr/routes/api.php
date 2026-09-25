@@ -405,9 +405,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/monthly-employees/locations', [\App\Http\Controllers\MonthlyEmployeeController::class, 'locations']);
         Route::post('/monthly-employees/upload', [\App\Http\Controllers\MonthlyEmployeeController::class, 'upload']);
         Route::get('/monthly-employees/template', [\App\Http\Controllers\MonthlyEmployeeController::class, 'template']);
+        Route::get('/monthly-employees/reconcile', [\App\Http\Controllers\MonthlyEmployeeController::class, 'reconcileWithOnboarding']);
+        Route::get('/monthly-employees/reconcile-export', [\App\Http\Controllers\MonthlyEmployeeController::class, 'exportReconciliationCsv']);
     });
 });
 
+Route::get('/pms/monthly-employees/reconcile', [\App\Http\Controllers\MonthlyEmployeeController::class, 'reconcileWithOnboarding']);
+Route::get('/pms/monthly-employees/reconcile-export', [\App\Http\Controllers\MonthlyEmployeeController::class, 'exportReconciliationCsv']);
+Route::get('/pms/reconcile-onboarding', [\App\Http\Controllers\MonthlyEmployeeController::class, 'reconcileWithOnboarding']);
 Route::get('/pms/migrate-monthly-employees', [\App\Http\Controllers\MonthlyEmployeeController::class, 'migrateTable']);
 Route::get('/pms/sync-local-excel', [\App\Http\Controllers\MonthlyEmployeeController::class, 'syncLocalExcel']);
 Route::get('/pms/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
@@ -416,5 +421,6 @@ Route::get('/pms/monthly-employees/clean-reingest', [\App\Http\Controllers\Month
 Route::post('/pms/monthly-employees/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
 Route::get('/pms/clear-test-data', [\App\Http\Controllers\GoalController::class, 'clearTestData']);
 Route::post('/pms/clear-test-data', [\App\Http\Controllers\GoalController::class, 'clearTestData']);
+
 
 

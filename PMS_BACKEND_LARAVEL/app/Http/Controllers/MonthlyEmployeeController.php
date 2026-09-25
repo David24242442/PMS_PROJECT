@@ -133,6 +133,64 @@ class MonthlyEmployeeController extends Controller
 
             $employees = $query->paginate($perPage);
 
+            // Attach Onboarding Status for the current page items
+            $items = $employees->items();
+            $empIds = [];
+            foreach ($items as $item) {
+                if (!empty($item->emp_id)) {
+                    $clean = trim((string)$item->emp_id);
+                    $empIds[] = $clean;
+                    $noZeros = ltrim($clean, '0');
+                    if ($noZeros !== '') $empIds[] = $noZeros;
+                }
+            }
+
+            $onboardingMap = [];
+            if (!empty($empIds)) {
+                $onboardingQuery = self::getOnboardingEmployeesQuery();
+                if ($onboardingQuery) {
+                    $obRows = $onboardingQuery
+                        ->where(function($q) use ($empIds) {
+                            $q->whereIn('employeeid', $empIds)
+                              ->orWhereIn('emp_code', $empIds);
+                        })
+                        ->select('id', 'employeeid', 'emp_code', 'firstname', 'surname', 'status')
+                        ->get();
+
+                    foreach ($obRows as $ob) {
+                        if (!empty($ob->employeeid)) {
+                            $c = trim((string)$ob->employeeid);
+                            $onboardingMap[$c] = $ob;
+                            $z = ltrim($c, '0');
+                            if ($z !== '') $onboardingMap[$z] = $ob;
+                        }
+                        if (!empty($ob->emp_code)) {
+                            $c = trim((string)$ob->emp_code);
+                            $onboardingMap[$c] = $ob;
+                            $z = ltrim($c, '0');
+                            if ($z !== '') $onboardingMap[$z] = $ob;
+                        }
+                    }
+                }
+            }
+
+            foreach ($items as $item) {
+                $pId = trim((string)$item->emp_id);
+                $pIdNoZero = ltrim($pId, '0');
+                $matched = $onboardingMap[$pId] ?? ($onboardingMap[$pIdNoZero] ?? null);
+                if ($matched) {
+                    $item->onboarding_matched = true;
+                    $item->onboarding_id = $matched->id;
+                    $item->onboarding_name = trim(($matched->firstname ?? '') . ' ' . ($matched->surname ?? ''));
+                    $item->onboarding_status = self::mapOnboardingStatus($matched->status, true);
+                } else {
+                    $item->onboarding_matched = false;
+                    $item->onboarding_id = null;
+                    $item->onboarding_name = null;
+                    $item->onboarding_status = self::mapOnboardingStatus(null, false);
+                }
+            }
+
             // Distinct filter options for UI dropdowns
             $locations = DB::table($tableName)
                 ->whereNotNull('location')
@@ -716,6 +774,453 @@ class MonthlyEmployeeController extends Controller
                 'status' => 'error',
                 'message' => 'Migration failed: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Resolve the query for the onboarding 'employees' table across local or central connections.
+     */
+    public static function getOnboardingEmployeesQuery()
+    {
+        // Try central connection first (if reachable)
+        try {
+            DB::connection('central')->getPdo();
+            if (Schema::connection('central')->hasTable('employees')) {
+                return DB::connection('central')->table('employees');
+            }
+        } catch (\Throwable $e) {
+            // Central unreachable, fallback to local
+        }
+
+        // Fallback to local default connection
+        if (Schema::hasTable('employees')) {
+            return DB::table('employees');
+        }
+
+        return null;
+    }
+
+    /**
+     * Normalize status codes into standardized business status objects.
+     */
+    public static function mapOnboardingStatus($rawStatus, bool $isOnboarded = true): array
+    {
+        if (!$isOnboarded) {
+            return [
+                'code' => 'NOT_ONBOARDED',
+                'label' => 'Not Onboarded',
+                'severity' => 'warning',
+                'badge_class' => 'badge-not-onboarded',
+                'audit_flag' => 'Missing Onboarding Record',
+                'recommendation' => 'Needs Onboarding Profile Created',
+                'is_discrepancy' => true,
+            ];
+        }
+
+        $val = trim((string)$rawStatus);
+        $lower = strtolower($val);
+
+        if ($val === '1' || $lower === 'active') {
+            return [
+                'code' => 'ACTIVE',
+                'label' => 'Active',
+                'severity' => 'success',
+                'badge_class' => 'badge-active',
+                'audit_flag' => 'Verified Active',
+                'recommendation' => 'Compliant - Record in sync',
+                'is_discrepancy' => false,
+            ];
+        }
+        if ($val === '2' || $lower === 'resigned') {
+            return [
+                'code' => 'RESIGNED',
+                'label' => 'Resigned',
+                'severity' => 'danger',
+                'badge_class' => 'badge-resigned',
+                'audit_flag' => 'CRITICAL: Resigned in HR, on Payroll',
+                'recommendation' => 'Review payroll - Employee marked Resigned',
+                'is_discrepancy' => true,
+            ];
+        }
+        if ($val === '3' || $lower === 'absconded') {
+            return [
+                'code' => 'ABSCONDED',
+                'label' => 'Absconded',
+                'severity' => 'danger',
+                'badge_class' => 'badge-absconded',
+                'audit_flag' => 'CRITICAL: Absconded in HR, on Payroll',
+                'recommendation' => 'Review payroll - Employee marked Absconded',
+                'is_discrepancy' => true,
+            ];
+        }
+        if ($val === '4' || $lower === 'terminated') {
+            return [
+                'code' => 'TERMINATED',
+                'label' => 'Terminated',
+                'severity' => 'danger',
+                'badge_class' => 'badge-terminated',
+                'audit_flag' => 'CRITICAL: Terminated in HR, on Payroll',
+                'recommendation' => 'Immediate action - Terminated worker on active payroll',
+                'is_discrepancy' => true,
+            ];
+        }
+        if ($val === '5' || $lower === 'dismissed') {
+            return [
+                'code' => 'DISMISSED',
+                'label' => 'Dismissed',
+                'severity' => 'danger',
+                'badge_class' => 'badge-dismissed',
+                'audit_flag' => 'CRITICAL: Dismissed in HR, on Payroll',
+                'recommendation' => 'Immediate action - Dismissed worker on active payroll',
+                'is_discrepancy' => true,
+            ];
+        }
+        if ($val === '6' || $lower === 'deceased') {
+            return [
+                'code' => 'DECEASED',
+                'label' => 'Deceased',
+                'severity' => 'danger',
+                'badge_class' => 'badge-deceased',
+                'audit_flag' => 'CRITICAL: Deceased in HR, on Payroll',
+                'recommendation' => 'Immediate halt - Deceased worker on active payroll',
+                'is_discrepancy' => true,
+            ];
+        }
+        if ($lower === 'stop' || $lower === 'stopped' || $lower === 'inactive' || $lower === 'hold') {
+            return [
+                'code' => 'STOP',
+                'label' => 'Stop / On Hold',
+                'severity' => 'danger',
+                'badge_class' => 'badge-stop',
+                'audit_flag' => 'CRITICAL: Salary on Stop, on Payroll',
+                'recommendation' => 'Verify payroll hold status',
+                'is_discrepancy' => true,
+            ];
+        }
+
+        return [
+            'code' => 'UNKNOWN',
+            'label' => $val ? ucfirst($val) : 'Unknown',
+            'severity' => 'info',
+            'badge_class' => 'badge-unknown',
+            'audit_flag' => 'Unrecognized Status in HR (' . $val . ')',
+            'recommendation' => 'Update onboarding record status',
+            'is_discrepancy' => true,
+        ];
+    }
+
+    /**
+     * Reconcile payroll upload with onboarding records.
+     * Source of truth for employees: Monthly_Employees.
+     * Source of truth for employee status: Onboarding (employees table).
+     */
+    public function reconcileWithOnboarding(Request $request)
+    {
+        try {
+            self::ensureTableExists();
+            $tableName = self::getActualTableName();
+
+            $monthYear = $request->input('month_year');
+            if (empty($monthYear) || $monthYear === 'all') {
+                $latestMonth = DB::table($tableName)->orderBy('id', 'desc')->value('month_year');
+                $monthYear = $latestMonth ?: 'AUGUST 2026';
+            }
+
+            $statusFilter = strtolower(trim((string)$request->input('status_filter', 'all')));
+            $search = trim((string)$request->input('search', ''));
+            $location = trim((string)$request->input('location', ''));
+            $perPage = min(max((int)$request->input('per_page', 50), 10), 500);
+            $page = max((int)$request->input('page', 1), 1);
+
+            // Fetch all monthly payroll employees for this batch
+            $payrollQuery = DB::table($tableName)->where('month_year', $monthYear);
+            $allPayrollEmployees = $payrollQuery->orderBy('sr_no', 'asc')->get();
+
+            // Fetch all onboarding employees to build the cross-reference map
+            $onboardingQuery = self::getOnboardingEmployeesQuery();
+            $onboardingMap = [];
+            if ($onboardingQuery) {
+                $onboardingRows = $onboardingQuery
+                    ->select('id', 'employeeid', 'emp_code', 'firstname', 'surname', 'status', 'email', 'mobileno', 'joiningposition', 'company', 'joining_branch_id')
+                    ->get();
+
+                foreach ($onboardingRows as $row) {
+                    if (!empty($row->employeeid)) {
+                        $cleanId = trim((string)$row->employeeid);
+                        $onboardingMap[$cleanId] = $row;
+                        $noZeros = ltrim($cleanId, '0');
+                        if ($noZeros !== '' && !isset($onboardingMap[$noZeros])) {
+                            $onboardingMap[$noZeros] = $row;
+                        }
+                    }
+                    if (!empty($row->emp_code)) {
+                        $cleanCode = trim((string)$row->emp_code);
+                        if (!isset($onboardingMap[$cleanCode])) {
+                            $onboardingMap[$cleanCode] = $row;
+                        }
+                        $noZerosCode = ltrim($cleanCode, '0');
+                        if ($noZerosCode !== '' && !isset($onboardingMap[$noZerosCode])) {
+                            $onboardingMap[$noZerosCode] = $row;
+                        }
+                    }
+                }
+            }
+
+            // Cross-reference and calculate metrics
+            $reconciledRecords = [];
+            $stats = [
+                'total_payroll' => count($allPayrollEmployees),
+                'active' => 0,
+                'not_onboarded' => 0,
+                'resigned' => 0,
+                'absconded' => 0,
+                'terminated' => 0,
+                'dismissed' => 0,
+                'deceased' => 0,
+                'stop' => 0,
+                'unknown' => 0,
+                'total_discrepancies' => 0
+            ];
+
+            foreach ($allPayrollEmployees as $emp) {
+                $empId = trim((string)$emp->emp_id);
+                $empIdNoZero = ltrim($empId, '0');
+                $obMatch = $onboardingMap[$empId] ?? ($onboardingMap[$empIdNoZero] ?? null);
+
+                $statusMeta = self::mapOnboardingStatus($obMatch ? $obMatch->status : null, (bool)$obMatch);
+
+                // Increment stats
+                $statusCode = strtolower($statusMeta['code']);
+                if (isset($stats[$statusCode])) {
+                    $stats[$statusCode]++;
+                } else {
+                    $stats['unknown']++;
+                }
+
+                if ($statusMeta['is_discrepancy']) {
+                    $stats['total_discrepancies']++;
+                }
+
+                $record = [
+                    'monthly_id' => $emp->id,
+                    'sr_no' => $emp->sr_no,
+                    'emp_id' => $emp->emp_id,
+                    'employee_name' => $emp->employee_name,
+                    'location' => $emp->location,
+                    'designation' => $emp->designation,
+                    'sex' => $emp->sex,
+                    'category' => $emp->category,
+                    'month_year' => $emp->month_year,
+                    'payroll_status' => $emp->status,
+                    'onboarding_matched' => (bool)$obMatch,
+                    'onboarding_id' => $obMatch ? $obMatch->id : null,
+                    'onboarding_name' => $obMatch ? trim(($obMatch->firstname ?? '') . ' ' . ($obMatch->surname ?? '')) : null,
+                    'onboarding_status_raw' => $obMatch ? $obMatch->status : null,
+                    'onboarding_status' => $statusMeta,
+                ];
+
+                $reconciledRecords[] = $record;
+            }
+
+            // Apply Filters (status_filter, search, location)
+            $filtered = collect($reconciledRecords);
+
+            if ($statusFilter !== 'all' && $statusFilter !== '') {
+                if ($statusFilter === 'discrepancies' || $statusFilter === 'discrepancies_only') {
+                    $filtered = $filtered->filter(fn($r) => $r['onboarding_status']['is_discrepancy']);
+                } else {
+                    $filtered = $filtered->filter(function ($r) use ($statusFilter) {
+                        return strtolower($r['onboarding_status']['code']) === $statusFilter;
+                    });
+                }
+            }
+
+            if (!empty($location) && $location !== 'all') {
+                $filtered = $filtered->filter(function ($r) use ($location) {
+                    return strcasecmp($r['location'] ?? '', $location) === 0;
+                });
+            }
+
+            if (!empty($search)) {
+                $term = strtolower($search);
+                $filtered = $filtered->filter(function ($r) use ($term) {
+                    return stripos($r['emp_id'] ?? '', $term) !== false ||
+                           stripos($r['employee_name'] ?? '', $term) !== false ||
+                           stripos($r['location'] ?? '', $term) !== false ||
+                           stripos($r['designation'] ?? '', $term) !== false ||
+                           stripos($r['onboarding_name'] ?? '', $term) !== false;
+                });
+            }
+
+            $totalFiltered = $filtered->count();
+            $lastPage = max((int)ceil($totalFiltered / $perPage), 1);
+            $page = min($page, $lastPage);
+            $offset = ($page - 1) * $perPage;
+            $paginatedItems = $filtered->slice($offset, $perPage)->values();
+
+            // Distinct lists for UI filters
+            $availableLocations = collect($reconciledRecords)->pluck('location')->filter()->unique()->sort()->values();
+            $availableMonths = DB::table($tableName)->distinct()->orderBy('month_year', 'desc')->pluck('month_year');
+
+            return response()->json([
+                'status' => 'success',
+                'month_year' => $monthYear,
+                'stats' => $stats,
+                'data' => [
+                    'data' => $paginatedItems,
+                    'current_page' => $page,
+                    'last_page' => $lastPage,
+                    'per_page' => $perPage,
+                    'total' => $totalFiltered,
+                    'from' => $totalFiltered > 0 ? $offset + 1 : 0,
+                    'to' => min($offset + $perPage, $totalFiltered)
+                ],
+                'filters' => [
+                    'locations' => $availableLocations,
+                    'months' => $availableMonths,
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('MonthlyEmployeeController@reconcileWithOnboarding error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to reconcile records: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Export the full reconciliation report as CSV.
+     */
+    public function exportReconciliationCsv(Request $request)
+    {
+        try {
+            self::ensureTableExists();
+            $tableName = self::getActualTableName();
+
+            $monthYear = $request->input('month_year');
+            if (empty($monthYear) || $monthYear === 'all') {
+                $latestMonth = DB::table($tableName)->orderBy('id', 'desc')->value('month_year');
+                $monthYear = $latestMonth ?: 'AUGUST 2026';
+            }
+
+            $statusFilter = strtolower(trim((string)$request->input('status_filter', 'all')));
+            $search = trim((string)$request->input('search', ''));
+            $location = trim((string)$request->input('location', ''));
+
+            $payrollEmployees = DB::table($tableName)
+                ->where('month_year', $monthYear)
+                ->orderBy('sr_no', 'asc')
+                ->get();
+
+            $onboardingQuery = self::getOnboardingEmployeesQuery();
+            $onboardingMap = [];
+            if ($onboardingQuery) {
+                $onboardingRows = $onboardingQuery
+                    ->select('id', 'employeeid', 'emp_code', 'firstname', 'surname', 'status')
+                    ->get();
+                foreach ($onboardingRows as $row) {
+                    if (!empty($row->employeeid)) {
+                        $clean = trim((string)$row->employeeid);
+                        $onboardingMap[$clean] = $row;
+                        $z = ltrim($clean, '0');
+                        if ($z !== '' && !isset($onboardingMap[$z])) $onboardingMap[$z] = $row;
+                    }
+                    if (!empty($row->emp_code)) {
+                        $clean = trim((string)$row->emp_code);
+                        if (!isset($onboardingMap[$clean])) $onboardingMap[$clean] = $row;
+                        $z = ltrim($clean, '0');
+                        if ($z !== '' && !isset($onboardingMap[$z])) $onboardingMap[$z] = $row;
+                    }
+                }
+            }
+
+            $cleanBatch = preg_replace('/[^A-Za-z0-9_\-]/', '_', $monthYear);
+            $filename = "Payroll_vs_Onboarding_Audit_{$cleanBatch}.csv";
+
+            $headers = [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+                'Pragma' => 'no-cache',
+                'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+                'Expires' => '0'
+            ];
+
+            $callback = function () use ($payrollEmployees, $onboardingMap, $statusFilter, $search, $location) {
+                $output = fopen('php://output', 'w');
+                // UTF-8 BOM
+                fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+
+                fputcsv($output, [
+                    'Sr. No',
+                    'Payroll Emp ID',
+                    'Payroll Employee Name',
+                    'Payroll Location',
+                    'Payroll Designation',
+                    'Payroll Category',
+                    'Payroll Month Batch',
+                    'Onboarding ID',
+                    'Onboarding Full Name',
+                    'Onboarding Status (Source of Truth)',
+                    'Audit Discrepancy Flag',
+                    'Action Recommendation',
+                    'Is Discrepancy'
+                ]);
+
+                foreach ($payrollEmployees as $emp) {
+                    $empId = trim((string)$emp->emp_id);
+                    $empIdNoZero = ltrim($empId, '0');
+                    $obMatch = $onboardingMap[$empId] ?? ($onboardingMap[$empIdNoZero] ?? null);
+                    $statusMeta = self::mapOnboardingStatus($obMatch ? $obMatch->status : null, (bool)$obMatch);
+
+                    if ($statusFilter !== 'all' && $statusFilter !== '') {
+                        if ($statusFilter === 'discrepancies' && !$statusMeta['is_discrepancy']) {
+                            continue;
+                        } elseif ($statusFilter !== 'discrepancies' && strtolower($statusMeta['code']) !== $statusFilter) {
+                            continue;
+                        }
+                    }
+
+                    if (!empty($location) && $location !== 'all' && strcasecmp($emp->location ?? '', $location) !== 0) {
+                        continue;
+                    }
+
+                    if (!empty($search)) {
+                        $term = strtolower($search);
+                        $obName = $obMatch ? trim(($obMatch->firstname ?? '') . ' ' . ($obMatch->surname ?? '')) : '';
+                        if (stripos($emp->emp_id ?? '', $term) === false &&
+                            stripos($emp->employee_name ?? '', $term) === false &&
+                            stripos($emp->location ?? '', $term) === false &&
+                            stripos($emp->designation ?? '', $term) === false &&
+                            stripos($obName, $term) === false) {
+                            continue;
+                        }
+                    }
+
+                    fputcsv($output, [
+                        $emp->sr_no ?? '',
+                        $emp->emp_id,
+                        $emp->employee_name,
+                        $emp->location ?? '',
+                        $emp->designation ?? '',
+                        $emp->category ?? '',
+                        $emp->month_year ?? '',
+                        $obMatch ? $obMatch->id : 'NOT FOUND',
+                        $obMatch ? trim(($obMatch->firstname ?? '') . ' ' . ($obMatch->surname ?? '')) : 'NOT FOUND IN ONBOARDING',
+                        $statusMeta['label'],
+                        $statusMeta['audit_flag'],
+                        $statusMeta['recommendation'],
+                        $statusMeta['is_discrepancy'] ? 'YES' : 'NO'
+                    ]);
+                }
+
+                fclose($output);
+            };
+
+            return response()->stream($callback, 200, $headers);
+        } catch (\Throwable $e) {
+            \Log::error('exportReconciliationCsv error: ' . $e->getMessage());
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
     }
 }
