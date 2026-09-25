@@ -2010,69 +2010,116 @@
 <template>
 
     <div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; padding:20px 24px; background:linear-gradient(135deg, #1A237E 0%, #121858 100%); border-radius:16px; box-shadow:0 4px 14px rgba(18,24,88,0.35);">
-            <div>
-                <h2 style="margin:0; color:white; font-size:1.5rem; font-weight:800; letter-spacing:-0.02em;">Employee Onboarding</h2>
-                <p style="margin:4px 0 0; color:rgba(255,255,255,0.75); font-size:0.85rem; font-weight:500;">Complete the onboarding form for new employees</p>
-            </div>
-            <div style="display:flex; align-items:center; gap:12px;">
-                <Button 
-                    :icon="isSyncing ? 'pi pi-spin pi-spinner' : 'pi pi-cloud-download'" 
-                    :label="isSyncing ? 'Syncing...' : 'Sync'" 
-                    @click="triggerSyncCentral" 
-                    :disabled="isSyncing"
-                    class="p-button-outlined" 
-                    style="color:white; border-color:rgba(255,255,255,0.45); font-weight:700; border-radius:10px; background:rgba(255,255,255,0.12);"
-                ></Button>
-                <Button 
-                    icon='pi pi-search' 
-                    label="Search Employee" 
-                    @click="showsearchpopup" 
-                    class="p-button-outlined" 
-                    style="color:white; border-color:rgba(255,255,255,0.4); font-weight:600; border-radius:10px; background:rgba(255,255,255,0.06);"
-                ></Button>
+        <!-- PMS Standard Header Banner -->
+        <div class="prof-card mb-6 bg-[#1A237E] !rounded-2xl shadow-xl overflow-hidden">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-5 px-6 gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-blue-200 border border-white/10 shrink-0">
+                        <i class="pi pi-user-plus text-2xl text-blue-200"></i>
+                    </div>
+                    <div>
+                        <p class="text-white/80 text-[10px] font-black uppercase tracking-wider mb-0.5">HUMAN RESOURCES & TALENT ACQUISITION</p>
+                        <h1 class="text-xl md:text-2xl font-black text-white tracking-tight">Employee Onboarding & Registration</h1>
+                        <p class="text-blue-100/70 text-xs font-medium mt-0.5">Complete registration, position details, banking, guarantee records and compliance checklists</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <div v-if="emp.id" class="px-3.5 py-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 text-xs font-black text-white flex items-center gap-2">
+                        <i class="pi pi-id-card text-blue-200"></i>
+                        <span>{{ emp.firstname || '' }} {{ emp.lastname || '' }} ({{ emp.emp_code }})</span>
+                    </div>
+                    <button 
+                        type="button"
+                        @click="triggerSyncCentral" 
+                        :disabled="isSyncing"
+                        class="prof-button !bg-emerald-600 hover:!bg-emerald-700 disabled:opacity-50 px-4 py-2.5 flex items-center gap-2 border-none shadow-lg text-xs text-white font-bold transition-all cursor-pointer rounded-xl"
+                        title="Sync live employee records from Central Server 17"
+                    >
+                        <i :class="isSyncing ? 'pi pi-spin pi-spinner' : 'pi pi-cloud-download'" class="text-xs"></i>
+                        <span class="font-bold tracking-tight uppercase">{{ isSyncing ? 'Syncing...' : 'Sync Central Data' }}</span>
+                    </button>
+                    <button 
+                        type="button"
+                        @click="showsearchpopup" 
+                        class="prof-button !bg-white/15 hover:!bg-white/25 border border-white/20 px-4 py-2.5 flex items-center gap-2 shadow-lg text-xs text-white font-bold transition-all cursor-pointer rounded-xl"
+                    >
+                        <i class="pi pi-search text-xs"></i>
+                        <span class="font-bold tracking-tight uppercase">Search Employee</span>
+                    </button>
+                </div>
             </div>
         </div>
         
 
-        <div class="tabs">
+        <!-- Modern PMS Filter Pill Tabs -->
+        <div class="tabs mb-6 bg-slate-100/90 dark:bg-slate-800/80 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-wrap gap-1.5 shadow-xs">
             <button
+                type="button"
                 @click="changetab(1)"
-                :class="maintab == 1 ? 'activetab' : '' "
-            >Employee Information Form</button>
+                :class="maintab == 1 ? 'activetab' : ''"
+                class="tab-btn"
+            >
+                <i class="pi pi-user text-xs"></i>
+                <span>Employee Information Form</span>
+                <span v-if="emp.id" class="tab-badge">ID: {{ emp.emp_code }}</span>
+            </button>
 
             <button
+                type="button"
                 @click="changetab(2)"
-                :class="maintab == 2 ? 'activetab' : '' "
+                :class="maintab == 2 ? 'activetab' : ''"
                 :disabled="!emp.id || !isnotoptional"
-            >Bank / Social Security Fund</button>
+                class="tab-btn"
+            >
+                <i class="pi pi-credit-card text-xs"></i>
+                <span>Bank / Social Security Fund</span>
+            </button>
 
             <button
+                type="button"
                 @click="changetab(3)"
-                :class="maintab == 3 ? 'activetab' : '' "
+                :class="maintab == 3 ? 'activetab' : ''"
                 :disabled="!emp.id || (!isnotoptional && !guarantorrequired)"
-            >Irrevocable Continuing Guarantee</button>
+                class="tab-btn"
+            >
+                <i class="pi pi-shield text-xs"></i>
+                <span>Irrevocable Continuing Guarantee</span>
+            </button>
 
             <button
+                type="button"
                 @click="changetab(4)"
-                :class="maintab == 4 ? 'activetab' : '' "
+                :class="maintab == 4 ? 'activetab' : ''"
                 :disabled="!emp.id"
-            >Checklist</button>
+                class="tab-btn"
+            >
+                <i class="pi pi-check-square text-xs"></i>
+                <span>Checklist & Compliance</span>
+            </button>
         </div>
 
         <div id="form">
             
             <div id="mainform" v-show="maintab == 1">
-                <h2>
-                    Employee Information Form 
-                    <span v-if="emp.id" class='text-mred-500'>( {{ emp.emp_code }} )</span> 
-                </h2>
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800 dark:text-white tracking-tight flex items-center gap-3 m-0">
+                            <span>Employee Information Form</span>
+                            <span v-if="emp.id" class="px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-black border border-indigo-200 dark:border-indigo-700">
+                                ({{ emp.emp_code }})
+                            </span>
+                        </h2>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 mb-0">Capture employee personal, position, contact and educational details</p>
+                    </div>
+                    <div class="steper">
+                        <span>Page</span>
+                        <span class="active">{{ perinfostep }}</span>
+                        <span class="text-slate-400">/</span>
+                        <span>4</span>
+                    </div>
+                </div>
 
                 <div>
-                    <div class="steper">
-                        Page 
-                        <span class="active">{{ perinfostep }}</span> / <span>4</span>
-                    </div>
                     
                     <div id='perinfo1' v-show="perinfostep == 1">
 
@@ -3889,7 +3936,12 @@
             </div>
 
             <div id="banksocial" v-show="maintab == 2">
-                <h2>Bank / Social Security Fund Contribution Details</h2>
+                <div class="mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
+                    <h2 class="text-xl font-black text-slate-800 dark:text-white tracking-tight m-0">
+                        Bank & Social Security Fund Contribution Details
+                    </h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 mb-0">Record salary remittance bank account, branch, and SSNIT details</p>
+                </div>
 
                 <div id='socialcontact' class='group'>
                     
@@ -4144,12 +4196,21 @@
             </div>
 
             <div id="irrguarantor" v-show="maintab == 3">
-                <h2> Declaration Document Attachment of irrevocable and Witness Sign</h2>
-                <div >
-                    <div class="steper">
-                        Page 
-                        <span class="active">{{ irrguarstep }}</span> / <span>3</span>
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800 dark:text-white tracking-tight m-0">
+                            Irrevocable Continuing Guarantee & Witness Sign-Off
+                        </h2>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 mb-0">Guarantor information, financial indemnity declaration, and witnesses</p>
                     </div>
+                    <div class="steper">
+                        <span>Page</span>
+                        <span class="active">{{ irrguarstep }}</span>
+                        <span class="text-slate-400">/</span>
+                        <span>3</span>
+                    </div>
+                </div>
+                <div>
                     <div id="irrguar1" v-show="irrguarstep == 1" class="group">
                         <h3 >Information Form</h3>
 
@@ -4713,7 +4774,12 @@
             </div> 
             
             <div id="empchecklist" v-show="maintab == 4">
-                <h2> Employee checklist</h2>
+                <div class="mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
+                    <h2 class="text-xl font-black text-slate-800 dark:text-white tracking-tight m-0">
+                        Employee Onboarding Checklist & Compliance Verification
+                    </h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 mb-0">Track verification status and required compliance document uploads</p>
+                </div>
 
                 <div id='empchecklistdiv'>
                     <div style="border-top: 1px solid black;">
@@ -4944,38 +5010,80 @@
         </div>
     </div>
 
-    <div class='poppop' v-if="showsearchpopupvalue">
-        <button class='poppopclose' @click="showsearchpopupvalue = false"> Close </button>
-        <div class="poppopin">
-            <div class='popheader'>
-                <h3>List of Employees</h3>
-                <input class="popsearch" type="text" v-model="empsearch" placeholder="Type the employee name or ID" v-uppercase>
-                
-                <div class="deux" >
-                    <span>Employee ID</span>
-                    <span>Employee Code</span>
-                    <span>Employee Name</span>
+    <!-- Modern Search Employee Modal -->
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-fadeIn" v-if="showsearchpopupvalue">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800 flex flex-col my-auto max-h-[85vh] animate-scaleUp">
+            <!-- Modal Header -->
+            <div class="px-6 py-5 bg-[#1A237E] flex items-center justify-between text-white">
+                <div class="flex items-center gap-3.5">
+                    <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/15 text-blue-200">
+                        <i class="pi pi-users text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-black tracking-tight text-white m-0">Search & Load Employee</h3>
+                        <p class="text-[11px] text-blue-200/80 font-medium m-0 mt-0.5">Search by name, employee code, or ID to populate onboarding records</p>
+                    </div>
+                </div>
+                <button @click="showsearchpopupvalue = false" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all cursor-pointer border border-white/10" title="Close">
+                    <i class="pi pi-times text-xs"></i>
+                </button>
+            </div>
+            
+            <!-- Search Bar -->
+            <div class="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+                <div class="relative">
+                    <i class="pi pi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    <input class="prof-input w-full pl-11 !bg-white dark:!bg-slate-900 !rounded-xl" type="text" v-model="empsearch" placeholder="Type employee name, code (e.g. MEL...), or ID..." v-uppercase autofocus>
                 </div>
             </div>
 
-            <div class="poplist">
-                <!-- @click="handleorderselect(p.SaleOrderNO)" -->
-                <div
-                    v-for="(e, index) in emplist"
-                    :key="index"
-                    @click="handleempselect(e.id)"
-                    class="deux"
+            <!-- Employee List Results -->
+            <div class="p-4 overflow-y-auto flex-1 space-y-2 max-h-[380px]">
+                <div 
+                    v-for="(e, index) in emplist" 
+                    :key="index" 
+                    @click="handleempselect(e.id)" 
+                    class="p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 bg-white dark:bg-slate-800 hover:bg-indigo-50/40 dark:hover:bg-slate-700/50 transition-all cursor-pointer flex items-center justify-between group"
                 >
-                    
-                    <span>{{ e.employeeid }} </span>
-                    <span>{{ e.emp_code }}</span>
-                    <span>{{ e.firstname }}</span>
-                    
+                    <div class="flex items-center gap-3.5 min-w-0">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-[#1A237E] text-white flex items-center justify-center font-bold text-sm shadow-sm shrink-0">
+                            {{ (e.firstname ? e.firstname.charAt(0) : 'E').toUpperCase() }}
+                        </div>
+                        <div class="min-w-0">
+                            <div class="font-bold text-slate-800 dark:text-white text-sm group-hover:text-[#1A237E] transition-colors truncate">
+                                {{ e.firstname }} {{ e.lastname || '' }}
+                            </div>
+                            <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex-wrap">
+                                <span class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[10px]">
+                                    CODE: {{ e.emp_code }}
+                                </span>
+                                <span v-if="e.employeeid" class="text-[11px] text-slate-400">
+                                    ID: {{ e.employeeid }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                            Load <i class="pi pi-arrow-right text-[10px]"></i>
+                        </span>
+                    </div>
                 </div>
 
-                <div v-if="!emplist.length" style="padding:10px; text-align: center;">
-                    No result for your search
+                <div v-if="!emplist.length" class="text-center py-10 text-slate-400">
+                    <i class="pi pi-search text-3xl mb-2 text-slate-300 dark:text-slate-600 block"></i>
+                    <p class="text-xs font-semibold m-0">
+                        {{ empsearch && empsearch.length > 2 ? 'No employees matching "' + empsearch + '"' : 'Type at least 3 characters to search employee directory...' }}
+                    </p>
                 </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-3.5 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs text-slate-500">
+                <span>Results: <strong class="text-slate-700 dark:text-slate-300">{{ emplist.length }}</strong> employees</span>
+                <button type="button" @click="showsearchpopupvalue = false" class="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-100 transition-colors cursor-pointer">
+                    Close
+                </button>
             </div>
         </div>
     </div>
@@ -4995,51 +5103,70 @@
 
     /* ─── Stepper dots ─── */
     .steper {
-        display: flex;
-        justify-content: flex-end;
-        padding: 16px 20px;
+        display: inline-flex;
         align-items: center;
         gap: 8px;
-        font-weight: 600;
-        color: var(--text-secondary);
-        font-size: 0.9rem;
-
-        & span {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            border: 2px solid var(--border-color);
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            font-size: 0.85rem;
-            font-weight: 700;
-            transition: all 0.3s ease;
-            color: var(--text-secondary);
-
-            &.active {
-                background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-                color: white;
-                border-color: var(--primary);
-                box-shadow: 0 2px 8px rgba(79,70,229,0.3);
-                transform: scale(1.05);
-            }
-        }
+        padding: 6px 14px;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    body.dark-mode .steper {
+        background: #1e293b;
+        border-color: #334155;
+        color: #94a3b8;
+    }
+    .steper span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        font-size: 0.825rem;
+        font-weight: 800;
+        color: #475569;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        transition: all 0.2s ease;
+    }
+    body.dark-mode .steper span {
+        background: #0f172a;
+        border-color: #334155;
+        color: #cbd5e1;
+    }
+    .steper span.active {
+        background: #1A237E !important;
+        color: #ffffff !important;
+        border-color: #1A237E !important;
+        box-shadow: 0 2px 8px rgba(26, 35, 126, 0.25) !important;
+        transform: scale(1.05);
+    }
+    body.dark-mode .steper span.active {
+        background: #4f46e5 !important;
+        border-color: #4f46e5 !important;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35) !important;
     }
 
     /* ─── Checklist ─── */
     #empchecklistdiv {
         display: flex;
         flex-direction: column;
-        border-radius: 14px;
+        border-radius: 16px;
         overflow: hidden;
-        border: 1px solid var(--border-color);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+        background: #ffffff;
 
         & > div {
             display: flex;
-            border-bottom: 1px solid var(--border-color);
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
             transition: background-color 0.15s ease;
 
             &:last-child {
@@ -5047,96 +5174,197 @@
             }
 
             &:nth-child(even) {
-                background-color: var(--surface-ground);
+                background-color: #f8fafc;
             }
 
             &:hover {
-                background-color: rgba(79,70,229,0.04);
+                background-color: #f1f5f9;
             }
 
             & > strong {
                 flex: 1;
-                padding: 16px 20px;
+                padding: 16px 22px;
                 font-size: 0.9rem;
-                font-weight: 600;
+                font-weight: 700;
+                color: #1e293b;
             }
             & > span {
-                border-left: 1px solid var(--border-color);
-                width: 300px;
+                border-left: 1px solid #e2e8f0;
+                width: 320px;
                 display: inline-flex;
                 align-items: center;
-                padding: 16px 20px;
-                gap: 10px;
+                padding: 14px 22px;
+                gap: 12px;
                 font-size: 0.875rem;
+                color: #475569;
             }
         }
+    }
+    body.dark-mode #empchecklistdiv {
+        background: #1e293b;
+        border-color: #334155;
+    }
+    body.dark-mode #empchecklistdiv > div {
+        border-color: #334155;
+    }
+    body.dark-mode #empchecklistdiv > div:nth-child(even) {
+        background-color: #182234;
+    }
+    body.dark-mode #empchecklistdiv > div:hover {
+        background-color: #0f172a;
+    }
+    body.dark-mode #empchecklistdiv > div > strong {
+        color: #f1f5f9;
+    }
+    body.dark-mode #empchecklistdiv > div > span {
+        border-color: #334155;
+        color: #cbd5e1;
     }
 
     /* ─── Main Tab Bar ─── */
     .tabs {
         display: flex;
-        justify-content: center;
+        align-items: center;
         gap: 8px;
-        padding: 8px;
-        background: var(--surface-card);
+        padding: 6px;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
         border-radius: 16px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-        margin-bottom: 20px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
     }
-    .tabs button {
-        padding: 10px 22px;
-        border: 2px solid transparent;
+    body.dark-mode .tabs {
+        background: #1e293b;
+        border-color: #334155;
+    }
+    .tabs button,
+    .tab-btn {
+        padding: 10px 20px;
+        border: none;
         border-radius: 12px;
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: var(--text-secondary);
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #64748b;
         background: transparent;
         cursor: pointer;
-        transition: all 0.25s ease;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
     }
-    .tabs button:hover:not(:disabled) {
-        background: var(--surface-ground);
-        color: var(--text-color);
+    body.dark-mode .tabs button,
+    body.dark-mode .tab-btn {
+        color: #94a3b8;
     }
-    .tabs button:disabled {
-        opacity: 0.4;
+    .tabs button:hover:not(:disabled),
+    .tab-btn:hover:not(:disabled) {
+        background: #ffffff;
+        color: #1A237E;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+    body.dark-mode .tabs button:hover:not(:disabled),
+    body.dark-mode .tab-btn:hover:not(:disabled) {
+        background: #0f172a;
+        color: #818cf8;
+    }
+    .tabs button:disabled,
+    .tab-btn:disabled {
+        opacity: 0.45;
         cursor: not-allowed;
     }
-    .activetab {
-        background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
-        color: white !important;
+    .activetab,
+    .tabs button.activetab,
+    .tab-btn.activetab {
+        background: #1A237E !important;
+        color: #ffffff !important;
         border-color: transparent !important;
-        box-shadow: 0 3px 10px rgba(79,70,229,0.3);
-        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(26, 35, 126, 0.25) !important;
+        transform: none !important;
+        font-weight: 800 !important;
+    }
+    body.dark-mode .activetab,
+    body.dark-mode .tabs button.activetab,
+    body.dark-mode .tab-btn.activetab {
+        background: #4f46e5 !important;
+        color: #ffffff !important;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35) !important;
+    }
+    .tab-badge {
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 0.725rem;
+        font-weight: 800;
+        background: rgba(255, 255, 255, 0.2);
+        color: #ffffff;
     }
 
     /* ─── Step Navigation Buttons ─── */
     .stepsbutton {
-        margin-top: 32px;
+        margin-top: 36px;
+        margin-bottom: 12px;
         display: flex;
         justify-content: center;
-        gap: 14px;
+        align-items: center;
+        gap: 16px;
 
         & button {
-            padding: 10px 28px;
+            padding: 12px 32px;
             border-radius: 12px;
-            font-weight: 700;
-            font-size: 0.875rem;
+            font-weight: 800;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             cursor: pointer;
-            border: 2px solid var(--border-color);
-            background: var(--surface-card);
-            color: var(--text-color);
-            transition: all 0.2s ease;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
-        & button:hover {
-            border-color: var(--primary);
-            color: var(--primary);
-            transform: translateY(-1px);
-            box-shadow: 0 3px 8px rgba(79,70,229,0.12);
+        & button:not(:last-child) {
+            background: #ffffff;
+            border: 1.5px solid #cbd5e1;
+            color: #475569;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
+
+        & button:not(:last-child):hover:not(:disabled) {
+            border-color: #1A237E;
+            color: #1A237E;
+            background: #f8fafc;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(26, 35, 126, 0.12);
+        }
+
+        & button:last-child:not(:first-child) {
+            background: #1A237E;
+            border: 1.5px solid #1A237E;
+            color: #ffffff;
+            box-shadow: 0 4px 14px rgba(26, 35, 126, 0.25);
+        }
+
+        & button:last-child:not(:first-child):hover:not(:disabled) {
+            background: #121858;
+            border-color: #121858;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(26, 35, 126, 0.35);
+        }
+
+        & button:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            pointer-events: none;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+    }
+    body.dark-mode .stepsbutton button:not(:last-child) {
+        background: #1e293b;
+        border-color: #475569;
+        color: #cbd5e1;
     }
 
     /* ─── Declaration ─── */
@@ -5152,167 +5380,72 @@
 
     /* ─── Submit Button ─── */
     #submit {
-        padding: 12px 44px;
-        margin-top: 32px;
-        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        padding: 14px 48px;
+        margin-top: 36px;
+        background: linear-gradient(135deg, #1A237E 0%, #3949AB 100%) !important;
         color: white;
         cursor: pointer;
-        border-radius: 12px;
-        border: 2px solid transparent;
-        font-weight: 700;
-        font-size: 0.95rem;
-        letter-spacing: 0.3px;
-        box-shadow: 0 3px 10px rgba(79,70,229,0.25);
-        transition: all 0.3s ease;
-    }
-    #submit:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(79,70,229,0.35);
-    }
-    #submit:active {
-        transform: translateY(0);
-        box-shadow: 0 2px 6px rgba(79,70,229,0.2);
-    }
-
-    /* ─── Search Popup (glass overlay) ─── */
-    .poppop {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 500;
-        background-color: rgba(15, 23, 42, 0.5);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
-        padding: 40px 16%;
-        animation: fadeOverlay 0.2s ease-out;
-    }
-    @keyframes fadeOverlay {
-        from { opacity: 0; }
-        to   { opacity: 1; }
-    }
-
-    .deux {
-        display: flex;
-    }
-    .deux > span {
-        width: 50%;
-        display: inline-block;
-    }
-
-    .popheader {
-        height: auto;
-        background-color: transparent;
-        border-radius: 14px 14px 0 0;
-        overflow: hidden;
-    }
-    .popheader h3 {
-        margin: 0;
-        background: linear-gradient(135deg, var(--secondary), #312e81);
-        text-align: center;
-        padding: 14px;
-        color: white;
+        border-radius: 14px;
+        border: none;
+        font-weight: 800;
         font-size: 0.95rem;
         letter-spacing: 0.5px;
         text-transform: uppercase;
+        box-shadow: 0 4px 16px rgba(26, 35, 126, 0.3) !important;
+        transition: all 0.25s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
     }
-    .popheader input {
-        padding: 12px 16px;
-        width: calc(100% - 28px);
-        margin: 14px 14px;
-        border-radius: 10px;
-        border: 1.5px solid var(--border-color);
-        font-size: 0.9rem;
+    #submit:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(26, 35, 126, 0.4) !important;
     }
-    .popheader .deux {
-        margin-top: 0;
-        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-        color: white;
+    #submit:active:not(:disabled) {
+        transform: translateY(0);
     }
-    .popheader .deux span {
-        background: transparent;
-        border-right: 1px solid rgba(255,255,255,0.15);
-        padding: 10px 14px;
-        font-weight: 600;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
+    #submit:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
-    .poppopin {
-        background-color: var(--surface-card);
-        height: calc(100% - 50px);
-        border-radius: 0 0 14px 14px;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.15);
-        overflow: hidden;
-    }
-
-    .poppopclose {
-        padding: 10px 18px;
-        cursor: pointer;
-        font-weight: 600;
-        color: white;
-        background: rgba(255,255,255,0.15);
-        border: 1.5px solid rgba(255,255,255,0.25);
-        border-radius: 10px;
-        margin-bottom: 10px;
-        font-size: 0.85rem;
-        transition: all 0.2s ease;
-    }
-    .poppopclose:hover {
-        background: rgba(255,255,255,0.25);
-    }
-
-    .poplist {
-        padding: 10px 14px;
-        overflow: auto;
-        max-height: calc(100% - 133px);
-    }
-    .poplist .deux {
-        border-bottom: 1px solid var(--border-color);
-        border-radius: 8px;
-        margin-bottom: 2px;
-        transition: all 0.15s ease;
-    }
-    .poplist .deux:nth-child(even) {
-        background-color: var(--surface-ground);
-    }
-    .poplist .deux:hover {
-        background-color: rgba(79,70,229,0.06);
-        cursor: pointer;
-        transform: translateX(2px);
-    }
-    .poplist .deux span {
-        padding: 12px 14px;
-        font-size: 0.9rem;
-    }
-
-    /* ─── Navy Header Overrides matching Sidebar ─── */
+    /* ─── Modern Typographic Section Headers matching PMS Design System ─── */
     .group > h3,
     :deep(.group > h3) {
-        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
-        color: white !important;
+        background: #f8fafc !important;
+        color: #1e293b !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        padding: 16px 24px !important;
+        text-align: left !important;
+        font-size: 0.95rem !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.01em !important;
+        text-transform: uppercase !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 12px !important;
+        border-radius: 15px 15px 0 0 !important;
+        margin: 0 !important;
     }
-
-    .activetab {
-        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
-        color: white !important;
-        border-color: transparent !important;
-        box-shadow: 0 3px 10px rgba(18,24,88,0.35) !important;
-        transform: translateY(-1px);
+    .group > h3::before,
+    :deep(.group > h3)::before {
+        content: '';
+        display: inline-block;
+        width: 4px;
+        height: 18px;
+        background: linear-gradient(135deg, #1A237E 0%, #3949AB 100%);
+        border-radius: 4px;
+        flex-shrink: 0;
     }
-
-    .steper span.active {
-        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
-        color: white !important;
-        border-color: #1A237E !important;
-        box-shadow: 0 2px 8px rgba(18,24,88,0.3) !important;
+    body.dark-mode .group > h3,
+    body.dark-mode :deep(.group > h3) {
+        background: #0f172a !important;
+        color: #f1f5f9 !important;
+        border-bottom-color: #334155 !important;
     }
-
-    #submit {
-        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
-        box-shadow: 0 3px 10px rgba(18,24,88,0.25) !important;
+    body.dark-mode .group > h3::before,
+    body.dark-mode :deep(.group > h3)::before {
+        background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%) !important;
     }
 
     /* ─── Dropdown & Form Field Spacing ─── */
@@ -5321,7 +5454,7 @@
         padding: 13px 44px 13px 18px !important;
         font-size: 0.925rem;
         line-height: 1.5;
-        border-radius: 10px !important;
+        border-radius: 12px !important;
     }
     input:not([type="radio"]):not(.prof-input):not(.login-input),
     textarea {
@@ -5329,7 +5462,7 @@
         padding: 13px 18px !important;
         font-size: 0.925rem;
         line-height: 1.5;
-        border-radius: 10px !important;
+        border-radius: 12px !important;
     }
     .inlinewrap {
         gap: 22px 20px !important;
