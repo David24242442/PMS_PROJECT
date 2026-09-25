@@ -2,8 +2,8 @@
 setlocal
 
 set "SHARE_PATH=\\192.168.0.24\it-software\IT DEV DAVID\PMS"
-set "FRONTEND_SRC=c:\Users\USER\Workspaces\htdocs\PMS\HR Onboarding\hrproject Vue\hrproject"
-set "BACKEND_SRC=c:\Users\USER\Workspaces\htdocs\PMS\HR Onboarding\hr\hr"
+set "FRONTEND_SRC=c:\Users\USER\Workspaces\htdocs\PMS\PMS_FRONTEND_VUE"
+set "BACKEND_SRC=c:\Users\USER\Workspaces\htdocs\PMS\PMS_BACKEND_LARAVEL"
 
 set "FRONTEND_DEST=%SHARE_PATH%\PMS_FRONTEND_VUE"
 set "BACKEND_DEST=%SHARE_PATH%\pms_backend_laravel"

@@ -16,11 +16,21 @@ import { definePreset } from '@primevue/themes';
 import 'primeicons/primeicons.css'
 import ConfirmationService from 'primevue/confirmationservice'
 
-const baseurl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/';
-
-axios.defaults.baseURL = baseurl;
-axios.defaults.withCredentials = true;
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || '/api/';
+const imgburl = '/storage/';
 axios.defaults.headers.common['Accept'] = 'application/json';
+
+axios.interceptors.request.use(config => {
+    const token = localStorage.getItem('hrproject_user_token');
+    if (token) {
+        try {
+            config.headers.Authorization = `Bearer ${JSON.parse(token)}`;
+        } catch (e) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+    }
+    return config;
+});
 
 
 

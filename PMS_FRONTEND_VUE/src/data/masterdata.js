@@ -281,6 +281,8 @@ const branchs = [
     {"id": 177, "name": "SIP CAFE GOURMET LABONE"},
     {"id": 178, "name": "DOME"},
     {"id": 179, "name": "DOME MINI"},
+    {"id": 180, "name": "OYARIFA"},
+    {"id": 181, "name": "LASHIBI"}
 ]
 
 const positions = [
