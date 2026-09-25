@@ -1,705 +1,1855 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import axios from '@/helpers/pms_axios';
-import { log, imgburl } from '@/helpers/essential'
-import { hospitalityDeptsIDs, finddept, findbranch, findcountry, findcompany, findgender } from '@/data/masterdata'
-import { regionminis, regioncentral, regionsgra, regionswestern, regionashanti, regionvolta, regionnorth, regioneastern, regionbrong } from '@/data/masterdata'
-import { useUsersStore } from '@/stores/user';
+    import { ref, computed, onMounted } from 'vue'
+    import axios, { all } from 'axios';
+    import { log,toastt, imgburl, showAlert} from '@/helpers/essential'
+    import { hospitalityDeptsIDs, finddept, findregion, findbranch, findbankaccounttype, findbank, findfamilyrelation, findcountry, findidtypes, findcompany, findgender } from '@/data/masterdata'
+    import { regionminis, regioncentral, regionsgra, regionswestern, regionashanti, regionvolta, regionnorth, regioneastern, regionbrong } from '@/data/masterdata'
+    import { useUsersStore } from '@/stores/user';
+    const userstore = useUsersStore()
+    const { loguser, getloguser, authtoken, getauthtoken } = userstore
 
-const userstore = useUsersStore()
-const { loguser } = userstore
+    import { VuePDF, usePDF } from '@tato30/vue-pdf'
+    const { pdf, pages } = usePDF('./src/assets/documents/The_Melcom_Way_DECK.pdf')
 
-const isDark = ref(document.body.classList.contains('dark-mode'));
-const _darkObserver = new MutationObserver(() => { isDark.value = document.body.classList.contains('dark-mode'); });
-_darkObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    import logo from '@/assets/img/mel_logo.png'
 
-const loading = ref(false)
-watch(loading, (val) => userstore.setIsLoading(val), { immediate: true })
-const result = ref(null)
-const loadingEmps = ref(false)
-const showEmpsPopup = ref(false)
-const emplist = ref([])
-const empPopupTitle = ref('Employee List')
-const empSearch = ref('')
+    import Chart from 'chart.js/auto';
+    import ApexCharts from 'apexcharts';
+    
 
-const showListPopup = ref(false)
-const listPopupTitle = ref('')
-const listPopupData = ref([])
-const listPopupTotal = ref(0)
+    const bearer = `Bearer ${authtoken}`;
+    axios.defaults.headers.common['Authorization'] = bearer
 
-const openListView = (title, items) => {
-    // Calculate total
-    const total = items.reduce((sum, item) => sum + Number(item.count || 0), 0)
-    listPopupTotal.value = total;
+    const refreshClass = computed(() => loading.value ? 'pi pi-refresh pi-spin' : 'pi pi-refresh');
+    
+    let result = ref()
+    let loading = ref(false)
+    let loadingEmps = ref(false)
+    let showEmpsPopup = ref(false)
+    let emplist = ref([])
 
-    // Map and add percentage
-    const itemsWithPercent = items.map(item => ({
-        ...item,
-        percent: total > 0 ? ((Number(item.count || 0) / total) * 100).toFixed(1) : '0.0'
-    }));
+    const chartGendersRef = ref(null);
+    let chartGenders = null;
 
-    // Sort items highest to lowest
-    const sorted = [...itemsWithPercent].sort((a, b) => b.count - a.count);
-    listPopupTitle.value = title;
-    listPopupData.value = sorted;
-    showListPopup.value = true;
-}
+    const chartCompRef = ref(null);
+    let chartComp = null;
 
-// Computed Data
-const hospitalitiesData = computed(() => result.value?.deptsCount?.filter((item) => hospitalityDeptsIDs.includes(item.joining_dept_id)) || [])
-const melcomDeptsData = computed(() => result.value?.deptsCount?.filter((item) => !hospitalityDeptsIDs.includes(item.joining_dept_id)) || [])
+	const chartCitRef = ref(null);
+    let chartCit = null;
 
-// Region aggregates
-const gradatatotals = computed(() => result.value?.locationCount?.filter((item) => regionsgra.includes(item.joining_branch_id)).reduce((a, b) => a + b.total_count, 0) || 0)
-const centraldatatotals = computed(() => result.value?.locationCount?.filter((item) => regioncentral.includes(item.joining_branch_id)).reduce((a, b) => a + b.total_count, 0) || 0)
-const westerndatatotals = computed(() => result.value?.locationCount?.filter((item) => regionswestern.includes(item.joining_branch_id)).reduce((a, b) => a + b.total_count, 0) || 0)
-const ashantitotals = computed(() => result.value?.locationCount?.filter((item) => regionashanti.includes(item.joining_branch_id)).reduce((a, b) => a + b.total_count, 0) || 0)
-const voltatotals = computed(() => result.value?.locationCount?.filter((item) => regionvolta.includes(item.joining_branch_id)).reduce((a, b) => a + b.total_count, 0) || 0)
-const northdatatotals = computed(() => result.value?.locationCount?.filter((item) => regionnorth.includes(item.joining_branch_id)).reduce((a, b) => a + b.total_count, 0) || 0)
-const easterndatatotals = computed(() => result.value?.locationCount?.filter((item) => regioneastern.includes(item.joining_branch_id)).reduce((a, b) => a + b.total_count, 0) || 0)
-const brongdatatotals = computed(() => result.value?.locationCount?.filter((item) => regionbrong.includes(item.joining_branch_id)).reduce((a, b) => a + b.total_count, 0) || 0)
+    const chartDeptRef = ref(null);
+    let chartDept = null;
 
-const finalLocationData = computed(() => ({
-    'names': ["Greater Accra", "Central", 'Western', 'Ashanti', 'Volta', 'Northern', 'Eastern', 'Brong Ahafo'],
-    'count': [gradatatotals.value, centraldatatotals.value, westerndatatotals.value, ashantitotals.value, voltatotals.value, northdatatotals.value, easterndatatotals.value, brongdatatotals.value]
-}))
+    const chartMelcomDeptRef = ref(null);
+    let chartMelcomDept = null;
 
-const totalRegionEmployees = computed(() => finalLocationData.value.count.reduce((a, b) => a + b, 0))
+    const chartHospitalityDeptRef = ref(null);
+    let chartHospitalityDept = null;
 
-const filteredEmpList = computed(() => {
-    if (!empSearch.value) return emplist.value
-    const s = empSearch.value.toLowerCase()
-    return emplist.value.filter(e =>
-        (e.firstname + ' ' + e.lastname).toLowerCase().includes(s) ||
-        (e.emp_code || '').toLowerCase().includes(s) ||
-        (e.employeeid || '').toLowerCase().includes(s)
-    )
-})
+    const chartLocRef = ref(null);
+    let chartLoc = null;
 
-// Shared tooltip style
-const tooltipTheme = { theme: 'dark', style: { fontSize: '11px', fontFamily: 'Inter, sans-serif' } }
+    const chartRegionRef = ref(null);
+    let chartRegion = null;
 
-// Chart configs
-const seriesMelcom = computed(() => [{
-    data: melcomDeptsData.value.map(item => ({
-        x: finddept(item.joining_dept_id),
-        y: item.total_count
-    }))
-}])
-const optionsMelcom = computed(() => ({
-    chart: { type: 'treemap', toolbar: { show: false }, fontFamily: 'Inter, sans-serif',
-        events: { dataPointSelection: (e, c, config) => {
-            const idx = config.dataPointIndex;
-            if (melcomDeptsData.value[idx]) {
-                empPopupTitle.value = finddept(melcomDeptsData.value[idx].joining_dept_id);
-                loadEmpDepts(['dept', melcomDeptsData.value[idx].joining_dept_id])
+    const chartRegionLocRef = ref(null);
+    let chartRegionLoc = null;
+
+    const chartAgeGroupRef = ref(null);
+    let chartAgeGroup = null;
+    
+    const chartMonthlyRef = ref(null);
+    let chartMonthly = null;
+
+    let  visibleDialog = ref(false);
+
+    
+
+    const hospitalitiesData = computed(() => {
+        return result.value?.deptsCount?.filter((item) => hospitalityDeptsIDs.includes(item.joining_dept_id))
+    })
+    const melcomDeptsData = computed(() => {
+        return result.value?.deptsCount?.filter((item) => hospitalityDeptsIDs.includes(item.joining_dept_id) == false)
+    })
+
+    let showingbranchs = ref(false)
+
+    const stopshowingbranchs = ()=>{
+        showingbranchs.value = false
+    }
+
+    const minisdata = computed(() => {
+        return result.value?.locationCount?.filter((item) => regionminis.includes(item.joining_branch_id))
+    })
+    const minisdatatotals = computed(() => minisdata.value?.reduce((a, b) => a + b.total_count, 0))
+
+    const centraldata = computed(() => {
+        return result.value?.locationCount?.filter((item) => regioncentral.includes(item.joining_branch_id))
+    })
+    const centraldatatotals = computed(() => centraldata.value?.reduce((a, b) => a + b.total_count, 0))
+
+    const gradata = computed(() => {
+        return result.value?.locationCount?.filter((item) => regionsgra.includes(item.joining_branch_id))
+    })
+    const gradatatotals = computed(() => gradata.value?.reduce((a, b) => a + b.total_count, 0))
+
+    const westerndata = computed(() => {
+        return result.value?.locationCount?.filter((item) => regionswestern.includes(item.joining_branch_id))
+    })
+    const westerndatatotals = computed(() => westerndata.value?.reduce((a, b) => a + b.total_count, 0))
+
+    const ashantidata = computed(() => {
+        return result.value?.locationCount?.filter((item) => regionashanti.includes(item.joining_branch_id))
+    })
+    const ashantitotals = computed(() => ashantidata.value?.reduce((a, b) => a + b.total_count, 0))
+
+    const voltadata = computed(() => {
+        return result.value?.locationCount?.filter((item) => regionvolta.includes(item.joining_branch_id))
+    })
+    const voltatotals = computed(() => voltadata.value?.reduce((a, b) => a + b.total_count, 0))
+
+    const northdata = computed(() => {
+        return result.value?.locationCount?.filter((item) => regionnorth.includes(item.joining_branch_id))
+    })
+    const northdatatotals = computed(() => northdata.value?.reduce((a, b) => a + b.total_count, 0))
+
+    const easterndata = computed(() => {
+        return result.value?.locationCount?.filter((item) => regioneastern.includes(item.joining_branch_id))
+    })
+    const easterndatatotals = computed(() => easterndata.value?.reduce((a, b) => a + b.total_count, 0))
+
+    const brongdata = computed(() => {
+        return result.value?.locationCount?.filter((item) => regionbrong.includes(item.joining_branch_id))
+    })
+    const brongdatatotals = computed(() => brongdata.value?.reduce((a, b) => a + b.total_count, 0))
+
+    const finalLocationData = computed(() => {
+        return {
+            'names': ["Greater Accra", /* "Mini Stores",*/  "Central", 'Western', 'Ashanti', 'Volta', 'Northern', 'Eastern', 'Brong Ahafo'] ,
+            'count': [gradatatotals.value,  /* minisdatatotals.value,*/ centraldatatotals.value, westerndatatotals.value, ashantitotals.value, voltatotals.value, northdatatotals.value, easterndatatotals.value, brongdatatotals.value]
+        }
+    }) 
+
+    const matchingdata = computed(() => {
+        return {
+            "Greater Accra": gradata.value,
+            // "Mini Stores": minisdata.value,
+            "Central": centraldata.value,
+            "Western": westerndata.value,
+            "Ashanti": ashantidata.value,
+            "Volta": voltadata.value,
+            "Northern": northdata.value,
+            "Eastern": easterndata.value,
+            "Brong Ahafo": brongdata.value
+        }
+    })
+
+    const selectedregion = ref()
+
+    const allData = computed(() => {
+        return result.value?.deptsCount
+    })
+
+    onMounted(() => {
+        loadchart()
+    });
+
+    const loadEmpDepts = (data)=>{
+        emplist.value = []
+        loadingEmps.value = true
+        showEmpsPopup.value = true
+
+        axios.post('loadEmpDepts',{
+            type: data[0],
+            value: data[1] 
+        })
+            .then(res => {
+                const data = res.data
+                // log(data)
+                emplist.value = data
+                
+                loadingEmps.value = false
+            })
+            .catch((error) => {
+                console.log(error)
+                loadingEmps.value = false
+            })
+    }        
+    
+
+    const loadchart = () => {
+        loading.value = true
+        axios.get('dashboard')
+            .then(res => {
+                const data = res.data
+                
+                result.value = data
+                loading.value = false
+                // log(data)
+
+
+                /* Countries Chart */
+                
+                    const cit = data.citizenshipCounts.filter((i)=> i.citizenship != '' ).map(item => findcountry(item.citizenship) || '');
+                    const cittotal = data.citizenshipCounts.filter((i)=> i.citizenship != '' ).map(item => item.total_count);
+
+                    const optionsCit = {
+                        series: [{
+                            name: 'Units',
+                            data: cittotal
+                        }],
+                        chart: {
+                            type: 'bar',
+                            height: 350,
+                            toolbar: {
+                                show: false
+                            },
+                            events: {
+                                dataPointSelection: (event, chartContext, config) => { 
+                                    const index = config.dataPointIndex
+                                    const valueKey = data.citizenshipCounts[index].citizenship 
+
+                                    
+                                    loadEmpDepts(['citizenship',valueKey])
+                                },
+                                dataPointMouseEnter: function(event) {
+                                    event.target.style.cursor = 'pointer'
+                                },
+                                dataPointMouseLeave: function(event) {
+                                    event.target.style.cursor = 'default'
+                                }
+                            }
+                        },
+                        plotOptions: {
+                        bar: {
+                            distributed: true, // This makes each bar have a different color
+                            borderRadius: 6,
+                            dataLabels: {
+                                position: 'top'
+                            }
+                        }
+                        },
+                        colors: ['#7c3aed', '#db2777', '#ea580c', '#059669', '#2563eb'],
+                        dataLabels: {
+                            enabled: true,
+                            formatter: function(val) {
+                                return val + '';
+                            },
+                            offsetY: -20,
+                            style: {
+                                fontSize: '12px',
+                                colors: ["#304758"]
+                            }
+                        },
+                        xaxis: {
+                            categories: cit,
+                            position: 'bottom',
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            }
+                        },
+                        yaxis: {
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },
+                            labels: {
+                                show: true,
+                                formatter: function(val) {
+                                return val;
+                                }
+                            }
+                        },
+                        grid: {
+                            borderColor: '#f1f5f9',
+                            strokeDashArray: 4,
+                            yaxis: {
+                                lines: {
+                                show: true
+                                }
+                            }
+                        },
+                        tooltip: {
+                            enabled: false
+                        },
+                        legend: {
+                            show: false
+                        }
+                    };
+
+                    chartCit = new ApexCharts(chartCitRef.value, optionsCit);
+                    chartCit.render();
+                /* Countries Chart */
+                
+                /* Monthly Chart */
+                
+                    const monthly = Object.keys(data.monthlyData);
+                    const monthlytotal = Object.values(data.monthlyData)
+
+                    const optionsMonthly = {
+                        series: [{
+                            name: 'Units',
+                            data: monthlytotal
+                        }],
+                        chart: {
+                            type: 'bar',
+                            height: 350,
+                            toolbar: {
+                                show: false
+                            },
+                            events: {
+                                dataPointSelection: (event, chartContext, config) => { 
+                                    const index = config.dataPointIndex
+                                    const valueKey = monthly[index]
+                                    
+                                    
+                                    loadEmpDepts(['monthdata',valueKey])
+                                },
+                                dataPointMouseEnter: function(event) {
+                                    event.target.style.cursor = 'pointer'
+                                },
+                                dataPointMouseLeave: function(event) {
+                                    event.target.style.cursor = 'default'
+                                }
+                            }
+                        },
+                        plotOptions: {
+                        bar: {
+                            distributed: true, // This makes each bar have a different color
+                            borderRadius: 6,
+                            dataLabels: {
+                                position: 'top'
+                            }
+                        }
+                        },
+                        colors: ['#7c3aed', '#db2777', '#ea580c', '#059669', '#2563eb'],
+                        dataLabels: {
+                            enabled: true,
+                            formatter: function(val) {
+                                return val + '';
+                            },
+                            offsetY: -20,
+                            style: {
+                                fontSize: '12px',
+                                colors: ["#304758"]
+                            }
+                        },
+                        
+                        xaxis: {
+                            categories: monthly,
+                            position: 'bottom',
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            }
+                        },
+                        yaxis: {
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },
+                            labels: {
+                                show: true,
+                                formatter: function(val) {
+                                return val;
+                                }
+                            }
+                        },
+                         grid: {
+                            borderColor: '#f1f5f9',
+                            strokeDashArray: 4,
+                            yaxis: {
+                                lines: {
+                                show: true
+                                }
+                            }
+                        },
+                        tooltip: {
+                            enabled: false
+                        },
+                        legend: {
+                            show: false
+                        }
+                    };
+
+                    chartMonthly = new ApexCharts(chartMonthlyRef.value, optionsMonthly);
+                    chartMonthly.render();
+                /* Monthly Chart */
+                
+                
+                /* Melcom Depts Chart */
+                
+                    const melcomdept = melcomDeptsData.value.map(item => finddept(item.joining_dept_id));
+                    const melcomdepttotal = melcomDeptsData.value.map(item => item.total_count);
+
+                    const optionsMelcomDept = {
+                        series: [{
+                            name: 'Units',
+                            data: melcomdepttotal
+                        }],
+                        chart: {
+                            type: 'bar',
+                            height: 500,
+                            toolbar: {
+                                show: false
+                            },
+                            events: {
+                                dataPointSelection: (event, chartContext, config) => { 
+                                    const index = config.dataPointIndex
+                                    const valueKey = melcomDeptsData.value[index].joining_dept_id
+                                    event.target.style.cursor = "pointer";
+                                    
+                                    loadEmpDepts(['dept',valueKey])
+                                },
+                                dataPointMouseEnter: function(event) {
+                                    event.target.style.cursor = 'pointer'
+                                },
+                                dataPointMouseLeave: function(event) {
+                                    event.target.style.cursor = 'default'
+                                }
+                            }
+                        },
+                        plotOptions: {
+                        bar: {
+                            distributed: true, // This makes each bar have a different color
+                            borderRadius: 6,
+                            horizontal: true,
+                            dataLabels: {
+                                position: 'right'
+                            }
+                        }
+                        },
+                        colors: ['#7c3aed', '#db2777', '#ea580c', '#059669', '#2563eb'],
+                        dataLabels: {
+                            enabled: true,
+                            textAnchor: 'start',
+                            formatter: function(val) {
+                                return val + '';
+                            },
+                            offsetX: 0,
+                            style: {
+                                fontSize: '12px',
+                                colors: ["#304758"]
+                            }
+                        },
+                        
+                        xaxis: {
+                            categories: melcomdept,
+                            position: 'bottom',
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },labels: {
+                                show: false
+                            }
+                        },
+                        yaxis: {
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },
+                            labels: {
+                                show: true,
+                                style: {
+                                    fontSize: '11px'
+                                },
+                                formatter: function(val) {
+                                    // if string is too long, trim
+                                    if(val.length > 20){
+                                        return val.substring(0,20)+'...'
+                                    }
+                                    return val;
+                                }
+                            }
+                        },
+                         grid: {
+                            borderColor: '#f1f5f9',
+                            strokeDashArray: 4,
+                            xaxis: {
+                                lines: {
+                                show: true
+                                }
+                            },
+                             yaxis: {
+                                lines: {
+                                show: false
+                                }
+                            }
+                        },
+                        tooltip: {
+                            enabled: false
+                        },
+                        legend: {
+                            show: false
+                        }
+                    };
+
+                    chartMelcomDept = new ApexCharts(chartMelcomDeptRef.value, optionsMelcomDept);
+                    chartMelcomDept.render();
+
+                /* Depts Chart */
+
+                /* Hostpitality Depts Chart */
+                
+                    const hospitalitydept = hospitalitiesData.value.map(item => finddept(item.joining_dept_id));
+                    const hospitalitydepttotal = hospitalitiesData.value.map(item => item.total_count);
+
+                    const optionsHospitalityDept = {
+                        series: [{
+                            name: 'Units',
+                            data: hospitalitydepttotal
+                        }],
+                        chart: {
+                            type: 'bar',
+                            height: 350,
+                            toolbar: {
+                                show: false
+                            },
+                            events: {
+                                dataPointSelection: (event, chartContext, config) => { 
+                                    const index = config.dataPointIndex
+                                    const valueKey = hospitalitiesData.value[index].joining_dept_id
+                                    event.target.style.cursor = "pointer";
+                                    
+                                    loadEmpDepts(['dept',valueKey])
+                                },
+                                dataPointMouseEnter: function(event) {
+                                    event.target.style.cursor = 'pointer'
+                                },
+                                dataPointMouseLeave: function(event) {
+                                    event.target.style.cursor = 'default'
+                                }
+                            }
+                        },
+                        plotOptions: {
+                        bar: {
+                            distributed: true, // This makes each bar have a different color
+                            borderRadius: 6,
+                            dataLabels: {
+                                position: 'top'
+                            }
+                        }
+                        },
+                        colors: ['#7c3aed', '#db2777', '#ea580c', '#059669', '#2563eb'],
+                        dataLabels: {
+                            enabled: true,
+                            formatter: function(val) {
+                                return val + '';
+                            },
+                            offsetY: -20,
+                            style: {
+                                fontSize: '12px',
+                                colors: ["#304758"]
+                            }
+                        },
+                        
+                        xaxis: {
+                            categories: hospitalitydept,
+                            position: 'bottom',
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },labels: {
+                                rotate: -45,
+                                trim: false,
+                                hideOverlappingLabels: false,
+                                // offsetY: 5,
+                                style: {
+                                    fontSize: '10px' // Smaller font size
+                                }
+                            }
+                        },
+                        yaxis: {
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },
+                            labels: {
+                                show: false
+                            }
+                        },
+                        grid: {
+                            borderColor: '#f1f5f9',
+                            strokeDashArray: 4,
+                            yaxis: {
+                                lines: {
+                                show: true
+                                }
+                            }
+                        },
+                        tooltip: {
+                            enabled: false
+                        },
+                        legend: {
+                            show: false
+                        }
+                    };
+
+                    chartHospitalityDept = new ApexCharts(chartHospitalityDeptRef.value, optionsHospitalityDept);
+                    chartHospitalityDept.render();
+
+                /* Hostpitality Depts Chart */
+                
+    
+                /* Regions Chart */
+                    
+                    
+                    const regions = finalLocationData.value.names;
+                    const regionsTotal = finalLocationData.value.count;
+
+                    const optionsRegions = {
+                        series: [{
+                            name: 'Units',
+                            data: regionsTotal
+                        }],
+                        chart: {
+                            type: 'bar',
+                            height: 350,
+                            toolbar: {
+                                show: false
+                            },
+                            events: {
+                                dataPointSelection: (event, chartContext, config) => { 
+                                    const index = config.dataPointIndex
+                                    const valueKey = regions[index]
+
+                                    
+
+                                    showlocation(valueKey)
+                                    
+                                },
+                                dataPointMouseEnter: function(event) {
+                                    event.target.style.cursor = 'pointer'
+                                },
+                                dataPointMouseLeave: function(event) {
+                                    event.target.style.cursor = 'default'
+                                }
+                            }
+                        },
+                        plotOptions: {
+                        bar: {
+                            columnWidth: '50%',
+                            distributed: true, // This makes each bar have a different color
+                            borderRadius: 6,
+                            dataLabels: {
+                                position: 'top'
+                            }
+                        }
+                        },
+                        colors: ['#7c3aed', '#db2777', '#ea580c', '#059669', '#2563eb'],
+                        dataLabels: {
+                            enabled: true,
+                            formatter: function(val) {
+                                return val + '';
+                            },
+                            offsetY: -20,
+                            style: {
+                                fontSize: '12px',
+                                colors: ["#304758"]
+                            }
+                        },
+                        
+                        xaxis: {
+                            categories: regions,
+                            position: 'bottom',
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },labels: {
+                                rotate: -45,
+                                trim: false,
+                                hideOverlappingLabels: false,
+                                style: {
+                                    fontSize: '10px' // Smaller font size
+                                }
+                            }
+                        },
+                        yaxis: {
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },
+                            labels: {
+                                show: false
+                            }
+                        },
+                        grid: {
+                            borderColor: '#f1f5f9',
+                            strokeDashArray: 4,
+                            yaxis: {
+                                lines: {
+                                show: true
+                                }
+                            }
+                        },
+                        tooltip: {
+                            enabled: false
+                        },
+                        legend: {
+                            show: false
+                        }
+                    };
+
+                    chartRegion = new ApexCharts(chartRegionRef.value, optionsRegions);
+                    chartRegion.render();
+                /* Regions Chart */
+
+                /* Region Location Chart */
+                
+                   
+
+                    const regionoptionsLoc = {
+                        series: [{
+                            name: 'Units',
+                            data: []
+                        }],
+                        chart: {
+                            type: 'bar',
+                            height: 350,
+                            toolbar: {
+                                show: false
+                            },
+                             animations: {
+                                enabled: true,
+                                easing: 'easeinout',
+                                speed: 800,
+                                animateGradually: {
+                                    enabled: true,
+                                    delay: 150
+                                },
+                                dynamicAnimation: {
+                                    enabled: true,
+                                    speed: 350
+                                }
+                            },
+                            events: {
+                                dataPointSelection: (event, chartContext, config) => { 
+                                    const index = config.dataPointIndex
+                                    const valueKey = matchingdata.value[selectedregion.value][index].joining_branch_id
+                                    
+                                    loadEmpDepts(['loc',valueKey])
+                                },
+                                dataPointMouseEnter: function(event) {
+                                    event.target.style.cursor = 'pointer'
+                                },
+                                dataPointMouseLeave: function(event) {
+                                    event.target.style.cursor = 'default'
+                                }
+                            }
+                        },
+                        plotOptions: {
+                            bar: {
+                                columnWidth: '50%',
+                                distributed: true, // This makes each bar have a different color
+                                borderRadius: 6,
+                                dataLabels: {
+                                    position: 'top'
+                                }
+                            }
+                        },
+                        colors: ['#7c3aed', '#db2777', '#ea580c', '#059669', '#2563eb'],
+                        dataLabels: {
+                            enabled: true,
+                            formatter: function(val) {
+                                return val + '';
+                            },
+                            offsetY: -20,
+                            style: {
+                                fontSize: '12px',
+                                colors: ["#304758"]
+                            }
+                        },
+                        
+                        xaxis: {
+                            categories: [],
+                            position: 'bottom',
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },labels: {
+                                // rotate: -45,
+                                trim: false,
+                                hideOverlappingLabels: false,
+                                // offsetY: 5,
+                                style: {
+                                    fontSize: '10px' // Smaller font size
+                                }
+                            }
+                        },
+                        yaxis: {
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },
+                            labels: {
+                                show: false
+                            }
+                        },
+                        grid: {
+                            borderColor: '#f1f5f9',
+                            strokeDashArray: 4,
+                            yaxis: {
+                                lines: {
+                                show: true
+                                }
+                            }
+                        },
+                        tooltip: {
+                            enabled: false
+                        },
+                        legend: {
+                            show: false
+                        }
+                    };
+
+                    chartRegionLoc = new ApexCharts(chartRegionLocRef.value, regionoptionsLoc);
+                    chartRegionLoc.render();
+                /* Region Location Chart */
+                 
+                /* Gender Chart */
+
+                    const genders = data.genderCounts.filter((i)=> i.gender != '' ).map(item => findgender(item.gender) || '');
+                    const genderstotal = data.genderCounts.filter((i)=> i.gender != '' ).map(item => item.total_count);
+
+                    const optionsgenders = {
+                        series: genderstotal,
+                        chart: {
+                            type: 'donut',
+                            height: 350,
+                            events: {
+                                dataPointSelection: (event, chartContext, config) => { 
+                                    const index = config.dataPointIndex
+                                    const valueKey = data.genderCounts[index].gender
+
+                                    
+                                    loadEmpDepts(['gender',valueKey])
+                                },
+                                dataPointMouseEnter: function(event) {
+                                    event.target.style.cursor = 'pointer'
+                                },
+                                dataPointMouseLeave: function(event) {
+                                    event.target.style.cursor = 'default'
+                                }
+                            }
+                        },
+                        labels: genders,
+                        colors: ['#7c3aed', '#db2777', '#ea580c', '#059669', '#2563eb'],
+                        legend: {
+                            show: true, 
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            enabled: true 
+                        },
+                        plotOptions: {
+                            pie: {
+                                donut: {
+                                    size: '65%',
+                                    labels: {
+                                        show: true,
+                                        total: {
+                                            show: true,
+                                            label: 'Total',
+                                            fontSize: '22px',
+                                            fontWeight: 'bold',
+                                            color: '#373d3f',
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        dataLabels: {
+                           enabled: false
+                        }
+                    };
+
+                    chartGenders = new ApexCharts(chartGendersRef.value, optionsgenders);
+                    chartGenders.render();
+                /* genders Chart */
+
+                /* Companies Chart */
+                    const comp = data.companiesCounts.map(item => findcompany(item.company));
+                    const comptotal = data.companiesCounts.map(item => item.total_count);
+
+                    const optionsComp = {
+                        series: comptotal,
+                        chart: {
+                            type: 'donut',
+                            height: 350,
+                            events: {
+                                dataPointSelection: (event, chartContext, config) => { 
+                                    const index = config.dataPointIndex
+                                    const valueKey = data.companiesCounts[index].company 
+
+                                    
+                                    loadEmpDepts(['comp',valueKey])
+                                },
+                                dataPointMouseEnter: function(event) {
+                                    event.target.style.cursor = 'pointer'
+                                },
+                                dataPointMouseLeave: function(event) {
+                                    event.target.style.cursor = 'default'
+                                }
+                            }
+                        },
+                        labels: comp,
+                        colors: ['#7c3aed', '#db2777', '#ea580c', '#059669', '#2563eb'],
+                        legend: {
+                            show: true,
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            enabled: true 
+                        },
+                        plotOptions: {
+                            pie: {
+                                donut: {
+                                    size: '65%'
+                                }
+                            }
+                        },
+                        dataLabels: {
+                            enabled: false
+                        }
+                    };
+
+                    chartComp = new ApexCharts(chartCompRef.value, optionsComp);
+                    chartComp.render();
+                /* Companies Cart */
+                
+                /* AgeGroup Chart */
+
+                    const agegroup = Object.keys(data.ageGroups);
+                    const agegrouptotal = Object.values(data.ageGroups);
+
+                    const optionsAgeGroup = {
+                        series: [{
+                            name: 'Units',
+                            data: agegrouptotal
+                        }],
+                        chart: {
+                            type: 'bar',
+                            height: 350,
+                            toolbar: {
+                                show: false
+                            },
+                            events: {
+                                dataPointSelection: (event, chartContext, config) => { 
+                                    const index = config.dataPointIndex
+                                    const valueKey = agegroup[index] 
+
+                                    
+                                    loadEmpDepts(['agegroup',valueKey])
+                                },
+                                dataPointMouseEnter: function(event) {
+                                    event.target.style.cursor = 'pointer'
+                                },
+                                dataPointMouseLeave: function(event) {
+                                    event.target.style.cursor = 'default'
+                                }
+                            }
+                        },
+                        plotOptions: {
+                        bar: {
+                            distributed: true, // This makes each bar have a different color
+                            borderRadius: 6,
+                            dataLabels: {
+                                position: 'top'
+                            }
+                        }
+                        },
+                        colors: ['#7c3aed', '#db2777', '#ea580c', '#059669', '#2563eb'],
+                        dataLabels: {
+                            enabled: true,
+                            formatter: function(val) {
+                                return val + '';
+                            },
+                            offsetY: -20,
+                            style: {
+                                fontSize: '12px',
+                                colors: ["#304758"]
+                            }
+                        },
+                        
+                        xaxis: {
+                            categories: agegroup,
+                            position: 'bottom',
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },labels: {
+                                rotate: -45,
+                                trim: false,
+                                hideOverlappingLabels: false,
+                                offsetY: 0,
+                                style: {
+                                    fontSize: '10px' // Smaller font size
+                                }
+                            }
+                        },
+                        yaxis: {
+                            axisBorder: {
+                                show: false
+                            },
+                            axisTicks: {
+                                show: false
+                            },
+                            labels: {
+                                show: false
+                            }
+                        },
+                         grid: {
+                            borderColor: '#f1f5f9',
+                            strokeDashArray: 4,
+                            yaxis: {
+                                lines: {
+                                show: true
+                                }
+                            }
+                        },
+                        tooltip: {
+                            enabled: false
+                        },
+                        legend: {
+                            show: false
+                        }
+                    };
+
+                    chartAgeGroup = new ApexCharts(chartAgeGroupRef.value, optionsAgeGroup);
+                    chartAgeGroup.render();
+                /* AgeGroup Chart */
+
+            })
+            .catch((error) => {
+                console.log(error)
+                loading.value = false
+            })
+
+    }
+
+    /* Directive Creation Start */
+        const vUppercase = {
+            mounted(el) {
+                el.addEventListener('input', updateValue)
+            },
+            unmounted(el) {
+                el.removeEventListener('input', updateValue)
             }
-        } } },
-    plotOptions: { treemap: { distributed: true, enableShades: false } },
-    dataLabels: { enabled: true, style: { fontSize: '12px', fontWeight: 700 },
-        formatter: (text, op) => [text, op.value] },
-    colors: ['#6366f1', '#8b5cf6', '#a78bfa', '#818cf8', '#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95', '#3b82f6', '#0ea5e9', '#06b6d4', '#14b8a6', '#10b981', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#f97316', '#ef4444', '#ec4899'],
-    legend: { show: false },
-    tooltip: tooltipTheme
-}))
+        }
+        const updateValue = (el) => {
+            const input = el.target
+            const sourceValue = input.value
+            const newValue = sourceValue.toUpperCase()
 
-const seriesHospitality = computed(() => [{ name: 'Employees', data: hospitalitiesData.value.map(item => item.total_count) }])
-const optionsHospitality = computed(() => ({
-    chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Inter, sans-serif',
-        events: { dataPointSelection: (e, c, config) => { empPopupTitle.value = finddept(hospitalitiesData.value[config.dataPointIndex].joining_dept_id); loadEmpDepts(['dept', hospitalitiesData.value[config.dataPointIndex].joining_dept_id]) } } },
-    plotOptions: { bar: { borderRadius: 6, columnWidth: '55%', distributed: true } },
-    dataLabels: { enabled: true, style: { fontSize: '11px', fontWeight: 700, colors: ['#fff'] } },
-    xaxis: { categories: hospitalitiesData.value.map(item => finddept(item.joining_dept_id)), labels: { style: { fontSize: '10px', fontWeight: 600, colors: '#64748b' }, rotate: -45, rotateAlways: hospitalitiesData.value.length > 4 } },
-    grid: { borderColor: '#f1f5f9', strokeDashArray: 3 },
-    colors: ['#f59e0b', '#f97316', '#ef4444', '#ec4899', '#d946ef', '#8b5cf6'],
-    legend: { show: false },
-    tooltip: tooltipTheme
-}))
+            if (sourceValue !== newValue) {
+                input.value = newValue
+                input.dispatchEvent(new Event('input', { bubbles: true }))
+            }
+        }
+    /* Directive Creation Stop */
 
-const seriesRegions = computed(() => [{ name: 'Employees', data: finalLocationData.value.count }])
-const optionsRegions = computed(() => ({
-    chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
-    plotOptions: { bar: { borderRadius: 6, columnWidth: '55%', distributed: true } },
-    dataLabels: { enabled: true, style: { fontSize: '11px', fontWeight: 700, colors: ['#fff'] } },
-    xaxis: { categories: finalLocationData.value.names, labels: { style: { fontSize: '10px', fontWeight: 600, colors: '#64748b' }, rotate: -35, rotateAlways: true } },
-    grid: { borderColor: '#f1f5f9', strokeDashArray: 3 },
-    colors: ['#0ea5e9', '#06b6d4', '#14b8a6', '#10b981', '#22c55e', '#84cc16', '#eab308', '#f97316'],
-    legend: { show: false },
-    tooltip: tooltipTheme
-}))
 
-const seriesGender = computed(() => result.value?.genderCounts?.filter(i => i.gender).map(item => item.total_count) || [])
-const optionsGender = computed(() => ({
-    labels: result.value?.genderCounts?.filter(i => i.gender).map(item => findgender(item.gender)) || [],
-    chart: { type: 'donut', fontFamily: 'Inter, sans-serif',
-        events: { dataPointSelection: (e, c, config) => { empPopupTitle.value = findgender(result.value.genderCounts.filter(i => i.gender)[config.dataPointIndex].gender); loadEmpDepts(['gender', result.value.genderCounts.filter(i => i.gender)[config.dataPointIndex].gender]) } } },
-    colors: ['#ec4899', '#3b82f6'],
-    plotOptions: { pie: { donut: { size: '72%', labels: { show: true, name: { fontSize: '13px', fontWeight: 700, color: '#334155' }, value: { fontSize: '22px', fontWeight: 800, color: '#0f172a' }, total: { show: true, label: 'Total', fontSize: '12px', fontWeight: 600, color: '#94a3b8' } } } } },
-    dataLabels: { enabled: false },
-    legend: { position: 'bottom', fontSize: '12px', fontWeight: 600, labels: { colors: '#64748b' }, markers: { width: 10, height: 10, radius: 3 } },
-    stroke: { width: 3, colors: ['#fff'] },
-    tooltip: tooltipTheme
-}))
+    const items = [
+        {
+            label: 'The Melcom Way DECK',
+            command: () => {
+                visibleDialog.value = true
+            }
+        },
+        
+        {
+            separator: true
+        },
+    ]
 
-const seriesAge = computed(() => [{ name: 'Employees', data: Object.values(result.value?.ageGroups || {}) }])
-const optionsAge = computed(() => ({
-    chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Inter, sans-serif',
-        events: { dataPointSelection: (e, c, config) => { empPopupTitle.value = Object.keys(result.value.ageGroups)[config.dataPointIndex]; loadEmpDepts(['agegroup', Object.keys(result.value.ageGroups)[config.dataPointIndex]]) } } },
-    xaxis: { categories: Object.keys(result.value?.ageGroups || {}), labels: { style: { fontSize: '11px', fontWeight: 600, colors: '#64748b' } } },
-    plotOptions: { bar: { borderRadius: 6, columnWidth: '50%' } },
-    dataLabels: { enabled: true, style: { fontSize: '11px', fontWeight: 700, colors: ['#fff'] } },
-    grid: { borderColor: '#f1f5f9', strokeDashArray: 3 },
-    colors: ['#14b8a6'],
-    tooltip: tooltipTheme
-}))
+    const showlocation = (region) => {
+        showingbranchs.value = true
 
-const seriesMonthly = computed(() => [{ name: 'New Joiners', data: Object.values(result.value?.monthlyData || {}) }])
-const optionsMonthly = computed(() => ({
-    chart: { type: 'area', toolbar: { show: false }, fontFamily: 'Inter, sans-serif', sparkline: { enabled: false },
-        events: { dataPointSelection: (e, c, config) => { empPopupTitle.value = Object.keys(result.value.monthlyData)[config.dataPointIndex]; loadEmpDepts(['monthdata', Object.keys(result.value.monthlyData)[config.dataPointIndex]]) } } },
-    xaxis: { categories: Object.keys(result.value?.monthlyData || {}), labels: { style: { fontSize: '11px', fontWeight: 600, colors: '#64748b' } } },
-    yaxis: { labels: { style: { fontSize: '11px', fontWeight: 600, colors: '#94a3b8' } } },
-    stroke: { curve: 'smooth', width: 3 },
-    colors: ['#6366f1'],
-    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 95, 100] } },
-    grid: { borderColor: '#f1f5f9', strokeDashArray: 3, padding: { left: 10, right: 10 } },
-    dataLabels: { enabled: false },
-    markers: { size: 4, colors: ['#6366f1'], strokeColors: '#fff', strokeWidth: 2, hover: { size: 6 } },
-    tooltip: tooltipTheme
-}))
+        selectedregion.value = region
 
-// Methods
-const loadchart = () => {
-    loading.value = true
-    axios.get('dashboard')
-        .then(res => { result.value = res.data; loading.value = false })
-        .catch(err => { console.error(err); loading.value = false })
-}
+        const regionloc = matchingdata.value[region].map(item => findbranch(item.joining_branch_id));
+        const regionloctotal = matchingdata.value[region]?.map(item => item.total_count);
 
-const loadEmpDepts = (data) => {
-    emplist.value = []
-    empSearch.value = ''
-    loadingEmps.value = true
-    showEmpsPopup.value = true
-    axios.post('loadEmpDepts', { type: data[0], value: data[1] })
-        .then(res => { emplist.value = res.data; loadingEmps.value = false })
-        .catch(err => { console.error(err); loadingEmps.value = false })
-}
+        chartRegionLoc.updateOptions({
+            xaxis: {
+                categories:  regionloc
+            }
+        });
 
-onMounted(() => { loadchart() })
+        chartRegionLoc.updateSeries([{
+            name: 'Units',
+            data: regionloctotal 
+        }]);
+    }
+    
 </script>
 
 <template>
-    <div class="dash-root">
+    <div class="h-full pb-6">
 
-        <!-- Hero Header -->
-        <div class="dash-hero">
-            <div class="dash-hero-bg"></div>
-            <div class="dash-hero-content">
+        <Dialog v-model:visible="visibleDialog" modal header="The Melcom Way DECK" :style="{ width: '50rem' }" >
+            <div class="pdf-container">
+                <div v-for="page in pages" :key="page">
+                    <div style="padding-top: 20px;padding-bottom: 20px;margin-bottom: 20px; border-bottom: 2px solid #00000036;">
+                        <VuePDF :pdf="pdf" :page="page"  fit-parent />
+                        <span style="margin-top: 10px;display: block;text-align: right;padding-right: 20px;">{{ page }} / {{ pages }}</span>
+                    </div>
+                </div>
+            </div>
+        </Dialog>
+
+        <!-- New Clean Header -->
+        <div class="dashboard-header mb-8 rounded-2xl p-6 shadow-lg shadow-purple-200"
+             style="background: linear-gradient(135deg, #6b21a8 0%, #312e81 100%) !important;">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <p class="text-[11px] font-black text-indigo-300 uppercase tracking-[0.25em] mb-2">Melcom Group</p>
-                    <h1 class="text-3xl font-black text-white tracking-tight flex items-center gap-3">
-                        HR Dashboard
-                        <button v-if="!loading" @click="loadchart"
-                            class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/10"
-                            title="Refresh">
-                            <i class="pi pi-refresh text-xs" :class="{'pi-spin': loading}"></i>
+                     <h1 class="text-3xl font-extrabold text-white flex items-center gap-3 mb-2">
+                        Dashboard Overview
+                        <button 
+                            v-if="!loading"
+                            @click="loadchart"
+                            class="w-8 h-8 rounded-full bg-white/20 text-white hover:bg-white/30 flex items-center justify-center transition-all shadow-sm border border-white/10 cursor-pointer"
+                            title="Refresh Data"
+                        >
+                            <i class="pi pi-refresh text-sm" :class="{'pi-spin': loading}"></i>
                         </button>
                     </h1>
-                    <p class="text-sm text-indigo-200/80 font-medium mt-1">Real-time workforce analytics and onboarding insights</p>
+                    <p class="text-sm font-medium text-purple-100">Real-time HR analytics and demographics</p>
                 </div>
-                <div class="flex items-center gap-3">
-                    <div class="hero-pill">
-                        <i class="pi pi-calendar text-indigo-300 text-xs"></i>
-                        <span>{{ new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) }}</span>
+
+                <div class="header-actions flex items-center gap-3">
+                     <div class="flex items-center gap-2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl shadow-sm border border-white/20">
+                        <img :src="logo" class="h-6 brightness-0 invert">
+                        <span class="font-bold text-white">MiMelcom</span>
                     </div>
-                    <div class="hero-pill">
-                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        <span>Live</span>
-                    </div>
+                     <SplitButton label="Actions" :model="items" icon="pi pi-cog" class="p-button-outlined p-button-secondary bg-white text-purple-800 border-none"></SplitButton>
                 </div>
             </div>
         </div>
 
-        <!-- Content -->
-        <div v-if="result" class="dash-body">
+        <!-- Quick Stats Row -->
+        <div v-if="result" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
+            <!-- Total Employees -->
+            <div class="relative overflow-hidden rounded-2xl p-5 shadow-lg shadow-purple-200 text-white transform hover:-translate-y-1 transition-transform duration-300 border border-purple-500/20"
+                 style="background: linear-gradient(135deg, #6b21a8 0%, #312e81 100%) !important;">
+                <div class="absolute top-0 right-0 -mt-4 -mr-4 w-20 h-20 bg-white opacity-10 rounded-full blur-xl"></div>
+                <div class="flex items-center gap-3 mb-2 opacity-90">
+                    <i class="pi pi-users text-lg"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider">Total Staff</span>
+                </div>
+                <div class="text-3xl font-extrabold mb-1">{{ result?.totalemp }}</div>
+                <div class="text-[10px] font-medium opacity-80">Active Employees</div>
+            </div>
 
-            <!-- Stat Cards -->
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="stat-card stat-card--indigo">
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="stat-label">Total Employees</span>
-                        <div class="stat-icon"><i class="pi pi-users"></i></div>
-                    </div>
-                    <div class="stat-value">{{ result.totalemp || 0 }}</div>
-                    <p class="stat-sub">Active staff</p>
+            <!-- Departments -->
+            <div class="relative overflow-hidden rounded-2xl p-5 shadow-lg shadow-blue-200 text-white transform hover:-translate-y-1 transition-transform duration-300 border border-blue-500/20"
+                 style="background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%) !important;">
+                <div class="absolute top-0 right-0 -mt-4 -mr-4 w-20 h-20 bg-white opacity-10 rounded-full blur-xl"></div>
+                <div class="flex items-center gap-3 mb-2 opacity-90">
+                    <i class="pi pi-building text-lg"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider">Depts</span>
                 </div>
-                <div class="stat-card stat-card--pink">
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="stat-label">Departments</span>
-                        <div class="stat-icon"><i class="pi pi-building"></i></div>
-                    </div>
-                    <div class="stat-value">{{ result.deptsCount ? result.deptsCount.length : 0 }}</div>
-                    <p class="stat-sub">Across organization</p>
+                <div class="text-3xl font-extrabold mb-1">{{ result?.deptsCount?.length || 0 }}</div>
+                <div class="text-[10px] font-medium opacity-80">Departments</div>
+            </div>
+
+            <!-- Locations -->
+            <div class="relative overflow-hidden rounded-2xl p-5 shadow-lg shadow-orange-200 text-white transform hover:-translate-y-1 transition-transform duration-300 border border-orange-500/20"
+                 style="background: linear-gradient(135deg, #ea580c 0%, #991b1b 100%) !important;">
+                <div class="absolute top-0 right-0 -mt-4 -mr-4 w-20 h-20 bg-white opacity-10 rounded-full blur-xl"></div>
+                <div class="flex items-center gap-3 mb-2 opacity-90">
+                     <i class="pi pi-map-marker text-lg"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider">Locations</span>
                 </div>
-                <div class="stat-card stat-card--amber">
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="stat-label">Branches</span>
-                        <div class="stat-icon"><i class="pi pi-map-marker"></i></div>
-                    </div>
-                    <div class="stat-value">{{ result.locationCount ? result.locationCount.length : 0 }}</div>
-                    <p class="stat-sub">Regional locations</p>
+                <div class="text-3xl font-extrabold mb-1">{{ result?.locationCount?.length || 0 }}</div>
+                <div class="text-[10px] font-medium opacity-80">Active Branches</div>
+            </div>
+
+            <!-- Companies -->
+            <div class="relative overflow-hidden rounded-2xl p-5 shadow-lg shadow-teal-200 text-white transform hover:-translate-y-1 transition-transform duration-300 border border-teal-500/20"
+                 style="background: linear-gradient(135deg, #0f766e 0%, #064e3b 100%) !important;">
+                <div class="absolute top-0 right-0 -mt-4 -mr-4 w-20 h-20 bg-white opacity-10 rounded-full blur-xl"></div>
+                <div class="flex items-center gap-3 mb-2 opacity-90">
+                    <i class="pi pi-briefcase text-lg"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider">Companies</span>
                 </div>
-                <div class="stat-card stat-card--teal">
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="stat-label">Companies</span>
-                        <div class="stat-icon"><i class="pi pi-briefcase"></i></div>
+                <div class="text-3xl font-extrabold mb-1">{{ result?.companiesCounts?.length || 0 }}</div>
+                <div class="text-[10px] font-medium opacity-80">Entities</div>
+            </div>
+
+            <!-- Countries -->
+            <div class="relative overflow-hidden rounded-2xl p-5 shadow-lg shadow-pink-200 text-white transform hover:-translate-y-1 transition-transform duration-300 border border-pink-500/20"
+                 style="background: linear-gradient(135deg, #be185d 0%, #881337 100%) !important;">
+                <div class="absolute top-0 right-0 -mt-4 -mr-4 w-20 h-20 bg-white opacity-10 rounded-full blur-xl"></div>
+                <div class="flex items-center gap-3 mb-2 opacity-90">
+                    <i class="pi pi-globe text-lg"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider">Countries</span>
+                </div>
+                <div class="text-3xl font-extrabold mb-1">{{ result?.citizenshipCounts?.length || 0 }}</div>
+                <div class="text-[10px] font-medium opacity-80">Nationalities</div>
+            </div>
+        </div>
+
+        <div v-if="loading && !result" class="loading-container">
+           <div class="loading-content">
+               <i class="pi pi-spin pi-spinner loading-spinner"></i>
+               <p class="loading-text">Loading analytics...</p>
+           </div>
+        </div>
+
+        <div v-if="result" class="dashboard-content">
+            
+            <!-- Grid Layout for Charts -->
+            <div class="charts-grid-3">
+                
+                <!-- Genders (Pie) -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2 class="chart-title">Gender Distribution</h2>
+                        <span class="chart-subtitle">Employees by gender</span>
                     </div>
-                    <div class="stat-value">{{ result.companiesCounts ? result.companiesCounts.length : 0 }}</div>
-                    <p class="stat-sub">Subsidiaries</p>
+                    <div class="chart-body">
+                         <div ref="chartGendersRef" class="chart-container"></div>
+                    </div>
+                </div>
+
+                 <!-- Companies (Donut) -->
+                <div class="chart-card">
+                     <div class="chart-header">
+                        <h2 class="chart-title">Company Structure</h2>
+                        <span class="chart-subtitle">Headcount by entity</span>
+                    </div>
+                     <div class="chart-body">
+                        <div ref="chartCompRef" class="chart-container"></div>
+                    </div>
+                </div>
+
+                <!-- Age Groups -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h2 class="chart-title">Demographics</h2>
+                        <span class="chart-subtitle">Age group distribution</span>
+                    </div>
+                    <div class="chart-body">
+                        <div ref="chartAgeGroupRef" class="chart-container"></div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Monthly Trend — Full Width -->
-            <div class="chart-card">
-                <div class="chart-header">
+            <div class="charts-grid-2">
+                <!-- Melcom Departments (Horizontal Bar) -->
+                 <div class="chart-card">
+                    <div class="chart-header">
+                        <h2 class="chart-title">Melcom Departments</h2>
+                    </div>
+                    <div ref="chartMelcomDeptRef"></div>
+                </div>
+
+                <!-- Hospitality Departments -->
+                 <div class="chart-card">
+                     <div class="chart-header">
+                        <h2 class="chart-title">Hospitality Departments</h2>
+                    </div>
+                    <div ref="chartHospitalityDeptRef"></div>
+                </div>
+            </div>
+
+
+            <!-- Full Width Charts -->
+             <div class="chart-card chart-full">
+                 <div class="chart-header">
+                    <h2 class="chart-title">Monthly Onboarding</h2>
+                    <span class="chart-subtitle">New joiners per month</span>
+                </div>
+                <div ref="chartMonthlyRef"></div>
+            </div>
+
+             <div class="chart-card chart-full">
+                <div class="chart-header-with-action">
                     <div>
-                        <h3 class="chart-title">Monthly Joining Trend</h3>
-                        <p class="chart-subtitle">New employee onboarding over time</p>
+                        <h2 class="chart-title">Regional Distribution</h2>
+                        <span class="chart-subtitle">Headcount by region and branch</span>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button @click="openListView('Monthly Joining Trend', Object.keys(result.monthlyData).map(k => ({name: k, count: result.monthlyData[k]})))"
-                            class="w-7 h-7 rounded bg-slate-100 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
-                            <i class="pi pi-list text-[11px]"></i>
-                        </button>
-                        <div class="chart-badge chart-badge--indigo">
-                            <i class="pi pi-chart-line text-[10px]"></i> Trend
-                        </div>
-                    </div>
-                </div>
-                <apexchart type="area" height="280" :options="optionsMonthly" :series="seriesMonthly"></apexchart>
-            </div>
-
-            <!-- Two-Col: Departments + Regions -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <div>
-                            <h3 class="chart-title">Melcom Departments</h3>
-                            <p class="chart-subtitle">Staff distribution by department</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button @click="openListView('Melcom Departments', melcomDeptsData.map(i => ({name: finddept(i.joining_dept_id), count: i.total_count})))"
-                                class="w-7 h-7 rounded bg-slate-100 hover:bg-violet-50 text-slate-400 hover:text-violet-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
-                                <i class="pi pi-list text-[11px]"></i>
-                            </button>
-                            <div class="chart-badge chart-badge--violet">
-                                <i class="pi pi-building text-[10px]"></i> {{ melcomDeptsData.length }}
-                            </div>
-                        </div>
-                    </div>
-                    <apexchart type="treemap" height="380" :options="optionsMelcom" :series="seriesMelcom"></apexchart>
-                </div>
-
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <div>
-                            <h3 class="chart-title">Employees by Region</h3>
-                            <p class="chart-subtitle">Geographic distribution across Ghana</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button @click="openListView('Employees by Region', finalLocationData.names.map((n, idx) => ({name: n, count: finalLocationData.count[idx]})))"
-                                class="w-7 h-7 rounded bg-slate-100 hover:bg-cyan-50 text-slate-400 hover:text-cyan-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
-                                <i class="pi pi-list text-[11px]"></i>
-                            </button>
-                            <div class="chart-badge chart-badge--cyan">
-                                <i class="pi pi-map text-[10px]"></i> {{ totalRegionEmployees }}
-                            </div>
-                        </div>
-                    </div>
-                    <apexchart type="bar" height="340" :options="optionsRegions" :series="seriesRegions"></apexchart>
-                </div>
-            </div>
-
-            <!-- Two-Col: Gender + Age -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <div>
-                            <h3 class="chart-title">Gender Distribution</h3>
-                            <p class="chart-subtitle">Workforce diversity breakdown</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button @click="openListView('Gender Distribution', result.genderCounts.filter(i => i.gender).map(i => ({name: findgender(i.gender), count: i.total_count})))"
-                                class="w-7 h-7 rounded bg-slate-100 hover:bg-pink-50 text-slate-400 hover:text-pink-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
-                                <i class="pi pi-list text-[11px]"></i>
-                            </button>
-                            <div class="chart-badge chart-badge--pink">
-                                <i class="pi pi-users text-[10px]"></i> Split
-                            </div>
-                        </div>
-                    </div>
-                    <apexchart type="donut" height="300" :options="optionsGender" :series="seriesGender"></apexchart>
-                </div>
-
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <div>
-                            <h3 class="chart-title">Age Groups</h3>
-                            <p class="chart-subtitle">Employee age demographics</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button @click="openListView('Age Groups', Object.keys(result.ageGroups).map(k => ({name: k, count: result.ageGroups[k]})))"
-                                class="w-7 h-7 rounded bg-slate-100 hover:bg-teal-50 text-slate-400 hover:text-teal-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
-                                <i class="pi pi-list text-[11px]"></i>
-                            </button>
-                            <div class="chart-badge chart-badge--teal">
-                                <i class="pi pi-chart-bar text-[10px]"></i> Range
-                            </div>
-                        </div>
-                    </div>
-                    <apexchart type="bar" height="300" :options="optionsAge" :series="seriesAge"></apexchart>
-                </div>
-            </div>
-
-            <!-- Hospitality — Full Width -->
-            <div class="chart-card">
-                <div class="chart-header">
-                    <div>
-                        <h3 class="chart-title">Hospitality Departments</h3>
-                        <p class="chart-subtitle">Staff count across hospitality divisions</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button @click="openListView('Hospitality Departments', hospitalitiesData.map(i => ({name: finddept(i.joining_dept_id), count: i.total_count})))"
-                            class="w-7 h-7 rounded bg-slate-100 hover:bg-amber-50 text-slate-400 hover:text-amber-600 flex items-center justify-center transition-colors border border-slate-200" title="View List">
-                            <i class="pi pi-list text-[11px]"></i>
-                        </button>
-                        <div class="chart-badge chart-badge--amber">
-                            <i class="pi pi-star text-[10px]"></i> {{ hospitalitiesData.length }}
-                        </div>
-                    </div>
-                </div>
-                <apexchart type="bar" height="280" :options="optionsHospitality" :series="seriesHospitality"></apexchart>
-            </div>
-        </div>
-
-        <!-- Loading State -->
-        <div v-else-if="loading" class="flex items-center justify-center py-32">
-            <div class="text-center">
-                <i class="pi pi-spin pi-spinner text-4xl text-indigo-400 mb-4"></i>
-                <p class="text-sm font-bold text-slate-400 uppercase tracking-widest">Loading dashboard...</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Employee Drill-down Dialog -->
-    <Dialog v-model:visible="showEmpsPopup" modal :header="empPopupTitle" :style="{ width: '48rem' }" :breakpoints="{ '1199px': '75vw', '575px': '95vw' }"
-        :contentStyle="{ padding: '0', background: isDark ? '#1e293b' : '#ffffff', color: isDark ? '#f1f5f9' : '#1e293b' }"
-        class="emp-dialog-light">
-        <div class="p-5">
-            <!-- Search + Count -->
-            <div class="flex items-center justify-between mb-4 gap-3">
-                <div class="relative flex-1">
-                    <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
-                    <input v-model="empSearch" type="text" placeholder="Search by name or code..."
-                        class="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all" />
-                </div>
-                <span class="text-xs font-black text-slate-400 uppercase tracking-wider whitespace-nowrap">{{ filteredEmpList.length }} found</span>
-            </div>
-
-            <div v-if="loadingEmps" class="flex justify-center py-12">
-                <i class="pi pi-spin pi-spinner text-3xl text-indigo-400"></i>
-            </div>
-
-            <div v-else class="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
-                <div v-for="(e, index) in filteredEmpList" :key="index"
-                    class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors group border border-transparent hover:border-slate-100">
-                    <div class="flex items-center gap-3">
-                        <Avatar :image="e.profilepicture[0]?.path ? `${imgburl}${e.profilepicture[0]?.path}` : null"
-                            :label="!e.profilepicture[0]?.path ? (e.firstname?.[0] || '?') : null"
-                            shape="circle" size="large"
-                            class="shrink-0" />
-                        <div>
-                            <p class="text-sm font-bold text-slate-800">{{ e.firstname }} {{ e.lastname }}</p>
-                            <p class="text-[11px] text-slate-400 font-medium">{{ e.emp_code }} &middot; {{ e.employeeid }}</p>
-                        </div>
-                    </div>
-                    <router-link :to="`/employee/${e.id}`" target="_blank"
-                        class="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-[11px] font-bold uppercase tracking-wider hover:bg-indigo-100 transition-colors opacity-0 group-hover:opacity-100">
-                        View
-                    </router-link>
-                </div>
-                <div v-if="filteredEmpList.length === 0" class="text-center py-10">
-                    <i class="pi pi-inbox text-3xl text-slate-200 mb-2"></i>
-                    <p class="text-sm font-bold text-slate-400">No employees found</p>
-                </div>
-            </div>
-        </div>
-    </Dialog>
-
-    <!-- List View Dialog -->
-    <Dialog v-model:visible="showListPopup" modal :header="listPopupTitle" :style="{ width: '48rem' }" :breakpoints="{ '1199px': '75vw', '575px': '95vw' }"
-        :contentStyle="{ padding: '0', background: isDark ? '#1e293b' : '#ffffff', color: isDark ? '#f1f5f9' : '#1e293b' }"
-        class="emp-dialog-light">
-        <div class="p-6">
-            <!-- Summary Header -->
-            <div class="flex items-center justify-between mb-5 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <span class="text-sm font-bold text-slate-500 uppercase tracking-wider">Total Count</span>
-                <span class="text-xl font-black text-indigo-600">{{ listPopupTotal }}</span>
-            </div>
-
-            <div class="space-y-2 max-h-[65vh] overflow-y-auto pr-2">
-                <div v-for="(item, index) in listPopupData" :key="index"
-                    class="relative overflow-hidden p-4 rounded-xl border border-slate-100 hover:border-slate-200 bg-white hover:bg-slate-50 transition-colors group">
-                    
-                    <!-- Background Progress Bar -->
-                    <div class="absolute inset-y-0 left-0 bg-indigo-50/60 transition-all duration-500 ease-out"
-                         :style="{ width: `${item.percent}%` }"></div>
-
-                    <!-- Content -->
-                    <div class="relative z-10 flex items-center justify-between">
-                        <div class="flex flex-col gap-1">
-                            <span class="text-[14px] font-extrabold text-slate-800">{{ item.name }}</span>
-                            <span class="text-[11px] font-bold text-slate-400">{{ item.percent }}% of total</span>
-                        </div>
-                        <span class="text-sm font-black text-indigo-700 bg-white shadow-sm border border-slate-100 px-3 py-1.5 rounded-lg">{{ item.count }}</span>
+                    <div v-if="showingbranchs">
+                         <button @click="stopshowingbranchs" class="back-btn">
+                            <i class="pi pi-arrow-left"></i> Back to Regions
+                         </button>
                     </div>
                 </div>
                 
-                <div v-if="listPopupData.length === 0" class="text-center py-12">
-                    <i class="pi pi-inbox text-4xl text-slate-200 mb-3"></i>
-                    <p class="text-sm font-bold text-slate-400">No data found</p>
+                <div class="chart-slider-container">
+                    <div class="chart-slide" 
+                        :class="[showingbranchs ? 'slide-out' : 'slide-in']">
+                         <div ref="chartRegionRef"></div>
+                    </div>
+                     <div class="chart-slide"
+                         :class="[showingbranchs ? 'slide-in' : 'slide-out']">
+                         <h3 class="region-title" v-if="showingbranchs">{{ selectedregion }} Region</h3>
+                         <div ref="chartRegionLocRef"></div>
+                    </div>
                 </div>
             </div>
+
+             <div class="chart-card chart-full">
+                 <div class="chart-header">
+                    <h2 class="chart-title">Citizenships</h2>
+                </div>
+                <div ref="chartCitRef"></div>
+            </div>
+
         </div>
-    </Dialog>
+    </div>
+    
+    <!-- Employee List Popup (Re-styled) -->
+    <div v-if="showEmpsPopup" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <div>
+                     <h3 class="text-xl font-bold text-gray-800">Employee List</h3>
+                     <p class="text-sm text-gray-500">{{ emplist.length }} employee(s) found</p>
+                </div>
+                <button @click="showEmpsPopup = false" class="w-8 h-8 rounded-full bg-gray-200 hover:bg-red-100 hover:text-red-600 flex items-center justify-center transition-colors">
+                    <i class="pi pi-times"></i>
+                </button>
+            </div>
+            
+            <div class="p-4 border-b border-gray-100 bg-white">
+                <div class="relative">
+                    <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" v-uppercase placeholder="Search by name or ID..." class="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all">
+                </div>
+            </div>
+
+             <div class="flex-1 overflow-y-auto p-0">
+                <div v-if="loadingEmps" class="flex justify-center items-center h-40">
+                    <i class="pi pi-spinner pi-spin text-purple-600 text-3xl"></i>
+                </div>
+                
+                <table v-else class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50 sticky top-0 z-10">
+                        <tr>
+                            <th class="px-6 py-3 text-xs font-bold text-gray-500 uppercase">Profile</th>
+                            <th class="px-6 py-3 text-xs font-bold text-gray-500 uppercase">ID</th>
+                            <th class="px-6 py-3 text-xs font-bold text-gray-500 uppercase">Name</th>
+                             <th class="px-6 py-3 text-xs font-bold text-gray-500 uppercase">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr v-for="(e, index) in emplist" :key="index" class="hover:bg-gray-50 transition-colors">
+                            <td class="px-6 py-3">
+                                 <div class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
+                                     <img :src="e.profilepicture[0]?.path ? `${imgburl}${e.profilepicture[0]?.path}` : 'https://ui-avatars.com/api/?name='+e.firstname+'&background=random'" class="w-full h-full object-cover">
+                                 </div>
+                            </td>
+                            <td class="px-6 py-3 font-mono text-sm text-gray-600">{{ e.employeeid }}</td>
+                            <td class="px-6 py-3 font-medium text-gray-800">{{ e.firstname }} {{ e.lastname }}</td>
+                            <td class="px-6 py-3">
+                                <router-link :to="`/employee/${e.id}`" target="_blank" class="text-purple-600 hover:text-purple-800 p-2 rounded-full hover:bg-purple-50 transition-colors">
+                                    <i class="pi pi-eye"></i>
+                                </router-link>
+                            </td>
+                        </tr>
+                        <tr v-if="!emplist.length">
+                            <td colspan="4" class="px-6 py-8 text-center text-gray-400">No employees found</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+                <button class="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-lg transition-colors" @click="showEmpsPopup = false">Close</button>
+            </div>
+        </div>
+    </div>
+   
 </template>
 
 <style scoped>
-.dash-root {
-    max-width: 1440px;
-    margin: 0 auto;
-    padding: 0 20px 40px;
-}
+    /* Dashboard Header */
+    .dashboard-header {
+        background: var(--color-surface);
+        padding: 1.5rem;
+        border-radius: 1rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        border: 1px solid var(--color-light);
+        margin-bottom: 1.5rem;
+    }
 
-/* Hero */
-.dash-hero {
-    position: relative;
-    border-radius: 20px;
-    overflow: hidden;
-    margin-bottom: 24px;
-    padding: 32px 36px;
-}
-.dash-hero-bg {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4338ca 100%);
-    z-index: 0;
-}
-.dash-hero-bg::after {
-    content: '';
-    position: absolute;
-    top: -40%;
-    right: -10%;
-    width: 500px;
-    height: 500px;
-    background: radial-gradient(circle, rgba(99,102,241,0.3) 0%, transparent 70%);
-    border-radius: 50%;
-}
-.dash-hero-bg::before {
-    content: '';
-    position: absolute;
-    bottom: -30%;
-    left: 10%;
-    width: 300px;
-    height: 300px;
-    background: radial-gradient(circle, rgba(168,85,247,0.2) 0%, transparent 70%);
-    border-radius: 50%;
-}
-.dash-hero-content {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 16px;
-}
-.hero-pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.12);
-    backdrop-filter: blur(8px);
-    border-radius: 10px;
-    padding: 6px 14px;
-    font-size: 12px;
-    font-weight: 700;
-    color: rgba(255,255,255,0.8);
-}
+    .header-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
 
-/* Body */
-.dash-body {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
+    .dashboard-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
 
-/* Stat Cards */
-.stat-card {
-    background: #fff;
-    border: 1px solid #f1f5f9;
-    border-radius: 16px;
-    padding: 20px 22px;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden;
-}
-.stat-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-}
-.stat-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 30px -12px rgba(0,0,0,0.12);
-}
-.stat-card--indigo::before { background: linear-gradient(90deg, #6366f1, #818cf8); }
-.stat-card--pink::before { background: linear-gradient(90deg, #ec4899, #f472b6); }
-.stat-card--amber::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-.stat-card--teal::before { background: linear-gradient(90deg, #14b8a6, #2dd4bf); }
+    .dashboard-subtitle {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        margin-top: 0.25rem;
+    }
 
-.stat-label {
-    font-size: 11px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #94a3b8;
-}
-.stat-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-}
-.stat-card--indigo .stat-icon { background: #eef2ff; color: #6366f1; }
-.stat-card--pink .stat-icon { background: #fce7f3; color: #ec4899; }
-.stat-card--amber .stat-icon { background: #fef3c7; color: #f59e0b; }
-.stat-card--teal .stat-icon { background: #ccfbf1; color: #14b8a6; }
+    .refresh-btn {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        background: var(--color-lighter);
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
 
-/* Chart Cards */
-.chart-card {
-    background: #fff;
-    border: 1px solid #f1f5f9;
-    border-radius: 16px;
-    padding: 24px;
-    transition: box-shadow 0.2s ease;
-}
-.chart-card:hover {
-    box-shadow: 0 4px 20px -8px rgba(0,0,0,0.06);
-}
-.chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 16px;
-}
-.chart-title {
-    font-size: 15px;
-    font-weight: 800;
-    color: #1e293b;
-    letter-spacing: -0.01em;
-}
-.chart-subtitle {
-    font-size: 11px;
-    font-weight: 600;
-    color: #94a3b8;
-    margin-top: 2px;
-}
-.chart-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
-    border-radius: 8px;
-    font-size: 11px;
-    font-weight: 700;
-}
-.chart-badge--indigo { background: #eef2ff; color: #6366f1; }
-.chart-badge--violet { background: #f5f3ff; color: #7c3aed; }
-.chart-badge--cyan { background: #ecfeff; color: #06b6d4; }
-.chart-badge--pink { background: #fce7f3; color: #ec4899; }
-.chart-badge--teal { background: #ccfbf1; color: #14b8a6; }
-.chart-badge--amber { background: #fef3c7; color: #f59e0b; }
+    .refresh-btn:hover {
+        background: var(--color-light);
+        color: var(--color-primary);
+    }
 
-/* Stat value */
-.stat-value {
-    font-size: 1.875rem;
-    font-weight: 900;
-    color: #0f172a;
-    line-height: 1;
-    margin-bottom: 4px;
-}
-.stat-sub {
-    font-size: 10px;
-    font-weight: 600;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
+    .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
 
-/* Force light background on employee dialog */
-:global(.emp-dialog-light) {
-    background: #ffffff !important;
-    color: #1e293b !important;
-}
-:global(.emp-dialog-light .p-dialog-header) {
-    background: #ffffff !important;
-    color: #0f172a !important;
-    border-bottom: 1px solid #f1f5f9 !important;
-    padding: 20px 24px !important;
-}
-:global(.emp-dialog-light .p-dialog-header .p-dialog-title) {
-    font-weight: 800 !important;
-    font-size: 18px !important;
-    color: #0f172a !important;
-}
-:global(.emp-dialog-light .p-dialog-header .p-dialog-header-icon) {
-    color: #94a3b8 !important;
-}
-:global(.emp-dialog-light .p-dialog-header .p-dialog-header-icon:hover) {
-    background: #f1f5f9 !important;
-    color: #334155 !important;
-}
-:global(.emp-dialog-light .p-dialog-content) {
-    background: #ffffff !important;
-    color: #1e293b !important;
-}
+    .brand-pill {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--color-lighter);
+        padding: 0.5rem 1rem;
+        border-radius: 0.75rem;
+        border: 1px solid var(--color-light);
+    }
 
-/* Dark mode */
-:global(body.dark-mode) .dash-root { color: #e2e8f0; }
-:global(body.dark-mode) .stat-card,
-:global(body.dark-mode) .chart-card { background: #1e293b; border-color: #334155; }
-:global(body.dark-mode) .stat-card:hover { box-shadow: 0 8px 30px -12px rgba(0,0,0,0.4); }
-:global(body.dark-mode) .stat-label { color: #64748b; }
-:global(body.dark-mode) .stat-value { color: #f1f5f9; }
-:global(body.dark-mode) .chart-title { color: #f1f5f9; }
-:global(body.dark-mode) .chart-subtitle { color: #64748b; }
-:global(body.dark-mode) .stat-card--indigo .stat-icon { background: rgba(99,102,241,0.15); }
-:global(body.dark-mode) .stat-card--pink .stat-icon { background: rgba(236,72,153,0.15); }
-:global(body.dark-mode) .stat-card--amber .stat-icon { background: rgba(245,158,11,0.15); }
-:global(body.dark-mode) .stat-card--teal .stat-icon { background: rgba(20,184,166,0.15); }
-:global(body.dark-mode) .chart-badge--indigo { background: rgba(99,102,241,0.15); }
-:global(body.dark-mode) .chart-badge--violet { background: rgba(124,58,237,0.15); }
-:global(body.dark-mode) .chart-badge--cyan { background: rgba(6,182,212,0.15); }
-:global(body.dark-mode) .chart-badge--pink { background: rgba(236,72,153,0.15); }
-:global(body.dark-mode) .chart-badge--teal { background: rgba(20,184,166,0.15); }
-:global(body.dark-mode) .chart-badge--amber { background: rgba(245,158,11,0.15); }
+    .brand-logo {
+        height: 1.5rem;
+    }
+
+    .brand-name {
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    /* Quick Stats Row */
+    .quick-stats-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 1200px) {
+        .quick-stats-row {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+
+    @media (max-width: 768px) {
+        .quick-stats-row {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    .stat-card {
+        background: var(--color-surface);
+        border-radius: 1rem;
+        padding: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        border: 1px solid var(--color-light);
+        transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+    }
+
+    .stat-primary .stat-icon {
+        background: rgba(124, 58, 237, 0.1);
+        color: #7c3aed;
+    }
+
+    .stat-success .stat-icon {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+    }
+
+    .stat-warning .stat-icon {
+        background: rgba(245, 158, 11, 0.1);
+        color: #f59e0b;
+    }
+
+    .stat-info .stat-icon {
+        background: rgba(59, 130, 246, 0.1);
+        color: #3b82f6;
+    }
+
+    .stat-pink .stat-icon {
+        background: rgba(236, 72, 153, 0.1);
+        color: #ec4899;
+    }
+
+    .stat-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat-label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    /* Loading State */
+    .loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 16rem;
+    }
+
+    .loading-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .loading-spinner {
+        color: var(--color-primary);
+        font-size: 2.5rem;
+    }
+
+    .loading-text {
+        color: var(--text-muted);
+        font-weight: 500;
+    }
+
+    /* Dashboard Content */
+    .dashboard-content {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    /* Chart Grids */
+    .charts-grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1.5rem;
+    }
+
+    .charts-grid-2 {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.5rem;
+    }
+
+    @media (max-width: 1200px) {
+        .charts-grid-3 {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (max-width: 768px) {
+        .charts-grid-3,
+        .charts-grid-2 {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* Chart Cards */
+    .chart-card {
+        background: var(--color-surface);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        border: 1px solid var(--color-light);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .chart-full {
+        grid-column: 1 / -1;
+    }
+
+    .chart-header {
+        margin-bottom: 1rem;
+    }
+
+    .chart-header-with-action {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--color-lighter);
+    }
+
+    .chart-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    .chart-subtitle {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        display: block;
+        margin-top: 0.25rem;
+    }
+
+    .chart-body {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .chart-container {
+        width: 100%;
+    }
+
+    /* Back Button */
+    .back-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        border: none;
+        background: transparent;
+        color: var(--color-danger);
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .back-btn:hover {
+        background: rgba(239, 68, 68, 0.08);
+    }
+
+    /* Chart Slider */
+    .chart-slider-container {
+        position: relative;
+        overflow: hidden;
+        min-height: 400px;
+    }
+
+    .chart-slide {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        transition: all 0.5s ease-in-out;
+    }
+
+    .chart-slide.slide-in {
+        transform: translateX(0);
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .chart-slide.slide-out {
+        transform: translateX(-100%);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .chart-slide:last-child.slide-out {
+        transform: translateX(100%);
+    }
+
+    .region-title {
+        text-align: center;
+        font-weight: 700;
+        color: var(--color-primary);
+        margin-bottom: 0.5rem;
+    }
+
+    /* Employee Popup Styles */
+    .popup-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        backdrop-filter: blur(4px);
+        animation: fadeIn 0.2s ease;
+    }
+
+    .popup-container {
+        background: var(--color-surface);
+        border-radius: 1.5rem;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        width: 100%;
+        max-width: 56rem;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .popup-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--color-lighter);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--color-lighter);
+    }
+
+    .popup-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    .popup-subtitle {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+    }
+
+    .popup-close {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        background: var(--color-light);
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .popup-close:hover {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--color-danger);
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    /* Styling for ApexCharts tooltips to match theme */
+    :deep(.apexcharts-tooltip) {
+        background: var(--color-surface) !important;
+        border-color: var(--color-light) !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+        border-radius: 0.5rem !important;
+    }
+
+    :deep(.apexcharts-tooltip-title) {
+        background: var(--color-lighter) !important;
+        border-bottom: 1px solid var(--color-light) !important;
+        font-family: inherit !important;
+    }
+
+    :deep(.apexcharts-text) {
+        font-family: inherit !important; 
+        fill: var(--text-muted) !important;
+    }
+
+    .pdf-container canvas {
+        display: none;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 640px) {
+        .dashboard-header {
+            padding: 1rem;
+        }
+
+        .header-content {
+            flex-direction: column;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .header-actions {
+            width: 100%;
+            justify-content: space-between;
+        }
+
+        .brand-pill {
+            display: none;
+        }
+
+        .stat-card {
+            padding: 1rem;
+        }
+
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            font-size: 1rem;
+        }
+
+        .stat-value {
+            font-size: 1.25rem;
+        }
+    }
 </style>

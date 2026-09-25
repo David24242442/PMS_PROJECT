@@ -4,7 +4,7 @@
     import {onBeforeRouteLeave } from 'vue-router'
     import { log, calculateAge, toastt, numberToWords, aToday, afDate, aDate, imgburl} from '@/helpers/essential'   
     import { mstatus,  bankaccounttype, relations, depts, regions, branchs, qualtypes, banks, familyrelation, countries, conttypes, idtypes, findidtypes, findcompany, genders, companies, findregion, findconttypes, findrecordstatus} from '@/data/masterdata'
-    import axios from '@/helpers/pms_axios';
+    import axios from 'axios';
 
 
     import { useConfirm } from 'primevue/useconfirm';
@@ -12,7 +12,10 @@
     
     import { useUsersStore } from '@/stores/user';
     const userstore = useUsersStore()
-    const { loguser } = userstore
+    const { loguser, getloguser, authtoken, getauthtoken } = userstore
+
+    const bearer = `Bearer ${authtoken}`;
+    axios.defaults.headers.common['Authorization'] = bearer
 
 
     /* Date Computation Start */
@@ -347,54 +350,18 @@
 
     /* Option Code End */
 
-    /* Profile Picture Upload Helpers */
-        const profileInputRef = ref(null);
-        const profilePreviewUrl = ref('');
-        const profileFileName = ref('');
-        const profileFileSize = ref('');
-        const isDraggingProfile = ref(false);
-
-        const triggerProfileUpload = () => {
-            if (profileInputRef.value) {
-                profileInputRef.value.click();
-            }
-        };
-
-        const onProfileDrop = (event) => {
-            isDraggingProfile.value = false;
-            const droppedFiles = event.dataTransfer?.files;
-            if (droppedFiles && droppedFiles.length) {
-                addprofileimage({ target: { files: droppedFiles } });
-            }
-        };
-
-        const removeProfileImage = () => {
-            emp.profilepicture = [];
-            profilePreviewUrl.value = '';
-            profileFileName.value = '';
-            profileFileSize.value = '';
-            if (profileInputRef.value) {
-                profileInputRef.value.value = '';
-            }
-        };
-
+    /* File methods variable Start */
         const addprofileimage = (event) => {
-            const files = event.target?.files || event.dataTransfer?.files;
-            if (!files || !files.length) return;
             
             emp.profilepicture = [];
 
-            for(const fil of files){
-                profileFileName.value = fil.name;
-                profileFileSize.value = (fil.size / 1024).toFixed(1) + ' KB';
-
+            for(const fil of event.target.files){
                 const reader = new FileReader();
                 reader.onloadend = function() {
                     const base64String = reader.result.replace('data:', '').replace(/^.+,/, '');
-                    emp.profilepicture.push(base64String);
-                    profilePreviewUrl.value = reader.result;
+                    emp.profilepicture.push(base64String)  
                 };
-                reader.readAsDataURL(fil);
+                const tic = reader.readAsDataURL(fil);
             }
         }
 
@@ -1842,26 +1809,6 @@
         }
     /* Tabs and Steps code End */
 
-    /* Central Sync */
-    const isSyncing = ref(false)
-    const triggerSyncCentral = async () => {
-        isSyncing.value = true
-        try {
-            const res = await axios.post('sync-central-employees')
-            if (res.data && res.data.status === 'success') {
-                toastt(res.data.message || 'Records successfully synced from Central Server 17!', 'success')
-            } else {
-                toastt(res.data.message || 'Sync completed with notices', 'info')
-            }
-        } catch (e) {
-            console.error('Central Sync error:', e)
-            const errMsg = e.response?.data?.message || e.message || 'Failed to sync with Central Server 17'
-            toastt(errMsg, 'error')
-        } finally {
-            isSyncing.value = false
-        }
-    }
-
     const showsearchpopup = () => {
         showsearchpopupvalue.value = true
     }
@@ -2010,116 +1957,52 @@
 <template>
 
     <div>
-        <!-- PMS Standard Header Banner -->
-        <div class="prof-card mb-6 bg-[#1A237E] !rounded-2xl shadow-xl overflow-hidden">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-5 px-6 gap-4">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-blue-200 border border-white/10 shrink-0">
-                        <i class="pi pi-user-plus text-2xl text-blue-200"></i>
-                    </div>
-                    <div>
-                        <p class="text-white/80 text-[10px] font-black uppercase tracking-wider mb-0.5">HUMAN RESOURCES & TALENT ACQUISITION</p>
-                        <h1 class="text-xl md:text-2xl font-black text-white tracking-tight">Employee Onboarding & Registration</h1>
-                        <p class="text-blue-100/70 text-xs font-medium mt-0.5">Complete registration, position details, banking, guarantee records and compliance checklists</p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-3 flex-wrap">
-                    <div v-if="emp.id" class="px-3.5 py-2 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 text-xs font-black text-white flex items-center gap-2">
-                        <i class="pi pi-id-card text-blue-200"></i>
-                        <span>{{ emp.firstname || '' }} {{ emp.lastname || '' }} ({{ emp.emp_code }})</span>
-                    </div>
-                    <button 
-                        type="button"
-                        @click="triggerSyncCentral" 
-                        :disabled="isSyncing"
-                        class="prof-button !bg-emerald-600 hover:!bg-emerald-700 disabled:opacity-50 px-4 py-2.5 flex items-center gap-2 border-none shadow-lg text-xs text-white font-bold transition-all cursor-pointer rounded-xl"
-                        title="Sync live employee records from Central Server 17"
-                    >
-                        <i :class="isSyncing ? 'pi pi-spin pi-spinner' : 'pi pi-cloud-download'" class="text-xs"></i>
-                        <span class="font-bold tracking-tight uppercase">{{ isSyncing ? 'Syncing...' : 'Sync Central Data' }}</span>
-                    </button>
-                    <button 
-                        type="button"
-                        @click="showsearchpopup" 
-                        class="prof-button !bg-white/15 hover:!bg-white/25 border border-white/20 px-4 py-2.5 flex items-center gap-2 shadow-lg text-xs text-white font-bold transition-all cursor-pointer rounded-xl"
-                    >
-                        <i class="pi pi-search text-xs"></i>
-                        <span class="font-bold tracking-tight uppercase">Search Employee</span>
-                    </button>
-                </div>
-            </div>
+        <h2>Employee Onboarding</h2>
+
+        <div class="m-5">
+            <Button icon='pi pi-search' label="Search for employee to continue" @click="showsearchpopup"></Button>
+            
         </div>
         
 
-        <!-- Modern PMS Filter Pill Tabs -->
-        <div class="tabs mb-6 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap gap-1.5 shadow-xs">
+        <div class="tabs">
             <button
-                type="button"
                 @click="changetab(1)"
-                :class="maintab == 1 ? 'activetab' : ''"
-                class="tab-btn"
-            >
-                <i class="pi pi-user text-xs"></i>
-                <span>Employee Information Form</span>
-                <span v-if="emp.id" class="tab-badge">ID: {{ emp.emp_code }}</span>
-            </button>
+                :class="maintab == 1 ? 'activetab' : '' "
+            >Employee Information Form</button>
 
             <button
-                type="button"
                 @click="changetab(2)"
-                :class="maintab == 2 ? 'activetab' : ''"
+                :class="maintab == 2 ? 'activetab' : '' "
                 :disabled="!emp.id || !isnotoptional"
-                class="tab-btn"
-            >
-                <i class="pi pi-credit-card text-xs"></i>
-                <span>Bank / Social Security Fund</span>
-            </button>
+            >Bank / Social Security Fund</button>
 
             <button
-                type="button"
                 @click="changetab(3)"
-                :class="maintab == 3 ? 'activetab' : ''"
+                :class="maintab == 3 ? 'activetab' : '' "
                 :disabled="!emp.id || (!isnotoptional && !guarantorrequired)"
-                class="tab-btn"
-            >
-                <i class="pi pi-shield text-xs"></i>
-                <span>Irrevocable Continuing Guarantee</span>
-            </button>
+            >Irrevocable Continuing Guarantee</button>
 
             <button
-                type="button"
                 @click="changetab(4)"
-                :class="maintab == 4 ? 'activetab' : ''"
+                :class="maintab == 4 ? 'activetab' : '' "
                 :disabled="!emp.id"
-                class="tab-btn"
-            >
-                <i class="pi pi-check-square text-xs"></i>
-                <span>Checklist & Compliance</span>
-            </button>
+            >Checklist</button>
         </div>
 
         <div id="form">
             
             <div id="mainform" v-show="maintab == 1">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-200">
-                    <div>
-                        <h2 class="text-xl font-black text-slate-800 tracking-tight flex items-center gap-3 m-0">
-                            <span>Employee Information Form</span>
-                            <span v-if="emp.id" class="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-black border border-indigo-200">
-                                ({{ emp.emp_code }})
-                            </span>
-                        </h2>
-                        <p class="text-xs text-slate-500 font-medium mt-0.5 mb-0">Capture employee personal, position, contact and educational details</p>
-                    </div>
-                    <div class="steper">
-                        <span>Page</span>
-                        <span class="active">{{ perinfostep }}</span>
-                        <span class="text-slate-400">/</span>
-                        <span>4</span>
-                    </div>
-                </div>
+                <h2>
+                    Employee Information Form 
+                    <span v-if="emp.id" class='text-mred-500'>( {{ emp.emp_code }} )</span> 
+                </h2>
 
                 <div>
+                    <div class="steper">
+                        Page 
+                        <span class="active">{{ perinfostep }}</span> / <span>4</span>
+                    </div>
                     
                     <div id='perinfo1' v-show="perinfostep == 1">
 
@@ -2210,65 +2093,8 @@
 
                             <div>
                                 <div class="one" v-if="!emp.id">
-                                    <label style="font-weight:700; font-size:0.875rem; color:#374151; margin-bottom:8px; display:block;">Profile Picture *:</label>
-                                    
-                                    <!-- Modern Profile Picture Upload Card -->
-                                    <div 
-                                        class="profile-upload-zone"
-                                        :class="{ 'has-file': profilePreviewUrl, 'is-dragging': isDraggingProfile }"
-                                        @dragover.prevent="isDraggingProfile = true"
-                                        @dragleave.prevent="isDraggingProfile = false"
-                                        @drop.prevent="onProfileDrop"
-                                        @click="triggerProfileUpload"
-                                    >
-                                        <input 
-                                            type="file" 
-                                            ref="profileInputRef" 
-                                            @change="addprofileimage($event)" 
-                                            accept="image/*" 
-                                            style="display:none;"
-                                            required
-                                        >
-
-                                        <!-- Empty State -->
-                                        <div v-if="!profilePreviewUrl" class="upload-placeholder-content">
-                                            <div class="upload-avatar-circle">
-                                                <i class="pi pi-user text-3xl" style="color:#94a3b8; font-size:2rem;"></i>
-                                                <div class="upload-badge-icon">
-                                                    <i class="pi pi-camera" style="font-size:0.75rem; color:#ffffff;"></i>
-                                                </div>
-                                            </div>
-                                            <div class="upload-text-content">
-                                                <span class="upload-title">Click to upload photo or drag & drop</span>
-                                                <span class="upload-subtitle">PNG, JPG, or JPEG up to 5MB</span>
-                                                <button type="button" class="upload-browse-btn" @click.stop="triggerProfileUpload">
-                                                    <i class="pi pi-upload mr-1.5"></i> Select Image
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <!-- Preview State -->
-                                        <div v-else class="upload-preview-content" @click.stop>
-                                            <div class="preview-avatar-wrapper">
-                                                <img :src="profilePreviewUrl" alt="Profile Preview" class="preview-avatar-img">
-                                                <div class="preview-success-badge" title="Image Selected">
-                                                    <i class="pi pi-check" style="font-size:0.75rem; color:#ffffff;"></i>
-                                                </div>
-                                            </div>
-                                            <div class="preview-meta">
-                                                <span class="preview-filename">{{ profileFileName }}</span>
-                                                <span class="preview-filesize">{{ profileFileSize }}</span>
-                                                <div class="preview-actions">
-                                                    <button type="button" class="action-btn change-btn" @click.stop="triggerProfileUpload">
-                                                        <i class="pi pi-refresh mr-1"></i> Change
-                                                    </button>
-                                                    <button type="button" class="action-btn remove-btn" @click.stop="removeProfileImage">
-                                                        <i class="pi pi-trash mr-1"></i> Remove
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <label for="">Profile Picture:</label>
+                                    <input type="file" multiple @change="addprofileimage($event)" accept="image/*" required>
                                     <span class="error"></span>
                                 </div>
                                 <div class="one flex align-items-center" v-if="emp.id">
@@ -3936,12 +3762,7 @@
             </div>
 
             <div id="banksocial" v-show="maintab == 2">
-                <div class="mb-6 pb-4 border-b border-slate-200">
-                    <h2 class="text-xl font-black text-slate-800 tracking-tight m-0">
-                        Bank & Social Security Fund Contribution Details
-                    </h2>
-                    <p class="text-xs text-slate-500 font-medium mt-0.5 mb-0">Record salary remittance bank account, branch, and SSNIT details</p>
-                </div>
+                <h2>Bank / Social Security Fund Contribution Details</h2>
 
                 <div id='socialcontact' class='group'>
                     
@@ -4196,21 +4017,12 @@
             </div>
 
             <div id="irrguarantor" v-show="maintab == 3">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-200">
-                    <div>
-                        <h2 class="text-xl font-black text-slate-800 tracking-tight m-0">
-                            Irrevocable Continuing Guarantee & Witness Sign-Off
-                        </h2>
-                        <p class="text-xs text-slate-500 font-medium mt-0.5 mb-0">Guarantor information, financial indemnity declaration, and witnesses</p>
-                    </div>
+                <h2> Declaration Document Attachment of irrevocable and Witness Sign</h2>
+                <div >
                     <div class="steper">
-                        <span>Page</span>
-                        <span class="active">{{ irrguarstep }}</span>
-                        <span class="text-slate-400">/</span>
-                        <span>3</span>
+                        Page 
+                        <span class="active">{{ irrguarstep }}</span> / <span>3</span>
                     </div>
-                </div>
-                <div>
                     <div id="irrguar1" v-show="irrguarstep == 1" class="group">
                         <h3 >Information Form</h3>
 
@@ -4774,12 +4586,7 @@
             </div> 
             
             <div id="empchecklist" v-show="maintab == 4">
-                <div class="mb-6 pb-4 border-b border-slate-200">
-                    <h2 class="text-xl font-black text-slate-800 tracking-tight m-0">
-                        Employee Onboarding Checklist & Compliance Verification
-                    </h2>
-                    <p class="text-xs text-slate-500 font-medium mt-0.5 mb-0">Track verification status and required compliance document uploads</p>
-                </div>
+                <h2> Employee checklist</h2>
 
                 <div id='empchecklistdiv'>
                     <div style="border-top: 1px solid black;">
@@ -5010,82 +4817,38 @@
         </div>
     </div>
 
-    <!-- Modern Search Employee Modal (Clean Light Theme) -->
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-fadeIn" v-if="showsearchpopupvalue">
-        <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col my-auto max-h-[85vh] animate-scaleUp">
-            <!-- Modal Header -->
-            <div class="px-6 py-4 bg-[#1A237E] flex items-center justify-between text-white shadow-md">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center border border-white/20 text-white shadow-inner">
-                        <i class="pi pi-users text-lg"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-base font-black tracking-tight text-white m-0">SEARCH & LOAD EMPLOYEE</h3>
-                        <p class="text-xs text-blue-200/90 font-medium m-0 mt-0.5">Search by name, employee code, or ID to populate onboarding records</p>
-                    </div>
-                </div>
-                <button @click="showsearchpopupvalue = false" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center transition-all cursor-pointer border border-white/20" title="Close">
-                    <i class="pi pi-times text-xs"></i>
-                </button>
-            </div>
-            
-            <!-- Search Bar -->
-            <div class="p-5 border-b border-slate-200 bg-slate-50">
-                <div class="relative">
-                    <i class="pi pi-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                    <input class="w-full pl-11 pr-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 text-sm font-semibold transition-all shadow-sm" type="text" v-model="empsearch" placeholder="Type employee name, code (e.g. MEL...), or ID..." v-uppercase autofocus>
+    <div class='poppop' v-if="showsearchpopupvalue">
+        <button class='poppopclose' @click="showsearchpopupvalue = false"> Close </button>
+        <div class="poppopin">
+            <div class='popheader'>
+                <h3>List of Employees</h3>
+                <input class="popsearch" type="text" v-model="empsearch" placeholder="Type the employee name or ID" v-uppercase>
+                
+                <div class="deux" >
+                    <span>Employee ID</span>
+                    <span>Employee Code</span>
+                    <span>Employee Name</span>
                 </div>
             </div>
 
-            <!-- Employee List Results -->
-            <div class="p-4 overflow-y-auto flex-1 space-y-2.5 max-h-[380px] bg-slate-50/40">
-                <div 
-                    v-for="(e, index) in emplist" 
-                    :key="index" 
-                    @click="handleempselect(e.id)" 
-                    class="p-3.5 rounded-xl border border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/50 hover:shadow-md transition-all cursor-pointer flex items-center justify-between shadow-sm group"
+            <div class="poplist">
+                <!-- @click="handleorderselect(p.SaleOrderNO)" -->
+                <div
+                    v-for="(e, index) in emplist"
+                    :key="index"
+                    @click="handleempselect(e.id)"
+                    class="deux"
                 >
-                    <div class="flex items-center gap-3.5 min-w-0">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1A237E] to-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
-                            {{ (e.firstname ? e.firstname.charAt(0) : 'E').toUpperCase() }}
-                        </div>
-                        <div class="min-w-0">
-                            <div class="font-extrabold text-slate-900 text-sm group-hover:text-indigo-700 transition-colors truncate uppercase">
-                                {{ e.firstname }} {{ e.lastname || '' }}
-                            </div>
-                            <div class="flex items-center gap-2 text-xs mt-1 flex-wrap">
-                                <span class="px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-black text-[10px] border border-indigo-100">
-                                    CODE: {{ e.emp_code }}
-                                </span>
-                                <span v-if="e.employeeid" class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold text-[10px] border border-slate-200">
-                                    ID: {{ e.employeeid }}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                        <span class="text-xs font-black text-indigo-600 group-hover:translate-x-0.5 transition-all flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 group-hover:bg-indigo-600 group-hover:text-white">
-                            Load <i class="pi pi-arrow-right text-[10px]"></i>
-                        </span>
-                    </div>
+                    
+                    <span>{{ e.employeeid }} </span>
+                    <span>{{ e.emp_code }}</span>
+                    <span>{{ e.firstname }}</span>
+                    
                 </div>
 
-                <div v-if="!emplist.length" class="text-center py-12 text-slate-400">
-                    <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
-                        <i class="pi pi-search text-xl"></i>
-                    </div>
-                    <p class="text-xs font-semibold text-slate-500 m-0">
-                        {{ empsearch && empsearch.length > 2 ? 'No employees matching "' + empsearch + '"' : 'Type at least 3 characters to search employee directory...' }}
-                    </p>
+                <div v-if="!emplist.length" style="padding:10px; text-align: center;">
+                    No result for your search
                 </div>
-            </div>
-
-            <!-- Footer -->
-            <div class="px-6 py-3.5 bg-white border-t border-slate-200 flex justify-between items-center text-xs text-slate-600">
-                <span>Results: <strong class="text-slate-900 font-bold">{{ emplist.length }}</strong> employees</span>
-                <button type="button" @click="showsearchpopupvalue = false" class="px-5 py-2 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer shadow-sm">
-                    Close
-                </button>
             </div>
         </div>
     </div>
@@ -5095,562 +4858,191 @@
 </template>
 <style scoped>
 
-    /* ─── Errors ─── */
-    .error {
-        color: #ef4444;
-        font-size: 0.8rem;
-        margin-top: 4px;
-        font-weight: 500;
+    /* #form {
+        
+    } */
+    .error{
+        color:red;
+    }
+    
+    .steper{
+        display: flex;
+        justify-content: right;
+        padding: 15px;
+        align-items: center;
+        gap: 10px;
+
+        & span{
+            display: inline-block;
+            padding: 5px 10px;
+            border: 1px solid var(--accent);
+            width: 30px;
+            height: 30px;
+            border-radius: 30px;
+
+            &.active{
+                background-color: var(--accent);
+                color: white;
+            }
+        }
     }
 
-    /* ─── Stepper dots ─── */
-    .steper {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 14px;
-        background: #f1f5f9;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    body.dark-mode .steper {
-        background: #1e293b;
-        border-color: #334155;
-        color: #94a3b8;
-    }
-    .steper span {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        border-radius: 8px;
-        font-size: 0.825rem;
-        font-weight: 800;
-        color: #475569;
-        background: #ffffff;
-        border: 1px solid #cbd5e1;
-        transition: all 0.2s ease;
-    }
-    body.dark-mode .steper span {
-        background: #0f172a;
-        border-color: #334155;
-        color: #cbd5e1;
-    }
-    .steper span.active {
-        background: #1A237E !important;
-        color: #ffffff !important;
-        border-color: #1A237E !important;
-        box-shadow: 0 2px 8px rgba(26, 35, 126, 0.25) !important;
-        transform: scale(1.05);
-    }
-    body.dark-mode .steper span.active {
-        background: #4f46e5 !important;
-        border-color: #4f46e5 !important;
-        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35) !important;
-    }
-
-    /* ─── Checklist ─── */
     #empchecklistdiv {
         display: flex;
         flex-direction: column;
-        border-radius: 16px;
-        overflow: hidden;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
-        background: #ffffff;
 
-        & > div {
+
+        & > div{
             display: flex;
-            align-items: center;
-            border-bottom: 1px solid #e2e8f0;
-            transition: background-color 0.15s ease;
+            border-bottom:1px solid black;
+            border-left: 1px solid black;
+            border-right: 1px solid black;
 
-            &:last-child {
-                border-bottom: none;
-            }
-
-            &:nth-child(even) {
-                background-color: #f8fafc;
-            }
-
-            &:hover {
-                background-color: #f1f5f9;
-            }
-
-            & > strong {
+            & > strong{
                 flex: 1;
-                padding: 16px 22px;
-                font-size: 0.9rem;
-                font-weight: 700;
-                color: #1e293b;
+                padding:15px;
             }
-            & > span {
-                border-left: 1px solid #e2e8f0;
-                width: 320px;
+            & > span{
+                border-left: 1px solid black;
+                width: 300px;
+                display: inline-block;
+                padding:15px;
                 display: inline-flex;
-                align-items: center;
-                padding: 14px 22px;
-                gap: 12px;
-                font-size: 0.875rem;
-                color: #475569;
             }
         }
     }
-    body.dark-mode #empchecklistdiv {
-        background: #1e293b;
-        border-color: #334155;
-    }
-    body.dark-mode #empchecklistdiv > div {
-        border-color: #334155;
-    }
-    body.dark-mode #empchecklistdiv > div:nth-child(even) {
-        background-color: #182234;
-    }
-    body.dark-mode #empchecklistdiv > div:hover {
-        background-color: #0f172a;
-    }
-    body.dark-mode #empchecklistdiv > div > strong {
-        color: #f1f5f9;
-    }
-    body.dark-mode #empchecklistdiv > div > span {
-        border-color: #334155;
-        color: #cbd5e1;
-    }
 
-    /* ─── Main Tab Bar ─── */
-    .tabs {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px;
-        background: #f1f5f9;
-        border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        margin-bottom: 24px;
-        flex-wrap: wrap;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-    }
-    body.dark-mode .tabs {
-        background: #1e293b;
-        border-color: #334155;
-    }
-    .tabs button,
-    .tab-btn {
-        padding: 10px 20px;
-        border: none;
-        border-radius: 12px;
-        font-size: 0.85rem;
-        font-weight: 700;
-        color: #64748b;
-        background: transparent;
-        cursor: pointer;
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-        white-space: nowrap;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-    }
-    body.dark-mode .tabs button,
-    body.dark-mode .tab-btn {
-        color: #94a3b8;
-    }
-    .tabs button:hover:not(:disabled),
-    .tab-btn:hover:not(:disabled) {
-        background: #ffffff;
-        color: #1A237E;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-    }
-    body.dark-mode .tabs button:hover:not(:disabled),
-    body.dark-mode .tab-btn:hover:not(:disabled) {
-        background: #0f172a;
-        color: #818cf8;
-    }
-    .tabs button:disabled,
-    .tab-btn:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-    }
-    .activetab,
-    .tabs button.activetab,
-    .tab-btn.activetab {
-        background: #1A237E !important;
-        color: #ffffff !important;
-        border-color: transparent !important;
-        box-shadow: 0 4px 12px rgba(26, 35, 126, 0.25) !important;
-        transform: none !important;
-        font-weight: 800 !important;
-    }
-    body.dark-mode .activetab,
-    body.dark-mode .tabs button.activetab,
-    body.dark-mode .tab-btn.activetab {
-        background: #4f46e5 !important;
-        color: #ffffff !important;
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35) !important;
-    }
-    .tab-badge {
-        padding: 2px 8px;
-        border-radius: 6px;
-        font-size: 0.725rem;
-        font-weight: 800;
-        background: rgba(255, 255, 255, 0.2);
-        color: #ffffff;
-    }
-
-    /* ─── Step Navigation Buttons ─── */
-    .stepsbutton {
-        margin-top: 36px;
-        margin-bottom: 12px;
+    
+    .tabs{
         display: flex;
         justify-content: center;
-        align-items: center;
-        gap: 16px;
-
-        & button {
-            padding: 12px 32px;
-            border-radius: 12px;
-            font-weight: 800;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        & button:not(:last-child) {
-            background: #ffffff;
-            border: 1.5px solid #cbd5e1;
-            color: #475569;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        }
-
-        & button:not(:last-child):hover:not(:disabled) {
-            border-color: #1A237E;
-            color: #1A237E;
-            background: #f8fafc;
-            transform: translateY(-1px);
-            box-shadow: 0 3px 8px rgba(26, 35, 126, 0.12);
-        }
-
-        & button:last-child:not(:first-child) {
-            background: #1A237E;
-            border: 1.5px solid #1A237E;
-            color: #ffffff;
-            box-shadow: 0 4px 14px rgba(26, 35, 126, 0.25);
-        }
-
-        & button:last-child:not(:first-child):hover:not(:disabled) {
-            background: #121858;
-            border-color: #121858;
-            transform: translateY(-1px);
-            box-shadow: 0 6px 18px rgba(26, 35, 126, 0.35);
-        }
-
-        & button:disabled {
-            opacity: 0.35;
-            cursor: not-allowed;
-            pointer-events: none;
-            transform: none !important;
-            box-shadow: none !important;
-        }
+        gap:10px;
     }
-    body.dark-mode .stepsbutton button:not(:last-child) {
-        background: #1e293b;
-        border-color: #475569;
-        color: #cbd5e1;
+    .tabs button{
+        padding:7px;
     }
-
-    /* ─── Declaration ─── */
-    #declarationdiv {
-        line-height: 2;
-        font-size: 0.925rem;
+    .activetab{
+        background-color: var(--accent);
+        color:white;
+        border:2px solid var(--accent);
     }
-    #declarationdiv input {
-        width: unset;
-        padding: 4px;
-        border-radius: 4px;
-    }
-
-    /* ─── Submit Button ─── */
-    #submit {
-        padding: 14px 48px;
-        margin-top: 36px;
-        background: linear-gradient(135deg, #1A237E 0%, #3949AB 100%) !important;
-        color: white;
-        cursor: pointer;
-        border-radius: 14px;
-        border: none;
-        font-weight: 800;
-        font-size: 0.95rem;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        box-shadow: 0 4px 16px rgba(26, 35, 126, 0.3) !important;
-        transition: all 0.25s ease;
-        display: inline-flex;
-        align-items: center;
+    .stepsbutton{
+        
+        margin-top: 30px;
+        display: flex;
+        justify-content: center;
         gap: 10px;
-    }
-    #submit:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(26, 35, 126, 0.4) !important;
-    }
-    #submit:active:not(:disabled) {
-        transform: translateY(0);
-    }
-    #submit:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
+
+        & button{
+            padding:7px 15px;
+        }
     }
 
-    /* ─── Modern Typographic Section Headers matching PMS Design System ─── */
-    .group > h3,
-    :deep(.group > h3) {
-        background: #f8fafc !important;
-        color: #1e293b !important;
-        border-bottom: 1px solid #e2e8f0 !important;
-        padding: 16px 24px !important;
-        text-align: left !important;
-        font-size: 0.95rem !important;
-        font-weight: 800 !important;
-        letter-spacing: -0.01em !important;
-        text-transform: uppercase !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 12px !important;
-        border-radius: 15px 15px 0 0 !important;
-        margin: 0 !important;
+    
+    #declarationdiv{
+        
+        line-height: 1.8;
     }
-    .group > h3::before,
-    :deep(.group > h3)::before {
-        content: '';
+    #declarationdiv input{
+        width: unset;
+        padding: 3px;
+    }
+    
+    
+    
+    #submit{
+        padding:10px 40px;
+        margin-top: 30px;
+        background-color: black;
+        color:white;
+        cursor: pointer;
+        border-radius: 5px;
+        transition: .5s;
+    }
+    #submit:hover{
+        background-color: white;
+        color: black;
+        border: 2px solid black;
+    }
+
+    .poppop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 500;
+        background-color: #00000061;
+        padding: 50px 20%;
+    }
+    .deux{
+        display: flex;
+    }
+    .deux > span{
+        width: 50%;
         display: inline-block;
-        width: 4px;
-        height: 18px;
-        background: linear-gradient(135deg, #1A237E 0%, #3949AB 100%);
-        border-radius: 4px;
-        flex-shrink: 0;
-    }
-    body.dark-mode .group > h3,
-    body.dark-mode :deep(.group > h3) {
-        background: #0f172a !important;
-        color: #f1f5f9 !important;
-        border-bottom-color: #334155 !important;
-    }
-    body.dark-mode .group > h3::before,
-    body.dark-mode :deep(.group > h3)::before {
-        background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%) !important;
     }
 
-    /* ─── Dropdown & Form Field Spacing ─── */
-    select {
-        min-height: 48px;
-        padding: 13px 44px 13px 18px !important;
-        font-size: 0.925rem;
-        line-height: 1.5;
-        border-radius: 12px !important;
+    .popheader{
+        height: 133px;
+        background-color: #00000017;
     }
-    input:not([type="radio"]):not(.prof-input):not(.login-input),
-    textarea {
-        min-height: 48px;
-        padding: 13px 18px !important;
-        font-size: 0.925rem;
-        line-height: 1.5;
-        border-radius: 12px !important;
-    }
-    .inlinewrap {
-        gap: 22px 20px !important;
-    }
-    .inlinewrap > div {
-        width: calc(50% - 10px) !important;
-        margin-bottom: 4px;
-    }
-
-    /* ─── Profile Picture Upload UI ─── */
-    .profile-upload-zone {
-        border: 2px dashed #c7d2fe;
-        border-radius: 14px;
-        padding: 24px;
-        background: #f8faff;
-        transition: all 0.25s ease;
-        cursor: pointer;
+    .popheader h3{
+        margin:0;
+        background-color: var(--deepcolor);
         text-align: center;
-        margin-top: 4px;
+        padding:5px;
     }
-    .profile-upload-zone:hover {
-        border-color: #1A237E;
-        background: #f0f4ff;
-        box-shadow: 0 4px 12px rgba(26, 35, 126, 0.08);
+    .popheader input{
+        padding:7px;
+        width: calc(100% - 20px);
+        margin-top: 5px;
+        margin: 10px 10px;
     }
-    .profile-upload-zone.is-dragging {
-        border-color: #1A237E;
-        background: #e8edff;
-        transform: scale(1.01);
+    .popheader .deux{
+        margin-top: 5px;
+        background-color: var(--accent);
+        color: white;
+
     }
-    .profile-upload-zone.has-file {
-        border-style: solid;
-        border-color: #e2e8f0;
-        background: #ffffff;
-        cursor: default;
+    .popheader .deux span{
+        background-color: var(--deepcolor);
+        border-right: 2px solid var(--bglightcolor);
+        /* text-align: center; */
+        padding:10px;
     }
-    .upload-placeholder-content {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 22px;
+
+    .poppopin {
+        background-color: white;
+        height: calc(100% - 50px);
     }
-    .upload-avatar-circle {
-        width: 72px;
-        height: 72px;
-        border-radius: 50%;
-        background: #e2e8f0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-        flex-shrink: 0;
-    }
-    .upload-badge-icon {
-        position: absolute;
-        bottom: -2px;
-        right: -2px;
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #1A237E 0%, #121858 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 2px solid #ffffff;
-    }
-    .upload-text-content {
-        text-align: left;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
-    .upload-title {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: #1e293b;
-    }
-    .upload-subtitle {
-        font-size: 0.8rem;
-        color: #64748b;
-    }
-    .upload-browse-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 6px;
-        padding: 7px 16px;
-        border-radius: 8px;
-        border: 1.5px solid #1A237E;
-        background: transparent;
-        color: #1A237E;
-        font-size: 0.825rem;
-        font-weight: 700;
+
+    .poppopclose {
+        padding: 10px;
         cursor: pointer;
-        width: fit-content;
-        transition: all 0.2s ease;
     }
-    .upload-browse-btn:hover {
-        background: #1A237E;
-        color: #ffffff;
-        box-shadow: 0 2px 6px rgba(26, 35, 126, 0.2);
+
+    .poplist {
+        padding: 10px;
+        overflow: auto;
+        max-height: calc( 100% - 133px);
     }
-    .upload-preview-content {
-        display: flex;
-        align-items: center;
-        gap: 20px;
-        text-align: left;
+    .poplist .deux{
+        border-bottom: 1px solid #00000021;
     }
-    .preview-avatar-wrapper {
-        position: relative;
-        width: 80px;
-        height: 80px;
-        flex-shrink: 0;
+    .poplist .deux:nth-child(even){
+        background-color: var(--bglightcolor)
     }
-    .preview-avatar-img {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        object-fit: cover;
-        border: 3px solid #1A237E;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
-    .preview-success-badge {
-        position: absolute;
-        bottom: 2px;
-        right: 2px;
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        background: #10b981;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 2px solid #ffffff;
-    }
-    .preview-meta {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        flex: 1;
-        min-width: 0;
-    }
-    .preview-filename {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: #1e293b;
-        word-break: break-all;
-    }
-    .preview-filesize {
-        font-size: 0.8rem;
-        color: #64748b;
-    }
-    .preview-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 6px;
-    }
-    .action-btn {
-        display: inline-flex;
-        align-items: center;
-        padding: 6px 14px;
-        border-radius: 8px;
-        font-size: 0.775rem;
-        font-weight: 700;
+    .poplist .deux:hover{
+        background-color: #38318524;
         cursor: pointer;
-        border: 1px solid;
-        transition: all 0.2s ease;
     }
-    .action-btn.change-btn {
-        border-color: #cbd5e1;
-        background: #f8fafc;
-        color: #334155;
+    .poplist .deux span{
+        padding:10px;
     }
-    .action-btn.change-btn:hover {
-        border-color: #1A237E;
-        color: #1A237E;
-        background: #f0f4ff;
-    }
-    .action-btn.remove-btn {
-        border-color: #fecdd3;
-        background: #fff1f2;
-        color: #e11d48;
-    }
-    .action-btn.remove-btn:hover {
-        background: #ffe4e6;
-    }
+
+    
+
+    
 
 </style>

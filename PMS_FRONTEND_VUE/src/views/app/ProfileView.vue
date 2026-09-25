@@ -1,13 +1,14 @@
 <script setup>
-    import { ref, onMounted, reactive, computed  } from 'vue'
+    import { ref, onMounted, reactive } from 'vue'
     import { log, toastt} from '@/helpers/essential'
-    import { findposition } from '@/data/masterdata'
-    import axios from '@/helpers/pms_axios';
+    import axios from 'axios';
     import { useUsersStore } from '@/stores/user';
     const userstore = useUsersStore()
-    const { loguser } = userstore
+    const { authtoken, loguser } = userstore
 
-
+    const bearer = `Bearer ${authtoken}`;
+    axios.defaults.headers.common['Authorization'] = bearer
+    
     let loaded = ref(false)
     let saving = ref(false)
     let user = reactive({})
@@ -20,47 +21,22 @@
     let npassword = ref('')
     let cpassword = ref('')
 
-    const userInitial = computed(() => user.name?.charAt(0)?.toUpperCase() || 'U')
-    const userRole = computed(() => findposition(user.position_id) || 'BASIC')
-
     onMounted(() => {
         Object.assign(user, loguser)
     })
 
-    const colorinvalid = (elem) =>{
-        if(['select-one', 'text','email','date','tel', 'number', 'file', 'password'].includes(elem.type)){
-            elem.style = 'border:2px solid red'
-            elem.addEventListener('input', function(e){
-                elem.style = 'revert'
-                if(elem.nextElementSibling) elem.nextElementSibling.innerText = ''
-            },{once:true})
-        }
-    }
-
-    const validate = (elem) => {
-        const reqinput = document.querySelectorAll("#passwordform :invalid");
-
-        reqinput.forEach((elem)=>{
-            colorinvalid(elem)
-        })
-
-        if(reqinput.length){
-            toastt('Correct the errors and submit the form again', 'error')
-            window.scrollTo(0,100);
-            return false
-        }
-    }
-
     const save = () => {
-        if(validate() === false) return
-
-        saving.value = true
+        if (!opassword.value || !npassword.value || !cpassword.value) {
+             toastt('Please fill all password fields', 'error')
+             return
+        }
 
         if(npassword.value !== cpassword.value){
             toastt('New passwords do not match', 'error')
-            saving.value = false
             return
         }
+
+        saving.value = true
 
         const userinfo = {
             opassword: opassword.value,
@@ -68,24 +44,20 @@
             cpassword: cpassword.value,
         }
 
-        axios.post('updatepassword', userinfo, {
-
-            }).then(res => {
-
+        axios.post('updatepassword', userinfo)
+            .then(res => {
                 const data = res.data
-
                 if(data.error){
                     toastt(data.error, 'error')
                     saving.value = false
                     return
                 }
-
                 saving.value = false
+                toastt('Your password has been updated', 'success')
+                // Reset fields
                 opassword.value = ''
                 npassword.value = ''
                 cpassword.value = ''
-                toastt('Your password has been updated', 'success')
-
             }).catch((error) => {
                 toastt('Error. Please Try again', 'error')
                 saving.value = false
@@ -93,541 +65,388 @@
             })
     }
 </script>
-<template>
-    <div class="profile-page">
 
-        <!-- Profile Header -->
-        <div class="profile-header">
-            <div class="profile-header-bg"></div>
-            <div class="profile-header-content">
-                <div class="profile-avatar">
-                    <span>{{ userInitial }}</span>
-                </div>
-                <div class="profile-identity">
-                    <h1 class="profile-name">{{ user.name || 'User' }}</h1>
-                    <p class="profile-meta">
-                        <span class="profile-badge">{{ userRole }}</span>
-                        <span class="profile-separator">|</span>
-                        <span>{{ user.department || 'General' }}</span>
-                        <span v-if="user.location" class="profile-separator">|</span>
-                        <span v-if="user.location">{{ user.location }}</span>
-                    </p>
-                </div>
-                <div class="profile-status">
-                    <div class="status-dot"></div>
-                    Active
+<template>
+    <div class="h-full">
+        <!-- Enhanced Page Header with Gradient -->
+        <div class="page-header rounded-xl shadow-lg mb-6">
+            <div class="px-6 py-5">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                            <i class="pi pi-user text-2xl text-white"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold text-white">My Profile</h1>
+                            <p class="text-purple-200 text-sm">Manage your account settings and preferences</p>
+                        </div>
+                    </div>
+                    <div class="hidden md:flex items-center gap-2 text-white/80 text-sm">
+                        <i class="pi pi-shield"></i>
+                        <span>Account Security</span>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Content Grid -->
         <div class="profile-grid">
-
-            <!-- Left: Info Cards -->
-            <div class="profile-main">
-
-                <!-- Account Information -->
-                <div class="info-card">
-                    <div class="info-card-header">
-                        <div class="info-card-icon">
-                            <i class="pi pi-user"></i>
+            <!-- Left Column: User Info Card -->
+            <div class="profile-sidebar">
+                <!-- Profile Card with Gradient Banner -->
+                <div class="profile-card bg-white rounded-xl shadow-md overflow-hidden">
+                    <!-- Gradient Header Banner -->
+                    <div class="profile-banner h-24"></div>
+                    
+                    <!-- Avatar & Basic Info -->
+                    <div class="px-6 pb-6 -mt-12 relative">
+                        <div class="avatar-container">
+                            <img :src="'https://ui-avatars.com/api/?name='+encodeURIComponent(user.name || 'User')+'&background=7c3aed&color=fff&size=200'" alt="Avatar" class="avatar-img" />
+                            <div class="avatar-status"></div>
                         </div>
-                        <h3>Account Information</h3>
-                    </div>
-                    <div class="info-card-body">
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <label>Full Name</label>
-                                <p>{{ user.name || 'N/A' }}</p>
+                        
+                        <div class="text-center mt-4">
+                            <h2 class="text-xl font-bold text-gray-800">{{ user.name }}</h2>
+                            <p class="text-purple-600 font-medium text-sm">{{ user.job_title || 'Employee' }}</p>
+                        </div>
+                        
+                        <!-- Quick Stats -->
+                        <div class="grid grid-cols-2 gap-3 mt-5">
+                            <div class="stat-card bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 text-center border border-purple-100">
+                                <i class="pi pi-building text-purple-500 text-lg mb-2"></i>
+                                <p class="text-xs text-gray-500 uppercase font-semibold">Department</p>
+                                <p class="text-sm font-bold text-gray-800 mt-1 truncate">{{ user.department || 'N/A' }}</p>
                             </div>
-                            <div class="info-item">
-                                <label>Username</label>
-                                <p>{{ user.username || 'N/A' }}</p>
-                            </div>
-                            <div class="info-item">
-                                <label>Email Address</label>
-                                <p class="break-all">{{ user.email || 'N/A' }}</p>
-                            </div>
-                            <div class="info-item">
-                                <label>Access Level</label>
-                                <p class="access-level">
-                                    <i class="pi pi-shield"></i>
-                                    {{ userRole }}
-                                </p>
+                            <div class="stat-card bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 text-center border border-blue-100">
+                                <i class="pi pi-id-card text-blue-500 text-lg mb-2"></i>
+                                <p class="text-xs text-gray-500 uppercase font-semibold">Employee ID</p>
+                                <p class="text-sm font-bold text-gray-800 mt-1">{{ user.employee_id || 'N/A' }}</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Work Details -->
-                <div class="info-card">
-                    <div class="info-card-header">
-                        <div class="info-card-icon work-icon">
-                            <i class="pi pi-briefcase"></i>
+                <!-- Contact Information Card -->
+                <div class="bg-white rounded-xl shadow-md p-5 mt-5">
+                    <div class="flex items-center gap-3 pb-4 border-b border-gray-100">
+                        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+                            <i class="pi pi-address-book text-white text-sm"></i>
                         </div>
-                        <h3>Work Details</h3>
+                        <h3 class="font-bold text-gray-800">Contact Information</h3>
                     </div>
-                    <div class="info-card-body">
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <label>Employee Code</label>
-                                <p>{{ user.employee_code || 'N/A' }}</p>
+                    
+                    <div class="space-y-4 mt-4">
+                        <!-- Email -->
+                        <div class="flex items-center gap-4 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center">
+                                <i class="pi pi-envelope text-purple-600"></i>
                             </div>
-                            <div class="info-item">
-                                <label>Department</label>
-                                <p>{{ user.department || 'N/A' }}</p>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-xs text-gray-500 uppercase font-semibold">Email Address</p>
+                                <p class="text-sm font-bold text-gray-800 truncate">{{ user.email }}</p>
                             </div>
-                            <div class="info-item">
-                                <label>Position</label>
-                                <p>{{ userRole }}</p>
+                        </div>
+                        
+                        <!-- Phone -->
+                        <div class="flex items-center gap-4 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-green-100 to-emerald-100 flex items-center justify-center">
+                                <i class="pi pi-phone text-green-600"></i>
                             </div>
-                            <div class="info-item">
-                                <label>Location</label>
-                                <p>{{ user.location || 'N/A' }}</p>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-xs text-gray-500 uppercase font-semibold">Phone Number</p>
+                                <p class="text-sm font-bold text-gray-800">{{ user.phone || 'Not set' }}</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Joined Date -->
+                        <div class="flex items-center gap-4 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center">
+                                <i class="pi pi-calendar text-amber-600"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-xs text-gray-500 uppercase font-semibold">Member Since</p>
+                                <p class="text-sm font-bold text-gray-800">{{ user.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A' }}</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Right: Security Panel -->
-            <div class="profile-sidebar">
-                <div class="security-card" id="passwordform">
-                    <div class="security-card-header">
-                        <div class="security-icon">
-                            <i class="pi pi-lock"></i>
+            <!-- Right Column: Security Settings -->
+            <div class="profile-content">
+                <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                    <!-- Card Header with Icon -->
+                    <div class="security-header px-6 py-4 border-b border-gray-100">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-200">
+                                <i class="pi pi-lock text-xl text-white"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">Security Settings</h3>
+                                <p class="text-gray-500 text-sm">Update your password to keep your account secure</p>
+                            </div>
                         </div>
-                        <h3>Change Password</h3>
                     </div>
 
-                    <div class="security-card-body">
-                        <div class="form-group">
-                            <label>Current Password</label>
-                            <div class="password-field">
-                                <input :type="showingopass ? 'text' : 'password'" v-model="opassword" required
-                                    placeholder="Enter current password" class="security-input" />
-                                <i class="toggle-pass" :class="showingopass ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                                    @click="showingopass = !showingopass"></i>
+                    <!-- Form Content -->
+                    <div class="p-6">
+                        <form @submit.prevent="save">
+                            <!-- Current Password -->
+                            <div class="mb-6">
+                                <label class="form-label">Current Password</label>
+                                <div class="relative">
+                                    <div class="absolute left-3 top-1/2 -translate-y-1/2">
+                                        <i class="pi pi-key text-gray-400"></i>
+                                    </div>
+                                    <input 
+                                        :type="showingopass ? 'text' : 'password'" 
+                                        v-model="opassword" 
+                                        class="form-input pl-10 pr-10" 
+                                        required 
+                                        placeholder="Enter your current password"
+                                    >
+                                    <button 
+                                        type="button"
+                                        @click="showingopass = !showingopass"
+                                        class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-purple-600 transition-colors"
+                                    >
+                                        <i :class="showingopass ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- New Password Fields -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+                                <div>
+                                    <label class="form-label">New Password</label>
+                                    <div class="relative">
+                                        <div class="absolute left-3 top-1/2 -translate-y-1/2">
+                                            <i class="pi pi-lock text-gray-400"></i>
+                                        </div>
+                                        <input 
+                                            :type="showingnpass ? 'text' : 'password'" 
+                                            v-model="npassword" 
+                                            class="form-input pl-10 pr-10" 
+                                            required 
+                                            placeholder="Enter new password"
+                                        >
+                                        <button 
+                                            type="button"
+                                            @click="showingnpass = !showingnpass"
+                                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-purple-600 transition-colors"
+                                        >
+                                            <i :class="showingnpass ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="form-label">Confirm New Password</label>
+                                    <div class="relative">
+                                        <div class="absolute left-3 top-1/2 -translate-y-1/2">
+                                            <i class="pi pi-check-circle text-gray-400"></i>
+                                        </div>
+                                        <input 
+                                            :type="showingcpass ? 'text' : 'password'" 
+                                            v-model="cpassword" 
+                                            class="form-input pl-10 pr-10" 
+                                            required 
+                                            placeholder="Confirm new password"
+                                        >
+                                        <button 
+                                            type="button"
+                                            @click="showingcpass = !showingcpass"
+                                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-purple-600 transition-colors"
+                                        >
+                                            <i :class="showingcpass ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Password Requirements Hint -->
+                            <div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-4 mb-6 border border-purple-100">
+                                <div class="flex items-start gap-3">
+                                    <i class="pi pi-info-circle text-purple-500 mt-0.5"></i>
+                                    <div class="text-sm text-gray-600">
+                                        <p class="font-semibold text-gray-800 mb-1">Password Requirements</p>
+                                        <ul class="space-y-1 text-xs">
+                                            <li class="flex items-center gap-2"><i class="pi pi-check text-green-500 text-xs"></i> At least 8 characters long</li>
+                                            <li class="flex items-center gap-2"><i class="pi pi-check text-green-500 text-xs"></i> Include uppercase and lowercase letters</li>
+                                            <li class="flex items-center gap-2"><i class="pi pi-check text-green-500 text-xs"></i> Include at least one number</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="flex items-center gap-4">
+                                <button 
+                                    type="submit"
+                                    :disabled="saving"
+                                    class="px-8 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-violet-600 text-white font-semibold hover:from-purple-600 hover:to-violet-700 shadow-lg shadow-purple-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5"
+                                >
+                                    <i v-if="saving" class="pi pi-spin pi-spinner"></i>
+                                    <i v-else class="pi pi-shield"></i>
+                                    {{ saving ? 'Updating...' : 'Update Password' }}
+                                </button>
+                                <p v-if="saving" class="text-sm text-gray-500 animate-pulse">Processing secure update...</p>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Additional Info Card -->
+                <div class="bg-white rounded-xl shadow-md p-5 mt-5">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
+                            <i class="pi pi-info-circle text-white text-sm"></i>
+                        </div>
+                        <h3 class="font-bold text-gray-800">Account Information</h3>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="p-4 rounded-lg bg-gray-50">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">Account Status</p>
+                            <div class="flex items-center gap-2 mt-2">
+                                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                                <span class="text-sm font-bold text-green-600">Active</span>
                             </div>
                         </div>
-
-                        <div class="form-group">
-                            <label>New Password</label>
-                            <div class="password-field">
-                                <input :type="showingnpass ? 'text' : 'password'" v-model="npassword" required
-                                    placeholder="Minimum 6 characters" class="security-input" />
-                                <i class="toggle-pass" :class="showingnpass ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                                    @click="showingnpass = !showingnpass"></i>
-                            </div>
+                        <div class="p-4 rounded-lg bg-gray-50">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">Role</p>
+                            <p class="text-sm font-bold text-gray-800 mt-2">{{ user.admin ? 'Administrator' : 'Employee' }}</p>
                         </div>
-
-                        <div class="form-group">
-                            <label>Confirm New Password</label>
-                            <div class="password-field">
-                                <input :type="showingcpass ? 'text' : 'password'" v-model="cpassword" required
-                                    placeholder="Repeat new password" class="security-input" />
-                                <i class="toggle-pass" :class="showingcpass ? 'pi pi-eye-slash' : 'pi pi-eye'"
-                                    @click="showingcpass = !showingcpass"></i>
-                            </div>
-                        </div>
-
-                        <button :disabled="saving" @click="save" class="save-btn">
-                            <i class="pi" :class="saving ? 'pi-spin pi-spinner' : 'pi-check'"></i>
-                            {{ saving ? 'Updating...' : 'Update Password' }}
-                        </button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </template>
+
 <style scoped>
-.profile-page {
-    padding: 24px 32px 60px;
-    max-width: 1200px;
-    margin: 0 auto;
+/* Page Header Gradient */
+.page-header {
+    background: linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%);
 }
 
-/* ===== HEADER ===== */
-.profile-header {
-    position: relative;
-    border-radius: 16px;
-    overflow: hidden;
-    margin-bottom: 28px;
-}
-
-.profile-header-bg {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, #312e81 0%, #1e1b4b 50%, #0f172a 100%);
-}
-
-.profile-header-content {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    padding: 32px 40px;
-}
-
-.profile-avatar {
-    width: 80px;
-    height: 80px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.12);
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.profile-avatar span {
-    font-size: 32px;
-    font-weight: 800;
-    color: white;
-}
-
-.profile-identity {
-    flex: 1;
-    min-width: 0;
-}
-
-.profile-name {
-    font-size: 24px;
-    font-weight: 800;
-    color: white;
-    margin: 0 0 6px;
-    line-height: 1.2;
-}
-
-.profile-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: rgba(199, 210, 254, 0.8);
-    margin: 0;
-    flex-wrap: wrap;
-}
-
-.profile-badge {
-    background: rgba(129, 140, 248, 0.2);
-    border: 1px solid rgba(129, 140, 248, 0.3);
-    padding: 2px 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #c7d2fe;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.profile-separator {
-    opacity: 0.3;
-}
-
-.profile-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 20px;
-    border-radius: 10px;
-    background: rgba(16, 185, 129, 0.12);
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    color: #6ee7b7;
-    font-size: 13px;
-    font-weight: 700;
-    flex-shrink: 0;
-}
-
-.status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #10b981;
-}
-
-/* ===== GRID ===== */
+/* Profile Grid Layout */
 .profile-grid {
     display: grid;
-    grid-template-columns: 1fr 380px;
-    gap: 24px;
+    grid-template-columns: 380px 1fr;
+    gap: 1.5rem;
     align-items: start;
 }
 
-.profile-main {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-}
-
-/* ===== INFO CARDS ===== */
-.info-card {
-    background: var(--surface-card, #fff);
-    border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 14px;
-    overflow: hidden;
-}
-
-.info-card-header {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 20px 28px;
-    border-bottom: 1px solid var(--border-color, #e2e8f0);
-}
-
-.info-card-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-    background: #eef2ff;
-    color: #4f46e5;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-}
-
-.info-card-icon.work-icon {
-    background: #fef3c7;
-    color: #d97706;
-}
-
-.info-card-header h3 {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--text-color, #1f2937);
-    margin: 0;
-}
-
-.info-card-body {
-    padding: 28px;
-}
-
-.info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-}
-
-.info-item label {
-    display: block;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary, #6b7280);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 6px;
-}
-
-.info-item p {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-color, #1f2937);
-    padding: 10px 14px;
-    background: var(--surface-ground, #f8fafc);
-    border-radius: 8px;
-    border: 1px solid var(--border-color, #e2e8f0);
-    min-height: 42px;
-    display: flex;
-    align-items: center;
-}
-
-.access-level {
-    color: #4f46e5 !important;
-    gap: 8px;
-}
-
-/* ===== SECURITY CARD ===== */
-.security-card {
-    background: var(--surface-card, #fff);
-    border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 14px;
-    overflow: hidden;
-}
-
-.security-card-header {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 20px 28px;
-    border-bottom: 1px solid var(--border-color, #e2e8f0);
-}
-
-.security-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-    background: #fef2f2;
-    color: #ef4444;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-}
-
-.security-card-header h3 {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--text-color, #1f2937);
-    margin: 0;
-}
-
-.security-card-body {
-    padding: 28px;
-}
-
-.form-group {
-    margin-bottom: 20px;
-}
-
-.form-group label {
-    display: block;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary, #6b7280);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 6px;
-}
-
-.password-field {
-    position: relative;
-}
-
-.security-input {
-    width: 100%;
-    padding: 10px 40px 10px 14px;
-    border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    background: var(--surface-ground, #f8fafc);
-    color: var(--text-color, #1f2937);
-    transition: border-color 0.2s, box-shadow 0.2s;
-    outline: none;
-    box-sizing: border-box;
-}
-
-.security-input:focus {
-    border-color: var(--primary, #4f46e5);
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-}
-
-.security-input::placeholder {
-    color: var(--text-secondary, #9ca3af);
-    font-weight: 400;
-}
-
-.toggle-pass {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-secondary, #9ca3af);
-    cursor: pointer;
-    font-size: 14px;
-    transition: color 0.2s;
-}
-
-.toggle-pass:hover {
-    color: var(--text-color, #374151);
-}
-
-.save-btn {
-    width: 100%;
-    padding: 12px;
-    border: none;
-    border-radius: 10px;
-    background: var(--primary, #4f46e5);
-    color: white;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    transition: background 0.2s, transform 0.1s;
-    margin-top: 8px;
-}
-
-.save-btn:hover:not(:disabled) {
-    background: var(--primary-dark, #4338ca);
-}
-
-.save-btn:active:not(:disabled) {
-    transform: scale(0.98);
-}
-
-.save-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-/* ===== DARK MODE ===== */
-:global(body.dark-mode) .info-card-icon {
-    background: rgba(79, 70, 229, 0.15);
-    color: #818cf8;
-}
-
-:global(body.dark-mode) .info-card-icon.work-icon {
-    background: rgba(217, 119, 6, 0.15);
-    color: #fbbf24;
-}
-
-:global(body.dark-mode) .security-icon {
-    background: rgba(239, 68, 68, 0.12);
-    color: #f87171;
-}
-
-:global(body.dark-mode) .access-level {
-    color: #818cf8 !important;
-}
-
-:global(body.dark-mode) .profile-badge {
-    background: rgba(129, 140, 248, 0.15);
-    border-color: rgba(129, 140, 248, 0.25);
-}
-
-:global(body.dark-mode) .profile-status {
-    background: rgba(16, 185, 129, 0.1);
-    border-color: rgba(16, 185, 129, 0.2);
-}
-
-:global(body.dark-mode) .save-btn {
-    background: #6366f1;
-}
-
-:global(body.dark-mode) .save-btn:hover:not(:disabled) {
-    background: #818cf8;
-}
-
-/* ===== RESPONSIVE ===== */
 @media (max-width: 1024px) {
     .profile-grid {
         grid-template-columns: 1fr;
     }
 }
 
-@media (max-width: 640px) {
-    .profile-page {
-        padding: 16px;
-    }
-    .profile-header-content {
-        flex-direction: column;
-        text-align: center;
-        padding: 24px;
-    }
-    .profile-meta {
-        justify-content: center;
-    }
-    .info-grid {
-        grid-template-columns: 1fr;
-    }
+/* Profile Banner */
+.profile-banner {
+    background: linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #c084fc 100%);
+}
+
+/* Avatar Container */
+.avatar-container {
+    width: 100px;
+    height: 100px;
+    margin: 0 auto;
+    position: relative;
+}
+
+.avatar-img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 4px solid white;
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.3);
+    object-fit: cover;
+}
+
+.avatar-status {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    border: 3px solid white;
+}
+
+/* Form Styles */
+.form-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.5rem;
+}
+
+.form-input {
+    width: 100%;
+    padding: 0.875rem 2.75rem 0.875rem 2.75rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.75rem;
+    font-size: 0.9rem;
+    background-color: #f9fafb;
+    color: #1e293b;
+    transition: all 0.2s;
+    height: 48px;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #7c3aed;
+    background-color: white;
+    box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.1);
+}
+
+.form-input::placeholder {
+    color: #9ca3af;
+}
+
+/* Animations */
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Input Icon Positioning */
+.relative {
+    position: relative;
+}
+
+.absolute {
+    position: absolute;
+}
+
+.left-3 {
+    left: 0.875rem;
+}
+
+.right-3 {
+    right: 0.875rem;
+}
+
+.top-1\/2 {
+    top: 50%;
+}
+
+.-translate-y-1\/2 {
+    transform: translateY(-50%);
+}
+
+.pl-10 {
+    padding-left: 2.75rem !important;
+}
+
+.pr-10 {
+    padding-right: 2.75rem !important;
 }
 </style>
