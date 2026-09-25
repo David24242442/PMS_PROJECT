@@ -887,10 +887,10 @@ h4 {
   }
 
   & > h3 {
-    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+    background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
     padding: 14px 22px;
     text-align: center;
-    color: white;
+    color: white !important;
     border-radius: 13px 13px 0px 0px;
     font-size: 0.85rem;
     letter-spacing: 0.5px;
@@ -899,7 +899,7 @@ h4 {
   }
 
   & > div {
-    padding: 14px;
+    padding: 16px 20px;
   }
 
   & > button,
@@ -909,7 +909,7 @@ h4 {
     border-radius: 8px;
     font-weight: 600;
     transition: all 0.2s ease;
-    background: #4f46e5;
+    background: #1A237E;
     color: white;
     border: none;
     font-size: 0.85rem;
@@ -918,30 +918,31 @@ h4 {
   & > button:hover,
   .inbutton:hover {
     transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(79,70,229,0.2);
-    background: #4338ca;
+    box-shadow: 0 2px 6px rgba(26,35,126,0.3);
+    background: #121858;
   }
 }
 
 label:not(.radio):not(.login-label) {
   font-weight: 600;
   display: block;
-  margin-bottom: 6px;
-  font-size: 0.8rem;
-  color: #4b5563;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  color: #374151;
   letter-spacing: 0.01em;
 }
 input:not([type="radio"]):not(.prof-input):not(.login-input),
 select,
 textarea {
-  padding: 11px 16px;
+  padding: 13px 18px;
+  min-height: 48px;
   width: 100%;
   outline: 0;
   border: 1.5px solid #d1d5db;
   border-radius: 10px;
   background-color: #ffffff;
   color: #1f2937;
-  font-size: 0.875rem;
+  font-size: 0.925rem;
   transition: all 0.2s ease-in-out;
   line-height: 1.5;
 
@@ -950,8 +951,8 @@ textarea {
   }
 
   &:focus {
-    border-color: #4f46e5;
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    border-color: #1A237E;
+    box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.12);
     background-color: #fafaff;
   }
 
@@ -967,13 +968,13 @@ select {
   -moz-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 14px center;
+  background-position: right 16px center;
   background-size: 14px;
-  padding-right: 40px;
+  padding-right: 44px;
   cursor: pointer;
 }
 select:focus {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231A237E' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 .one {
   margin-bottom: 18px;
@@ -1021,11 +1022,12 @@ select:focus {
 .inlinewrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 22px 20px;
   align-items: normal;
 
   & > div {
-    width: calc(50% - 8px);
+    width: calc(50% - 10px);
+    margin-bottom: 4px;
   }
 
   & ~ span {

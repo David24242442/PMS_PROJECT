@@ -347,18 +347,54 @@
 
     /* Option Code End */
 
-    /* File methods variable Start */
+    /* Profile Picture Upload Helpers */
+        const profileInputRef = ref(null);
+        const profilePreviewUrl = ref('');
+        const profileFileName = ref('');
+        const profileFileSize = ref('');
+        const isDraggingProfile = ref(false);
+
+        const triggerProfileUpload = () => {
+            if (profileInputRef.value) {
+                profileInputRef.value.click();
+            }
+        };
+
+        const onProfileDrop = (event) => {
+            isDraggingProfile.value = false;
+            const droppedFiles = event.dataTransfer?.files;
+            if (droppedFiles && droppedFiles.length) {
+                addprofileimage({ target: { files: droppedFiles } });
+            }
+        };
+
+        const removeProfileImage = () => {
+            emp.profilepicture = [];
+            profilePreviewUrl.value = '';
+            profileFileName.value = '';
+            profileFileSize.value = '';
+            if (profileInputRef.value) {
+                profileInputRef.value.value = '';
+            }
+        };
+
         const addprofileimage = (event) => {
+            const files = event.target?.files || event.dataTransfer?.files;
+            if (!files || !files.length) return;
             
             emp.profilepicture = [];
 
-            for(const fil of event.target.files){
+            for(const fil of files){
+                profileFileName.value = fil.name;
+                profileFileSize.value = (fil.size / 1024).toFixed(1) + ' KB';
+
                 const reader = new FileReader();
                 reader.onloadend = function() {
                     const base64String = reader.result.replace('data:', '').replace(/^.+,/, '');
-                    emp.profilepicture.push(base64String)  
+                    emp.profilepicture.push(base64String);
+                    profilePreviewUrl.value = reader.result;
                 };
-                const tic = reader.readAsDataURL(fil);
+                reader.readAsDataURL(fil);
             }
         }
 
@@ -1806,6 +1842,26 @@
         }
     /* Tabs and Steps code End */
 
+    /* Central Sync */
+    const isSyncing = ref(false)
+    const triggerSyncCentral = async () => {
+        isSyncing.value = true
+        try {
+            const res = await axios.post('sync-central-employees')
+            if (res.data && res.data.status === 'success') {
+                toastt(res.data.message || 'Records successfully synced from Central Server 17!', 'success')
+            } else {
+                toastt(res.data.message || 'Sync completed with notices', 'info')
+            }
+        } catch (e) {
+            console.error('Central Sync error:', e)
+            const errMsg = e.response?.data?.message || e.message || 'Failed to sync with Central Server 17'
+            toastt(errMsg, 'error')
+        } finally {
+            isSyncing.value = false
+        }
+    }
+
     const showsearchpopup = () => {
         showsearchpopupvalue.value = true
     }
@@ -1954,12 +2010,28 @@
 <template>
 
     <div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; padding:20px 24px; background:linear-gradient(135deg, var(--primary), var(--primary-dark)); border-radius:16px; box-shadow:0 4px 14px rgba(79,70,229,0.25);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; padding:20px 24px; background:linear-gradient(135deg, #1A237E 0%, #121858 100%); border-radius:16px; box-shadow:0 4px 14px rgba(18,24,88,0.35);">
             <div>
                 <h2 style="margin:0; color:white; font-size:1.5rem; font-weight:800; letter-spacing:-0.02em;">Employee Onboarding</h2>
-                <p style="margin:4px 0 0; color:rgba(255,255,255,0.7); font-size:0.85rem; font-weight:500;">Complete the onboarding form for new employees</p>
+                <p style="margin:4px 0 0; color:rgba(255,255,255,0.75); font-size:0.85rem; font-weight:500;">Complete the onboarding form for new employees</p>
             </div>
-            <Button icon='pi pi-search' label="Search Employee" @click="showsearchpopup" class="p-button-outlined" style="color:white; border-color:rgba(255,255,255,0.4); font-weight:600; border-radius:10px;"></Button>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <Button 
+                    :icon="isSyncing ? 'pi pi-spin pi-spinner' : 'pi pi-cloud-download'" 
+                    :label="isSyncing ? 'Syncing...' : 'Sync'" 
+                    @click="triggerSyncCentral" 
+                    :disabled="isSyncing"
+                    class="p-button-outlined" 
+                    style="color:white; border-color:rgba(255,255,255,0.45); font-weight:700; border-radius:10px; background:rgba(255,255,255,0.12);"
+                ></Button>
+                <Button 
+                    icon='pi pi-search' 
+                    label="Search Employee" 
+                    @click="showsearchpopup" 
+                    class="p-button-outlined" 
+                    style="color:white; border-color:rgba(255,255,255,0.4); font-weight:600; border-radius:10px; background:rgba(255,255,255,0.06);"
+                ></Button>
+            </div>
         </div>
         
 
@@ -2091,8 +2163,65 @@
 
                             <div>
                                 <div class="one" v-if="!emp.id">
-                                    <label for="">Profile Picture:</label>
-                                    <input type="file" multiple @change="addprofileimage($event)" accept="image/*" required>
+                                    <label style="font-weight:700; font-size:0.875rem; color:#374151; margin-bottom:8px; display:block;">Profile Picture *:</label>
+                                    
+                                    <!-- Modern Profile Picture Upload Card -->
+                                    <div 
+                                        class="profile-upload-zone"
+                                        :class="{ 'has-file': profilePreviewUrl, 'is-dragging': isDraggingProfile }"
+                                        @dragover.prevent="isDraggingProfile = true"
+                                        @dragleave.prevent="isDraggingProfile = false"
+                                        @drop.prevent="onProfileDrop"
+                                        @click="triggerProfileUpload"
+                                    >
+                                        <input 
+                                            type="file" 
+                                            ref="profileInputRef" 
+                                            @change="addprofileimage($event)" 
+                                            accept="image/*" 
+                                            style="display:none;"
+                                            required
+                                        >
+
+                                        <!-- Empty State -->
+                                        <div v-if="!profilePreviewUrl" class="upload-placeholder-content">
+                                            <div class="upload-avatar-circle">
+                                                <i class="pi pi-user text-3xl" style="color:#94a3b8; font-size:2rem;"></i>
+                                                <div class="upload-badge-icon">
+                                                    <i class="pi pi-camera" style="font-size:0.75rem; color:#ffffff;"></i>
+                                                </div>
+                                            </div>
+                                            <div class="upload-text-content">
+                                                <span class="upload-title">Click to upload photo or drag & drop</span>
+                                                <span class="upload-subtitle">PNG, JPG, or JPEG up to 5MB</span>
+                                                <button type="button" class="upload-browse-btn" @click.stop="triggerProfileUpload">
+                                                    <i class="pi pi-upload mr-1.5"></i> Select Image
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Preview State -->
+                                        <div v-else class="upload-preview-content" @click.stop>
+                                            <div class="preview-avatar-wrapper">
+                                                <img :src="profilePreviewUrl" alt="Profile Preview" class="preview-avatar-img">
+                                                <div class="preview-success-badge" title="Image Selected">
+                                                    <i class="pi pi-check" style="font-size:0.75rem; color:#ffffff;"></i>
+                                                </div>
+                                            </div>
+                                            <div class="preview-meta">
+                                                <span class="preview-filename">{{ profileFileName }}</span>
+                                                <span class="preview-filesize">{{ profileFileSize }}</span>
+                                                <div class="preview-actions">
+                                                    <button type="button" class="action-btn change-btn" @click.stop="triggerProfileUpload">
+                                                        <i class="pi pi-refresh mr-1"></i> Change
+                                                    </button>
+                                                    <button type="button" class="action-btn remove-btn" @click.stop="removeProfileImage">
+                                                        <i class="pi pi-trash mr-1"></i> Remove
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <span class="error"></span>
                                 </div>
                                 <div class="one flex align-items-center" v-if="emp.id">
@@ -5157,6 +5286,236 @@
     .poplist .deux span {
         padding: 12px 14px;
         font-size: 0.9rem;
+    }
+
+    /* ─── Navy Header Overrides matching Sidebar ─── */
+    .group > h3,
+    :deep(.group > h3) {
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
+        color: white !important;
+    }
+
+    .activetab {
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
+        color: white !important;
+        border-color: transparent !important;
+        box-shadow: 0 3px 10px rgba(18,24,88,0.35) !important;
+        transform: translateY(-1px);
+    }
+
+    .steper span.active {
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
+        color: white !important;
+        border-color: #1A237E !important;
+        box-shadow: 0 2px 8px rgba(18,24,88,0.3) !important;
+    }
+
+    #submit {
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
+        box-shadow: 0 3px 10px rgba(18,24,88,0.25) !important;
+    }
+
+    /* ─── Dropdown & Form Field Spacing ─── */
+    select {
+        min-height: 48px;
+        padding: 13px 44px 13px 18px !important;
+        font-size: 0.925rem;
+        line-height: 1.5;
+        border-radius: 10px !important;
+    }
+    input:not([type="radio"]):not(.prof-input):not(.login-input),
+    textarea {
+        min-height: 48px;
+        padding: 13px 18px !important;
+        font-size: 0.925rem;
+        line-height: 1.5;
+        border-radius: 10px !important;
+    }
+    .inlinewrap {
+        gap: 22px 20px !important;
+    }
+    .inlinewrap > div {
+        width: calc(50% - 10px) !important;
+        margin-bottom: 4px;
+    }
+
+    /* ─── Profile Picture Upload UI ─── */
+    .profile-upload-zone {
+        border: 2px dashed #c7d2fe;
+        border-radius: 14px;
+        padding: 24px;
+        background: #f8faff;
+        transition: all 0.25s ease;
+        cursor: pointer;
+        text-align: center;
+        margin-top: 4px;
+    }
+    .profile-upload-zone:hover {
+        border-color: #1A237E;
+        background: #f0f4ff;
+        box-shadow: 0 4px 12px rgba(26, 35, 126, 0.08);
+    }
+    .profile-upload-zone.is-dragging {
+        border-color: #1A237E;
+        background: #e8edff;
+        transform: scale(1.01);
+    }
+    .profile-upload-zone.has-file {
+        border-style: solid;
+        border-color: #e2e8f0;
+        background: #ffffff;
+        cursor: default;
+    }
+    .upload-placeholder-content {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+    }
+    .upload-avatar-circle {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        background: #e2e8f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        flex-shrink: 0;
+    }
+    .upload-badge-icon {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #ffffff;
+    }
+    .upload-text-content {
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .upload-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .upload-subtitle {
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+    .upload-browse-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+        padding: 7px 16px;
+        border-radius: 8px;
+        border: 1.5px solid #1A237E;
+        background: transparent;
+        color: #1A237E;
+        font-size: 0.825rem;
+        font-weight: 700;
+        cursor: pointer;
+        width: fit-content;
+        transition: all 0.2s ease;
+    }
+    .upload-browse-btn:hover {
+        background: #1A237E;
+        color: #ffffff;
+        box-shadow: 0 2px 6px rgba(26, 35, 126, 0.2);
+    }
+    .upload-preview-content {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        text-align: left;
+    }
+    .preview-avatar-wrapper {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        flex-shrink: 0;
+    }
+    .preview-avatar-img {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 3px solid #1A237E;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    .preview-success-badge {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #10b981;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #ffffff;
+    }
+    .preview-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+    }
+    .preview-filename {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e293b;
+        word-break: break-all;
+    }
+    .preview-filesize {
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+    .preview-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+    }
+    .action-btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-size: 0.775rem;
+        font-weight: 700;
+        cursor: pointer;
+        border: 1px solid;
+        transition: all 0.2s ease;
+    }
+    .action-btn.change-btn {
+        border-color: #cbd5e1;
+        background: #f8fafc;
+        color: #334155;
+    }
+    .action-btn.change-btn:hover {
+        border-color: #1A237E;
+        color: #1A237E;
+        background: #f0f4ff;
+    }
+    .action-btn.remove-btn {
+        border-color: #fecdd3;
+        background: #fff1f2;
+        color: #e11d48;
+    }
+    .action-btn.remove-btn:hover {
+        background: #ffe4e6;
     }
 
 </style>

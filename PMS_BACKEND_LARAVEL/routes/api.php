@@ -359,6 +359,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/employee', [EmployeeController::class, 'show']);
     Route::post('/fetchemp', [EmployeeController::class, 'show']);
     Route::post('/updateempstatus', [EmployeeController::class, 'updateempstatus']);
+    Route::post('/sync-central-employees', [EmployeeController::class, 'syncFromCentral']);
+    Route::get('/sync-central-employees', [EmployeeController::class, 'syncFromCentral']);
 
     // PMS Routes
     Route::prefix('pms')->group(function () {

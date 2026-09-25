@@ -4,7 +4,7 @@
     import {onBeforeRouteLeave } from 'vue-router'
     import { log, calculateAge, toastt, numberToWords, aToday, afDate, aDate, imgburl} from '@/helpers/essential'   
     import { mstatus,  bankaccounttype, relations, depts, regions, branchs, qualtypes, banks, familyrelation, countries, conttypes, idtypes, findidtypes, findcompany, genders, companies, findregion, findconttypes, findrecordstatus} from '@/data/masterdata'
-    import axios from 'axios';
+    import axios from '@/helpers/pms_axios';
 
 
     import { useConfirm } from 'primevue/useconfirm';
@@ -12,10 +12,7 @@
     
     import { useUsersStore } from '@/stores/user';
     const userstore = useUsersStore()
-    const { loguser, getloguser, authtoken, getauthtoken } = userstore
-
-    const bearer = `Bearer ${authtoken}`;
-    axios.defaults.headers.common['Authorization'] = bearer
+    const { loguser } = userstore
 
 
     /* Date Computation Start */
@@ -350,18 +347,54 @@
 
     /* Option Code End */
 
-    /* File methods variable Start */
+    /* Profile Picture Upload Helpers */
+        const profileInputRef = ref(null);
+        const profilePreviewUrl = ref('');
+        const profileFileName = ref('');
+        const profileFileSize = ref('');
+        const isDraggingProfile = ref(false);
+
+        const triggerProfileUpload = () => {
+            if (profileInputRef.value) {
+                profileInputRef.value.click();
+            }
+        };
+
+        const onProfileDrop = (event) => {
+            isDraggingProfile.value = false;
+            const droppedFiles = event.dataTransfer?.files;
+            if (droppedFiles && droppedFiles.length) {
+                addprofileimage({ target: { files: droppedFiles } });
+            }
+        };
+
+        const removeProfileImage = () => {
+            emp.profilepicture = [];
+            profilePreviewUrl.value = '';
+            profileFileName.value = '';
+            profileFileSize.value = '';
+            if (profileInputRef.value) {
+                profileInputRef.value.value = '';
+            }
+        };
+
         const addprofileimage = (event) => {
+            const files = event.target?.files || event.dataTransfer?.files;
+            if (!files || !files.length) return;
             
             emp.profilepicture = [];
 
-            for(const fil of event.target.files){
+            for(const fil of files){
+                profileFileName.value = fil.name;
+                profileFileSize.value = (fil.size / 1024).toFixed(1) + ' KB';
+
                 const reader = new FileReader();
                 reader.onloadend = function() {
                     const base64String = reader.result.replace('data:', '').replace(/^.+,/, '');
-                    emp.profilepicture.push(base64String)  
+                    emp.profilepicture.push(base64String);
+                    profilePreviewUrl.value = reader.result;
                 };
-                const tic = reader.readAsDataURL(fil);
+                reader.readAsDataURL(fil);
             }
         }
 
@@ -1809,6 +1842,26 @@
         }
     /* Tabs and Steps code End */
 
+    /* Central Sync */
+    const isSyncing = ref(false)
+    const triggerSyncCentral = async () => {
+        isSyncing.value = true
+        try {
+            const res = await axios.post('sync-central-employees')
+            if (res.data && res.data.status === 'success') {
+                toastt(res.data.message || 'Records successfully synced from Central Server 17!', 'success')
+            } else {
+                toastt(res.data.message || 'Sync completed with notices', 'info')
+            }
+        } catch (e) {
+            console.error('Central Sync error:', e)
+            const errMsg = e.response?.data?.message || e.message || 'Failed to sync with Central Server 17'
+            toastt(errMsg, 'error')
+        } finally {
+            isSyncing.value = false
+        }
+    }
+
     const showsearchpopup = () => {
         showsearchpopupvalue.value = true
     }
@@ -1957,11 +2010,28 @@
 <template>
 
     <div>
-        <h2>Employee Onboarding</h2>
-
-        <div class="m-5">
-            <Button icon='pi pi-search' label="Search for employee to continue" @click="showsearchpopup"></Button>
-            
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; padding:20px 24px; background:linear-gradient(135deg, #1A237E 0%, #121858 100%); border-radius:16px; box-shadow:0 4px 14px rgba(18,24,88,0.35);">
+            <div>
+                <h2 style="margin:0; color:white; font-size:1.5rem; font-weight:800; letter-spacing:-0.02em;">Employee Onboarding</h2>
+                <p style="margin:4px 0 0; color:rgba(255,255,255,0.75); font-size:0.85rem; font-weight:500;">Complete the onboarding form for new employees</p>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <Button 
+                    :icon="isSyncing ? 'pi pi-spin pi-spinner' : 'pi pi-cloud-download'" 
+                    :label="isSyncing ? 'Syncing...' : 'Sync'" 
+                    @click="triggerSyncCentral" 
+                    :disabled="isSyncing"
+                    class="p-button-outlined" 
+                    style="color:white; border-color:rgba(255,255,255,0.45); font-weight:700; border-radius:10px; background:rgba(255,255,255,0.12);"
+                ></Button>
+                <Button 
+                    icon='pi pi-search' 
+                    label="Search Employee" 
+                    @click="showsearchpopup" 
+                    class="p-button-outlined" 
+                    style="color:white; border-color:rgba(255,255,255,0.4); font-weight:600; border-radius:10px; background:rgba(255,255,255,0.06);"
+                ></Button>
+            </div>
         </div>
         
 
@@ -2093,8 +2163,65 @@
 
                             <div>
                                 <div class="one" v-if="!emp.id">
-                                    <label for="">Profile Picture:</label>
-                                    <input type="file" multiple @change="addprofileimage($event)" accept="image/*" required>
+                                    <label style="font-weight:700; font-size:0.875rem; color:#374151; margin-bottom:8px; display:block;">Profile Picture *:</label>
+                                    
+                                    <!-- Modern Profile Picture Upload Card -->
+                                    <div 
+                                        class="profile-upload-zone"
+                                        :class="{ 'has-file': profilePreviewUrl, 'is-dragging': isDraggingProfile }"
+                                        @dragover.prevent="isDraggingProfile = true"
+                                        @dragleave.prevent="isDraggingProfile = false"
+                                        @drop.prevent="onProfileDrop"
+                                        @click="triggerProfileUpload"
+                                    >
+                                        <input 
+                                            type="file" 
+                                            ref="profileInputRef" 
+                                            @change="addprofileimage($event)" 
+                                            accept="image/*" 
+                                            style="display:none;"
+                                            required
+                                        >
+
+                                        <!-- Empty State -->
+                                        <div v-if="!profilePreviewUrl" class="upload-placeholder-content">
+                                            <div class="upload-avatar-circle">
+                                                <i class="pi pi-user text-3xl" style="color:#94a3b8; font-size:2rem;"></i>
+                                                <div class="upload-badge-icon">
+                                                    <i class="pi pi-camera" style="font-size:0.75rem; color:#ffffff;"></i>
+                                                </div>
+                                            </div>
+                                            <div class="upload-text-content">
+                                                <span class="upload-title">Click to upload photo or drag & drop</span>
+                                                <span class="upload-subtitle">PNG, JPG, or JPEG up to 5MB</span>
+                                                <button type="button" class="upload-browse-btn" @click.stop="triggerProfileUpload">
+                                                    <i class="pi pi-upload mr-1.5"></i> Select Image
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Preview State -->
+                                        <div v-else class="upload-preview-content" @click.stop>
+                                            <div class="preview-avatar-wrapper">
+                                                <img :src="profilePreviewUrl" alt="Profile Preview" class="preview-avatar-img">
+                                                <div class="preview-success-badge" title="Image Selected">
+                                                    <i class="pi pi-check" style="font-size:0.75rem; color:#ffffff;"></i>
+                                                </div>
+                                            </div>
+                                            <div class="preview-meta">
+                                                <span class="preview-filename">{{ profileFileName }}</span>
+                                                <span class="preview-filesize">{{ profileFileSize }}</span>
+                                                <div class="preview-actions">
+                                                    <button type="button" class="action-btn change-btn" @click.stop="triggerProfileUpload">
+                                                        <i class="pi pi-refresh mr-1"></i> Change
+                                                    </button>
+                                                    <button type="button" class="action-btn remove-btn" @click.stop="removeProfileImage">
+                                                        <i class="pi pi-trash mr-1"></i> Remove
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <span class="error"></span>
                                 </div>
                                 <div class="one flex align-items-center" v-if="emp.id">
@@ -4858,113 +4985,196 @@
 </template>
 <style scoped>
 
-    /* #form {
-        
-    } */
-    .error{
-        color:red;
+    /* ─── Errors ─── */
+    .error {
+        color: #ef4444;
+        font-size: 0.8rem;
+        margin-top: 4px;
+        font-weight: 500;
     }
-    
-    .steper{
+
+    /* ─── Stepper dots ─── */
+    .steper {
         display: flex;
-        justify-content: right;
-        padding: 15px;
+        justify-content: flex-end;
+        padding: 16px 20px;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
 
-        & span{
-            display: inline-block;
-            padding: 5px 10px;
-            border: 1px solid var(--accent);
-            width: 30px;
-            height: 30px;
-            border-radius: 30px;
+        & span {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 2px solid var(--border-color);
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            font-size: 0.85rem;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            color: var(--text-secondary);
 
-            &.active{
-                background-color: var(--accent);
+            &.active {
+                background: linear-gradient(135deg, var(--primary), var(--primary-dark));
                 color: white;
+                border-color: var(--primary);
+                box-shadow: 0 2px 8px rgba(79,70,229,0.3);
+                transform: scale(1.05);
             }
         }
     }
 
+    /* ─── Checklist ─── */
     #empchecklistdiv {
         display: flex;
         flex-direction: column;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 
-
-        & > div{
+        & > div {
             display: flex;
-            border-bottom:1px solid black;
-            border-left: 1px solid black;
-            border-right: 1px solid black;
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.15s ease;
 
-            & > strong{
+            &:last-child {
+                border-bottom: none;
+            }
+
+            &:nth-child(even) {
+                background-color: var(--surface-ground);
+            }
+
+            &:hover {
+                background-color: rgba(79,70,229,0.04);
+            }
+
+            & > strong {
                 flex: 1;
-                padding:15px;
+                padding: 16px 20px;
+                font-size: 0.9rem;
+                font-weight: 600;
             }
-            & > span{
-                border-left: 1px solid black;
+            & > span {
+                border-left: 1px solid var(--border-color);
                 width: 300px;
-                display: inline-block;
-                padding:15px;
                 display: inline-flex;
+                align-items: center;
+                padding: 16px 20px;
+                gap: 10px;
+                font-size: 0.875rem;
             }
         }
     }
 
-    
-    .tabs{
+    /* ─── Main Tab Bar ─── */
+    .tabs {
         display: flex;
         justify-content: center;
-        gap:10px;
+        gap: 8px;
+        padding: 8px;
+        background: var(--surface-card);
+        border-radius: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        margin-bottom: 20px;
     }
-    .tabs button{
-        padding:7px;
+    .tabs button {
+        padding: 10px 22px;
+        border: 2px solid transparent;
+        border-radius: 12px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.25s ease;
+        white-space: nowrap;
     }
-    .activetab{
-        background-color: var(--accent);
-        color:white;
-        border:2px solid var(--accent);
+    .tabs button:hover:not(:disabled) {
+        background: var(--surface-ground);
+        color: var(--text-color);
     }
-    .stepsbutton{
-        
-        margin-top: 30px;
-        display: flex;
-        justify-content: center;
-        gap: 10px;
+    .tabs button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+    .activetab {
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
+        color: white !important;
+        border-color: transparent !important;
+        box-shadow: 0 3px 10px rgba(79,70,229,0.3);
+        transform: translateY(-1px);
+    }
 
-        & button{
-            padding:7px 15px;
+    /* ─── Step Navigation Buttons ─── */
+    .stepsbutton {
+        margin-top: 32px;
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+
+        & button {
+            padding: 10px 28px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.875rem;
+            cursor: pointer;
+            border: 2px solid var(--border-color);
+            background: var(--surface-card);
+            color: var(--text-color);
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        & button:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(79,70,229,0.12);
         }
     }
 
-    
-    #declarationdiv{
-        
-        line-height: 1.8;
+    /* ─── Declaration ─── */
+    #declarationdiv {
+        line-height: 2;
+        font-size: 0.925rem;
     }
-    #declarationdiv input{
+    #declarationdiv input {
         width: unset;
-        padding: 3px;
-    }
-    
-    
-    
-    #submit{
-        padding:10px 40px;
-        margin-top: 30px;
-        background-color: black;
-        color:white;
-        cursor: pointer;
-        border-radius: 5px;
-        transition: .5s;
-    }
-    #submit:hover{
-        background-color: white;
-        color: black;
-        border: 2px solid black;
+        padding: 4px;
+        border-radius: 4px;
     }
 
+    /* ─── Submit Button ─── */
+    #submit {
+        padding: 12px 44px;
+        margin-top: 32px;
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        color: white;
+        cursor: pointer;
+        border-radius: 12px;
+        border: 2px solid transparent;
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.3px;
+        box-shadow: 0 3px 10px rgba(79,70,229,0.25);
+        transition: all 0.3s ease;
+    }
+    #submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(79,70,229,0.35);
+    }
+    #submit:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 6px rgba(79,70,229,0.2);
+    }
+
+    /* ─── Search Popup (glass overlay) ─── */
     .poppop {
         position: fixed;
         top: 0;
@@ -4972,77 +5182,340 @@
         width: 100%;
         height: 100%;
         z-index: 500;
-        background-color: #00000061;
-        padding: 50px 20%;
+        background-color: rgba(15, 23, 42, 0.5);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        padding: 40px 16%;
+        animation: fadeOverlay 0.2s ease-out;
     }
-    .deux{
+    @keyframes fadeOverlay {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+
+    .deux {
         display: flex;
     }
-    .deux > span{
+    .deux > span {
         width: 50%;
         display: inline-block;
     }
 
-    .popheader{
-        height: 133px;
-        background-color: #00000017;
+    .popheader {
+        height: auto;
+        background-color: transparent;
+        border-radius: 14px 14px 0 0;
+        overflow: hidden;
     }
-    .popheader h3{
-        margin:0;
-        background-color: var(--deepcolor);
+    .popheader h3 {
+        margin: 0;
+        background: linear-gradient(135deg, var(--secondary), #312e81);
         text-align: center;
-        padding:5px;
-    }
-    .popheader input{
-        padding:7px;
-        width: calc(100% - 20px);
-        margin-top: 5px;
-        margin: 10px 10px;
-    }
-    .popheader .deux{
-        margin-top: 5px;
-        background-color: var(--accent);
+        padding: 14px;
         color: white;
-
+        font-size: 0.95rem;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
     }
-    .popheader .deux span{
-        background-color: var(--deepcolor);
-        border-right: 2px solid var(--bglightcolor);
-        /* text-align: center; */
-        padding:10px;
+    .popheader input {
+        padding: 12px 16px;
+        width: calc(100% - 28px);
+        margin: 14px 14px;
+        border-radius: 10px;
+        border: 1.5px solid var(--border-color);
+        font-size: 0.9rem;
+    }
+    .popheader .deux {
+        margin-top: 0;
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        color: white;
+    }
+    .popheader .deux span {
+        background: transparent;
+        border-right: 1px solid rgba(255,255,255,0.15);
+        padding: 10px 14px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
     }
 
     .poppopin {
-        background-color: white;
+        background-color: var(--surface-card);
         height: calc(100% - 50px);
+        border-radius: 0 0 14px 14px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+        overflow: hidden;
     }
 
     .poppopclose {
-        padding: 10px;
+        padding: 10px 18px;
         cursor: pointer;
+        font-weight: 600;
+        color: white;
+        background: rgba(255,255,255,0.15);
+        border: 1.5px solid rgba(255,255,255,0.25);
+        border-radius: 10px;
+        margin-bottom: 10px;
+        font-size: 0.85rem;
+        transition: all 0.2s ease;
+    }
+    .poppopclose:hover {
+        background: rgba(255,255,255,0.25);
     }
 
     .poplist {
-        padding: 10px;
+        padding: 10px 14px;
         overflow: auto;
-        max-height: calc( 100% - 133px);
+        max-height: calc(100% - 133px);
     }
-    .poplist .deux{
-        border-bottom: 1px solid #00000021;
+    .poplist .deux {
+        border-bottom: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin-bottom: 2px;
+        transition: all 0.15s ease;
     }
-    .poplist .deux:nth-child(even){
-        background-color: var(--bglightcolor)
+    .poplist .deux:nth-child(even) {
+        background-color: var(--surface-ground);
     }
-    .poplist .deux:hover{
-        background-color: #38318524;
+    .poplist .deux:hover {
+        background-color: rgba(79,70,229,0.06);
         cursor: pointer;
+        transform: translateX(2px);
     }
-    .poplist .deux span{
-        padding:10px;
+    .poplist .deux span {
+        padding: 12px 14px;
+        font-size: 0.9rem;
     }
 
-    
+    /* ─── Navy Header Overrides matching Sidebar ─── */
+    .group > h3,
+    :deep(.group > h3) {
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
+        color: white !important;
+    }
 
-    
+    .activetab {
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
+        color: white !important;
+        border-color: transparent !important;
+        box-shadow: 0 3px 10px rgba(18,24,88,0.35) !important;
+        transform: translateY(-1px);
+    }
+
+    .steper span.active {
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
+        color: white !important;
+        border-color: #1A237E !important;
+        box-shadow: 0 2px 8px rgba(18,24,88,0.3) !important;
+    }
+
+    #submit {
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%) !important;
+        box-shadow: 0 3px 10px rgba(18,24,88,0.25) !important;
+    }
+
+    /* ─── Dropdown & Form Field Spacing ─── */
+    select {
+        min-height: 48px;
+        padding: 13px 44px 13px 18px !important;
+        font-size: 0.925rem;
+        line-height: 1.5;
+        border-radius: 10px !important;
+    }
+    input:not([type="radio"]):not(.prof-input):not(.login-input),
+    textarea {
+        min-height: 48px;
+        padding: 13px 18px !important;
+        font-size: 0.925rem;
+        line-height: 1.5;
+        border-radius: 10px !important;
+    }
+    .inlinewrap {
+        gap: 22px 20px !important;
+    }
+    .inlinewrap > div {
+        width: calc(50% - 10px) !important;
+        margin-bottom: 4px;
+    }
+
+    /* ─── Profile Picture Upload UI ─── */
+    .profile-upload-zone {
+        border: 2px dashed #c7d2fe;
+        border-radius: 14px;
+        padding: 24px;
+        background: #f8faff;
+        transition: all 0.25s ease;
+        cursor: pointer;
+        text-align: center;
+        margin-top: 4px;
+    }
+    .profile-upload-zone:hover {
+        border-color: #1A237E;
+        background: #f0f4ff;
+        box-shadow: 0 4px 12px rgba(26, 35, 126, 0.08);
+    }
+    .profile-upload-zone.is-dragging {
+        border-color: #1A237E;
+        background: #e8edff;
+        transform: scale(1.01);
+    }
+    .profile-upload-zone.has-file {
+        border-style: solid;
+        border-color: #e2e8f0;
+        background: #ffffff;
+        cursor: default;
+    }
+    .upload-placeholder-content {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+    }
+    .upload-avatar-circle {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        background: #e2e8f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        flex-shrink: 0;
+    }
+    .upload-badge-icon {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #1A237E 0%, #121858 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #ffffff;
+    }
+    .upload-text-content {
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .upload-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .upload-subtitle {
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+    .upload-browse-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+        padding: 7px 16px;
+        border-radius: 8px;
+        border: 1.5px solid #1A237E;
+        background: transparent;
+        color: #1A237E;
+        font-size: 0.825rem;
+        font-weight: 700;
+        cursor: pointer;
+        width: fit-content;
+        transition: all 0.2s ease;
+    }
+    .upload-browse-btn:hover {
+        background: #1A237E;
+        color: #ffffff;
+        box-shadow: 0 2px 6px rgba(26, 35, 126, 0.2);
+    }
+    .upload-preview-content {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        text-align: left;
+    }
+    .preview-avatar-wrapper {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        flex-shrink: 0;
+    }
+    .preview-avatar-img {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 3px solid #1A237E;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    .preview-success-badge {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #10b981;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #ffffff;
+    }
+    .preview-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+    }
+    .preview-filename {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e293b;
+        word-break: break-all;
+    }
+    .preview-filesize {
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+    .preview-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+    }
+    .action-btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-size: 0.775rem;
+        font-weight: 700;
+        cursor: pointer;
+        border: 1px solid;
+        transition: all 0.2s ease;
+    }
+    .action-btn.change-btn {
+        border-color: #cbd5e1;
+        background: #f8fafc;
+        color: #334155;
+    }
+    .action-btn.change-btn:hover {
+        border-color: #1A237E;
+        color: #1A237E;
+        background: #f0f4ff;
+    }
+    .action-btn.remove-btn {
+        border-color: #fecdd3;
+        background: #fff1f2;
+        color: #e11d48;
+    }
+    .action-btn.remove-btn:hover {
+        background: #ffe4e6;
+    }
 
 </style>

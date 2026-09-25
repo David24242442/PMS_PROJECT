@@ -1590,7 +1590,126 @@ class EmployeeController extends Controller
 
     }
 
+    /**
+     * Safely synchronize current data from Central Database (Server 17) to Local Database (Server 20).
+     * Server 17 is strictly read-only.
+     */
+    public function syncFromCentral(Request $request)
+    {
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
 
+        try {
+            \Illuminate\Support\Facades\DB::connection('central')->getPdo();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Central DB Connection Error: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unable to connect to Central Server 17 database: ' . $e->getMessage()
+            ], 500);
+        }
 
+        $tablesToSync = [
+            'employees',
+            'bank_socials',
+            'childrens',
+            'driverlicenses',
+            'education',
+            'emergency_contacts',
+            'guarantors',
+            'histories',
+            'irr_guar_witnesses',
+            'irr_guarantees',
+            'nominees',
+            'present_jobs',
+            'references',
+            'social_contacts',
+            'unions',
+            'uploads',
+            'wives',
+            'work_experiences',
+            'workpermits'
+        ];
+
+        $syncedCounts = [];
+        $newEmployeesCount = 0;
+
+        foreach ($tablesToSync as $table) {
+            try {
+                if (!\Illuminate\Support\Facades\Schema::connection('mysql')->hasTable($table)) {
+                    continue;
+                }
+
+                $localMaxId = \Illuminate\Support\Facades\DB::connection('mysql')->table($table)->max('id') ?? 0;
+
+                // Sync new rows where id > localMaxId
+                $query = \Illuminate\Support\Facades\DB::connection('central')->table($table);
+                if ($localMaxId > 0) {
+                    $query = $query->where('id', '>', $localMaxId);
+                }
+
+                $newCount = 0;
+                $query->orderBy('id', 'asc')->chunk(200, function ($rows) use ($table, &$newCount, &$newEmployeesCount) {
+                    $insertData = [];
+                    foreach ($rows as $row) {
+                        $item = (array) $row;
+                        if ($table === 'employees') {
+                            $fn = trim(($item['firstname'] ?? '') . ' ' . ($item['middlename'] ?? '') . ' ' . ($item['surname'] ?? ''));
+                            if (empty($item['full_name']) && !empty($fn)) {
+                                $item['full_name'] = $fn;
+                            }
+                        }
+                        $insertData[] = $item;
+                    }
+                    if (!empty($insertData)) {
+                        \Illuminate\Support\Facades\DB::connection('mysql')->table($table)->insertOrIgnore($insertData);
+                        $newCount += count($insertData);
+                        if ($table === 'employees') {
+                            $newEmployeesCount += count($insertData);
+                        }
+                    }
+                });
+
+                // Check recently updated rows in the last 14 days
+                if (\Illuminate\Support\Facades\Schema::connection('central')->hasColumn($table, 'updated_at') && \Illuminate\Support\Facades\Schema::connection('mysql')->hasColumn($table, 'updated_at')) {
+                    $cutoff = date('Y-m-d H:i:s', strtotime('-14 days'));
+                    $updatedRows = \Illuminate\Support\Facades\DB::connection('central')->table($table)
+                        ->where('updated_at', '>=', $cutoff)
+                        ->where('id', '<=', $localMaxId)
+                        ->get();
+
+                    foreach ($updatedRows as $row) {
+                        $item = (array) $row;
+                        $rowId = $item['id'];
+                        unset($item['id']);
+                        if ($table === 'employees') {
+                            $fn = trim(($item['firstname'] ?? '') . ' ' . ($item['middlename'] ?? '') . ' ' . ($item['surname'] ?? ''));
+                            if (empty($item['full_name']) && !empty($fn)) {
+                                $item['full_name'] = $fn;
+                            }
+                        }
+                        \Illuminate\Support\Facades\DB::connection('mysql')->table($table)->where('id', $rowId)->update($item);
+                    }
+                }
+
+                $syncedCounts[$table] = $newCount;
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning("Sync failed for table {$table}: " . $e->getMessage());
+                $syncedCounts[$table] = 0;
+            }
+        }
+
+        $totalCentral = \Illuminate\Support\Facades\DB::connection('central')->table('employees')->count();
+        $totalLocal = \Illuminate\Support\Facades\DB::connection('mysql')->table('employees')->count();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Synchronization complete! Local database now has {$totalLocal} employees (Central database has {$totalCentral}).",
+            'new_employees_synced' => $newEmployeesCount,
+            'total_local_employees' => $totalLocal,
+            'total_central_employees' => $totalCentral,
+            'details' => $syncedCounts
+        ]);
+    }
 
 }
