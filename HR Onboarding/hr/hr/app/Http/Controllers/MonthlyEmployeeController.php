@@ -820,91 +820,61 @@ class MonthlyEmployeeController extends Controller
         $val = trim((string)$rawStatus);
         $lower = strtolower($val);
 
-        if ($val === '1' || $lower === 'active') {
+        // Standard IDs from masterdata.js:
+        // 1: Active, 2: Resigned, 3: Absconded, 4: Terminated, 5: Dismissed, 6: Deceased
+        $knownStatuses = [
+            '1' => 'Active',
+            '2' => 'Resigned',
+            '3' => 'Absconded',
+            '4' => 'Terminated',
+            '5' => 'Dismissed',
+            '6' => 'Deceased',
+        ];
+
+        if (isset($knownStatuses[$val])) {
+            $statusLabel = $knownStatuses[$val];
+        } elseif ($lower === 'active') {
+            $statusLabel = 'Active';
+        } elseif ($lower === 'resigned') {
+            $statusLabel = 'Resigned';
+        } elseif ($lower === 'absconded') {
+            $statusLabel = 'Absconded';
+        } elseif ($lower === 'terminated') {
+            $statusLabel = 'Terminated';
+        } elseif ($lower === 'dismissed') {
+            $statusLabel = 'Dismissed';
+        } elseif ($lower === 'deceased') {
+            $statusLabel = 'Deceased';
+        } elseif ($lower === 'stop' || $lower === 'stopped' || $lower === 'hold' || $lower === 'inactive') {
+            $statusLabel = 'Stop';
+        } elseif (!empty($val)) {
+            $statusLabel = ucwords($lower);
+        } else {
+            $statusLabel = 'Active'; // Default in employees schema is 1
+        }
+
+        $isActive = ($statusLabel === 'Active');
+        $code = strtoupper(preg_replace('/[^a-zA-Z0-9]/', '_', $statusLabel));
+
+        if ($isActive) {
             return [
                 'code' => 'ACTIVE',
                 'label' => 'Active',
                 'severity' => 'success',
                 'badge_class' => 'badge-active',
-                'audit_flag' => 'Verified Active',
+                'audit_flag' => 'Verified Active in HR',
                 'recommendation' => 'Compliant - Record in sync',
                 'is_discrepancy' => false,
             ];
         }
-        if ($val === '2' || $lower === 'resigned') {
-            return [
-                'code' => 'RESIGNED',
-                'label' => 'Resigned',
-                'severity' => 'danger',
-                'badge_class' => 'badge-resigned',
-                'audit_flag' => 'CRITICAL: Resigned in HR, on Payroll',
-                'recommendation' => 'Review payroll - Employee marked Resigned',
-                'is_discrepancy' => true,
-            ];
-        }
-        if ($val === '3' || $lower === 'absconded') {
-            return [
-                'code' => 'ABSCONDED',
-                'label' => 'Absconded',
-                'severity' => 'danger',
-                'badge_class' => 'badge-absconded',
-                'audit_flag' => 'CRITICAL: Absconded in HR, on Payroll',
-                'recommendation' => 'Review payroll - Employee marked Absconded',
-                'is_discrepancy' => true,
-            ];
-        }
-        if ($val === '4' || $lower === 'terminated') {
-            return [
-                'code' => 'TERMINATED',
-                'label' => 'Terminated',
-                'severity' => 'danger',
-                'badge_class' => 'badge-terminated',
-                'audit_flag' => 'CRITICAL: Terminated in HR, on Payroll',
-                'recommendation' => 'Immediate action - Terminated worker on active payroll',
-                'is_discrepancy' => true,
-            ];
-        }
-        if ($val === '5' || $lower === 'dismissed') {
-            return [
-                'code' => 'DISMISSED',
-                'label' => 'Dismissed',
-                'severity' => 'danger',
-                'badge_class' => 'badge-dismissed',
-                'audit_flag' => 'CRITICAL: Dismissed in HR, on Payroll',
-                'recommendation' => 'Immediate action - Dismissed worker on active payroll',
-                'is_discrepancy' => true,
-            ];
-        }
-        if ($val === '6' || $lower === 'deceased') {
-            return [
-                'code' => 'DECEASED',
-                'label' => 'Deceased',
-                'severity' => 'danger',
-                'badge_class' => 'badge-deceased',
-                'audit_flag' => 'CRITICAL: Deceased in HR, on Payroll',
-                'recommendation' => 'Immediate halt - Deceased worker on active payroll',
-                'is_discrepancy' => true,
-            ];
-        }
-        if ($lower === 'stop' || $lower === 'stopped' || $lower === 'inactive' || $lower === 'hold') {
-            return [
-                'code' => 'STOP',
-                'label' => 'Stop / On Hold',
-                'severity' => 'danger',
-                'badge_class' => 'badge-stop',
-                'audit_flag' => 'CRITICAL: Salary on Stop, on Payroll',
-                'recommendation' => 'Verify payroll hold status',
-                'is_discrepancy' => true,
-            ];
-        }
 
         return [
-            'code' => 'UNKNOWN',
-            'label' => $val ? ucfirst($val) : 'Unknown',
-            'severity' => 'info',
-            'badge_class' => 'badge-unknown',
-            'audit_flag' => 'Unrecognized Status in HR (' . $val . ')',
-            'recommendation' => 'Update onboarding record status',
+            'code' => $code,
+            'label' => $statusLabel,
+            'severity' => 'danger',
+            'badge_class' => 'badge-' . strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $statusLabel)),
+            'audit_flag' => "CRITICAL: {$statusLabel} in HR, on Payroll",
+            'recommendation' => "Review payroll - Employee status is {$statusLabel}",
             'is_discrepancy' => true,
         ];
     }
@@ -938,29 +908,44 @@ class MonthlyEmployeeController extends Controller
 
             // Fetch all onboarding employees to build the cross-reference map
             $onboardingQuery = self::getOnboardingEmployeesQuery();
+            $totalOnboarding = 0;
             $onboardingMap = [];
             if ($onboardingQuery) {
+                try {
+                    $totalOnboarding = (clone $onboardingQuery)->count();
+                } catch (\Throwable $e) {
+                    $totalOnboarding = 0;
+                }
+
                 $onboardingRows = $onboardingQuery
                     ->select('id', 'employeeid', 'emp_code', 'firstname', 'surname', 'status', 'email', 'mobileno', 'joiningposition', 'company', 'joining_branch_id')
                     ->get();
 
+                if ($totalOnboarding === 0 && $onboardingRows) {
+                    $totalOnboarding = count($onboardingRows);
+                }
+
                 foreach ($onboardingRows as $row) {
                     if (!empty($row->employeeid)) {
-                        $cleanId = trim((string)$row->employeeid);
-                        $onboardingMap[$cleanId] = $row;
-                        $noZeros = ltrim($cleanId, '0');
-                        if ($noZeros !== '' && !isset($onboardingMap[$noZeros])) {
-                            $onboardingMap[$noZeros] = $row;
+                        $cleanId = strtoupper(trim(preg_replace('/\s+/', '', (string)$row->employeeid)));
+                        if ($cleanId !== '') {
+                            $onboardingMap[$cleanId] = $row;
+                            $noZeros = ltrim($cleanId, '0');
+                            if ($noZeros !== '' && !isset($onboardingMap[$noZeros])) {
+                                $onboardingMap[$noZeros] = $row;
+                            }
                         }
                     }
                     if (!empty($row->emp_code)) {
-                        $cleanCode = trim((string)$row->emp_code);
-                        if (!isset($onboardingMap[$cleanCode])) {
-                            $onboardingMap[$cleanCode] = $row;
-                        }
-                        $noZerosCode = ltrim($cleanCode, '0');
-                        if ($noZerosCode !== '' && !isset($onboardingMap[$noZerosCode])) {
-                            $onboardingMap[$noZerosCode] = $row;
+                        $cleanCode = strtoupper(trim(preg_replace('/\s+/', '', (string)$row->emp_code)));
+                        if ($cleanCode !== '') {
+                            if (!isset($onboardingMap[$cleanCode])) {
+                                $onboardingMap[$cleanCode] = $row;
+                            }
+                            $noZerosCode = ltrim($cleanCode, '0');
+                            if ($noZerosCode !== '' && !isset($onboardingMap[$noZerosCode])) {
+                                $onboardingMap[$noZerosCode] = $row;
+                            }
                         }
                     }
                 }
@@ -970,6 +955,7 @@ class MonthlyEmployeeController extends Controller
             $reconciledRecords = [];
             $stats = [
                 'total_payroll' => count($allPayrollEmployees),
+                'total_onboarding' => $totalOnboarding,
                 'active' => 0,
                 'not_onboarded' => 0,
                 'resigned' => 0,
@@ -979,11 +965,12 @@ class MonthlyEmployeeController extends Controller
                 'deceased' => 0,
                 'stop' => 0,
                 'unknown' => 0,
+                'status_conflicts' => 0,
                 'total_discrepancies' => 0
             ];
 
             foreach ($allPayrollEmployees as $emp) {
-                $empId = trim((string)$emp->emp_id);
+                $empId = strtoupper(trim(preg_replace('/\s+/', '', (string)$emp->emp_id)));
                 $empIdNoZero = ltrim($empId, '0');
                 $obMatch = $onboardingMap[$empId] ?? ($onboardingMap[$empIdNoZero] ?? null);
 
@@ -995,6 +982,10 @@ class MonthlyEmployeeController extends Controller
                     $stats[$statusCode]++;
                 } else {
                     $stats['unknown']++;
+                }
+
+                if ($obMatch && $statusMeta['is_discrepancy']) {
+                    $stats['status_conflicts']++;
                 }
 
                 if ($statusMeta['is_discrepancy']) {
@@ -1028,6 +1019,8 @@ class MonthlyEmployeeController extends Controller
             if ($statusFilter !== 'all' && $statusFilter !== '') {
                 if ($statusFilter === 'discrepancies' || $statusFilter === 'discrepancies_only') {
                     $filtered = $filtered->filter(fn($r) => $r['onboarding_status']['is_discrepancy']);
+                } elseif ($statusFilter === 'conflicts' || $statusFilter === 'status_conflicts') {
+                    $filtered = $filtered->filter(fn($r) => $r['onboarding_matched'] && $r['onboarding_status']['is_discrepancy']);
                 } else {
                     $filtered = $filtered->filter(function ($r) use ($statusFilter) {
                         return strtolower($r['onboarding_status']['code']) === $statusFilter;
@@ -1121,16 +1114,20 @@ class MonthlyEmployeeController extends Controller
                     ->get();
                 foreach ($onboardingRows as $row) {
                     if (!empty($row->employeeid)) {
-                        $clean = trim((string)$row->employeeid);
-                        $onboardingMap[$clean] = $row;
-                        $z = ltrim($clean, '0');
-                        if ($z !== '' && !isset($onboardingMap[$z])) $onboardingMap[$z] = $row;
+                        $clean = strtoupper(trim(preg_replace('/\s+/', '', (string)$row->employeeid)));
+                        if ($clean !== '') {
+                            $onboardingMap[$clean] = $row;
+                            $z = ltrim($clean, '0');
+                            if ($z !== '' && !isset($onboardingMap[$z])) $onboardingMap[$z] = $row;
+                        }
                     }
                     if (!empty($row->emp_code)) {
-                        $clean = trim((string)$row->emp_code);
-                        if (!isset($onboardingMap[$clean])) $onboardingMap[$clean] = $row;
-                        $z = ltrim($clean, '0');
-                        if ($z !== '' && !isset($onboardingMap[$z])) $onboardingMap[$z] = $row;
+                        $clean = strtoupper(trim(preg_replace('/\s+/', '', (string)$row->emp_code)));
+                        if ($clean !== '') {
+                            if (!isset($onboardingMap[$clean])) $onboardingMap[$clean] = $row;
+                            $z = ltrim($clean, '0');
+                            if ($z !== '' && !isset($onboardingMap[$z])) $onboardingMap[$z] = $row;
+                        }
                     }
                 }
             }
@@ -1168,7 +1165,7 @@ class MonthlyEmployeeController extends Controller
                 ]);
 
                 foreach ($payrollEmployees as $emp) {
-                    $empId = trim((string)$emp->emp_id);
+                    $empId = strtoupper(trim(preg_replace('/\s+/', '', (string)$emp->emp_id)));
                     $empIdNoZero = ltrim($empId, '0');
                     $obMatch = $onboardingMap[$empId] ?? ($onboardingMap[$empIdNoZero] ?? null);
                     $statusMeta = self::mapOnboardingStatus($obMatch ? $obMatch->status : null, (bool)$obMatch);
@@ -1176,7 +1173,9 @@ class MonthlyEmployeeController extends Controller
                     if ($statusFilter !== 'all' && $statusFilter !== '') {
                         if ($statusFilter === 'discrepancies' && !$statusMeta['is_discrepancy']) {
                             continue;
-                        } elseif ($statusFilter !== 'discrepancies' && strtolower($statusMeta['code']) !== $statusFilter) {
+                        } elseif (($statusFilter === 'conflicts' || $statusFilter === 'status_conflicts') && !($obMatch && $statusMeta['is_discrepancy'])) {
+                            continue;
+                        } elseif ($statusFilter !== 'discrepancies' && $statusFilter !== 'conflicts' && $statusFilter !== 'status_conflicts' && strtolower($statusMeta['code']) !== $statusFilter) {
                             continue;
                         }
                     }

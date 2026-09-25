@@ -330,6 +330,7 @@ const reconcilePage = ref(1);
 const reconcilePerPage = ref(50);
 const reconcileStats = ref({
     total_payroll: 0,
+    total_onboarding: 0,
     active: 0,
     not_onboarded: 0,
     resigned: 0,
@@ -339,6 +340,7 @@ const reconcileStats = ref({
     deceased: 0,
     stop: 0,
     unknown: 0,
+    status_conflicts: 0,
     total_discrepancies: 0
 });
 const reconcileEmployees = ref([]);
@@ -910,18 +912,19 @@ onMounted(() => {
             </div>
 
         <!-- ── Reconciliation & Audit Modal ── -->
-        <transition name="fade">
+        <transition name="modal-fade">
             <div v-if="showReconciliationModal" class="reconcile-modal-overlay" @click.self="closeReconciliationModal">
                 <div class="reconcile-modal-container">
                     <!-- Modal Header -->
                     <div class="reconcile-modal-header">
                         <div class="reconcile-title-group">
                             <div class="reconcile-badge">
-                                <i class="pi pi-shield-check"></i> HR AUDIT & RECONCILIATION
+                                <span class="badge-dot"></span>
+                                <span>HR AUDIT & RECONCILIATION</span>
                             </div>
                             <h2>Payroll vs. Onboarding Reconciliation</h2>
                             <p class="reconcile-subtitle">
-                                Cross-referencing authoritative <strong>Payroll Uploads</strong> (Source of Truth for Employees) against <strong>Onboarding Dossiers</strong> (Source of Truth for Status).
+                                Cross-referencing monthly <strong>Payroll Uploads</strong> (Source of Truth for Employees) against <strong>HR Onboarding Dossiers</strong> (Source of Truth for Status).
                             </p>
                         </div>
                         <div class="reconcile-header-actions">
@@ -934,56 +937,104 @@ onMounted(() => {
 
                             <button 
                                 type="button" 
-                                class="btn btn-secondary btn-export-audit"
+                                class="btn-export-audit"
                                 :disabled="reconcileExporting || reconcileLoading"
                                 @click="exportReconciliation"
+                                title="Export complete audit CSV"
                             >
                                 <i class="pi" :class="reconcileExporting ? 'pi-spin pi-spinner' : 'pi-download'"></i>
-                                Export Audit CSV
+                                <span>Export Audit CSV</span>
                             </button>
 
-                            <button type="button" class="btn-close-modal" @click="closeReconciliationModal" title="Close modal">
-                                &times;
+                            <button type="button" class="btn-close-modal" @click="closeReconciliationModal" title="Close dialog">
+                                <i class="pi pi-times"></i>
                             </button>
                         </div>
                     </div>
 
-                    <!-- Executive KPI Banner -->
+                    <!-- Executive KPI Banner (5 Cards) -->
                     <div class="reconcile-stats-row">
-                        <div class="reconcile-stat-card total-card" @click="setReconcileStatusFilter('all')" :class="{ 'active-card': reconcileStatusFilter === 'all' }">
+                        <!-- Card 1: Total on Payroll -->
+                        <div 
+                            class="reconcile-stat-card payroll-card" 
+                            @click="setReconcileStatusFilter('all')" 
+                            :class="{ 'active-card': reconcileStatusFilter === 'all' }"
+                            title="Filter: All employees on monthly payroll"
+                        >
                             <div class="stat-top">
-                                <span class="stat-num">{{ formatNumber(reconcileStats.total_payroll) }}</span>
-                                <i class="pi pi-users stat-icon"></i>
+                                <span class="stat-num text-blue">{{ formatNumber(reconcileStats.total_payroll) }}</span>
+                                <div class="stat-icon-wrap icon-blue">
+                                    <i class="pi pi-users"></i>
+                                </div>
                             </div>
                             <span class="stat-name">Total on Payroll</span>
-                            <span class="stat-sub">Source of Truth Records</span>
+                            <span class="stat-sub">Source of Truth (Monthly Ingestion)</span>
                         </div>
 
-                        <div class="reconcile-stat-card active-card-stat" @click="setReconcileStatusFilter('active')" :class="{ 'active-card': reconcileStatusFilter === 'active' }">
+                        <!-- Card 2: Total in HR Database -->
+                        <div 
+                            class="reconcile-stat-card onboarding-total-card"
+                            title="Total employee dossiers in HR system"
+                        >
+                            <div class="stat-top">
+                                <span class="stat-num text-purple">{{ formatNumber(reconcileStats.total_onboarding) }}</span>
+                                <div class="stat-icon-wrap icon-purple">
+                                    <i class="pi pi-id-card"></i>
+                                </div>
+                            </div>
+                            <span class="stat-name">Total in HR Database</span>
+                            <span class="stat-sub">Registered HR Dossiers</span>
+                        </div>
+
+                        <!-- Card 3: Active in Both -->
+                        <div 
+                            class="reconcile-stat-card active-card-stat" 
+                            @click="setReconcileStatusFilter('active')" 
+                            :class="{ 'active-card': reconcileStatusFilter === 'active' }"
+                            title="Filter: Verified Active in HR & Payroll"
+                        >
                             <div class="stat-top">
                                 <span class="stat-num text-emerald">{{ formatNumber(reconcileStats.active) }}</span>
-                                <i class="pi pi-check-circle stat-icon text-emerald"></i>
+                                <div class="stat-icon-wrap icon-emerald">
+                                    <i class="pi pi-check-circle"></i>
+                                </div>
                             </div>
-                            <span class="stat-name">Active & Verified</span>
-                            <span class="stat-sub">Active in Onboarding</span>
+                            <span class="stat-name">Active in Both</span>
+                            <span class="stat-sub">Verified Active in HR & Payroll</span>
                         </div>
 
-                        <div class="reconcile-stat-card warning-card" @click="setReconcileStatusFilter('not_onboarded')" :class="{ 'active-card': reconcileStatusFilter === 'not_onboarded' }">
+                        <!-- Card 4: Not Onboarded -->
+                        <div 
+                            class="reconcile-stat-card warning-card" 
+                            @click="setReconcileStatusFilter('not_onboarded')" 
+                            :class="{ 'active-card': reconcileStatusFilter === 'not_onboarded' }"
+                            title="Filter: On payroll without HR onboarding profile"
+                        >
                             <div class="stat-top">
                                 <span class="stat-num text-amber">{{ formatNumber(reconcileStats.not_onboarded) }}</span>
-                                <i class="pi pi-exclamation-circle stat-icon text-amber"></i>
+                                <div class="stat-icon-wrap icon-amber">
+                                    <i class="pi pi-user-plus"></i>
+                                </div>
                             </div>
                             <span class="stat-name">Not Onboarded</span>
-                            <span class="stat-sub">On Payroll, Missing in HR</span>
+                            <span class="stat-sub">On Payroll, Missing HR Profile</span>
                         </div>
 
-                        <div class="reconcile-stat-card danger-card" @click="setReconcileStatusFilter('discrepancies')" :class="{ 'active-card': reconcileStatusFilter === 'discrepancies' }">
+                        <!-- Card 5: Status Conflicts -->
+                        <div 
+                            class="reconcile-stat-card danger-card" 
+                            @click="setReconcileStatusFilter('conflicts')" 
+                            :class="{ 'active-card': reconcileStatusFilter === 'conflicts' }"
+                            title="Filter: Non-Active in HR (Absconded, Resigned, etc.)"
+                        >
                             <div class="stat-top">
-                                <span class="stat-num text-rose">{{ formatNumber(reconcileStats.total_discrepancies) }}</span>
-                                <i class="pi pi-shield stat-icon text-rose"></i>
+                                <span class="stat-num text-rose">{{ formatNumber(reconcileStats.status_conflicts) }}</span>
+                                <div class="stat-icon-wrap icon-rose">
+                                    <i class="pi pi-shield"></i>
+                                </div>
                             </div>
-                            <span class="stat-name">Audit Discrepancies</span>
-                            <span class="stat-sub">Inactive or Unregistered</span>
+                            <span class="stat-name">Status Conflicts</span>
+                            <span class="stat-sub">Non-Active in HR (Absconded, etc.)</span>
                         </div>
                     </div>
 
@@ -991,21 +1042,24 @@ onMounted(() => {
                     <div class="reconcile-tabs-row">
                         <button 
                             type="button" 
-                            class="reconcile-tab" 
+                            class="reconcile-tab tab-all" 
                             :class="{ 'active': reconcileStatusFilter === 'all' }"
                             @click="setReconcileStatusFilter('all')"
                         >
+                            <i class="pi pi-list"></i>
                             All Payroll ({{ formatNumber(reconcileStats.total_payroll) }})
                         </button>
+
                         <button 
                             type="button" 
                             class="reconcile-tab tab-not-onboarded" 
                             :class="{ 'active': reconcileStatusFilter === 'not_onboarded' }"
                             @click="setReconcileStatusFilter('not_onboarded')"
                         >
-                            <i class="pi pi-exclamation-circle"></i>
+                            <i class="pi pi-user-plus"></i>
                             Not Onboarded ({{ formatNumber(reconcileStats.not_onboarded) }})
                         </button>
+
                         <button 
                             type="button" 
                             class="reconcile-tab tab-active" 
@@ -1013,28 +1067,20 @@ onMounted(() => {
                             @click="setReconcileStatusFilter('active')"
                         >
                             <i class="pi pi-check-circle"></i>
-                            Active ({{ formatNumber(reconcileStats.active) }})
+                            Active in Both ({{ formatNumber(reconcileStats.active) }})
                         </button>
+
                         <button 
-                            v-if="reconcileStats.resigned > 0"
+                            v-if="reconcileStats.status_conflicts > 0"
                             type="button" 
-                            class="reconcile-tab tab-resigned" 
-                            :class="{ 'active': reconcileStatusFilter === 'resigned' }"
-                            @click="setReconcileStatusFilter('resigned')"
+                            class="reconcile-tab tab-conflicts" 
+                            :class="{ 'active': reconcileStatusFilter === 'conflicts' }"
+                            @click="setReconcileStatusFilter('conflicts')"
                         >
-                            <i class="pi pi-sign-out"></i>
-                            Resigned on Payroll ({{ formatNumber(reconcileStats.resigned) }})
+                            <i class="pi pi-exclamation-triangle"></i>
+                            Status Conflicts ({{ formatNumber(reconcileStats.status_conflicts) }})
                         </button>
-                        <button 
-                            v-if="reconcileStats.terminated > 0"
-                            type="button" 
-                            class="reconcile-tab tab-terminated" 
-                            :class="{ 'active': reconcileStatusFilter === 'terminated' }"
-                            @click="setReconcileStatusFilter('terminated')"
-                        >
-                            <i class="pi pi-ban"></i>
-                            Terminated on Payroll ({{ formatNumber(reconcileStats.terminated) }})
-                        </button>
+
                         <button 
                             v-if="reconcileStats.absconded > 0"
                             type="button" 
@@ -1045,6 +1091,29 @@ onMounted(() => {
                             <i class="pi pi-directions"></i>
                             Absconded ({{ formatNumber(reconcileStats.absconded) }})
                         </button>
+
+                        <button 
+                            v-if="reconcileStats.resigned > 0"
+                            type="button" 
+                            class="reconcile-tab tab-resigned" 
+                            :class="{ 'active': reconcileStatusFilter === 'resigned' }"
+                            @click="setReconcileStatusFilter('resigned')"
+                        >
+                            <i class="pi pi-sign-out"></i>
+                            Resigned ({{ formatNumber(reconcileStats.resigned) }})
+                        </button>
+
+                        <button 
+                            v-if="reconcileStats.terminated > 0"
+                            type="button" 
+                            class="reconcile-tab tab-terminated" 
+                            :class="{ 'active': reconcileStatusFilter === 'terminated' }"
+                            @click="setReconcileStatusFilter('terminated')"
+                        >
+                            <i class="pi pi-ban"></i>
+                            Terminated ({{ formatNumber(reconcileStats.terminated) }})
+                        </button>
+
                         <button 
                             v-if="reconcileStats.dismissed > 0"
                             type="button" 
@@ -1055,6 +1124,7 @@ onMounted(() => {
                             <i class="pi pi-times-circle"></i>
                             Dismissed ({{ formatNumber(reconcileStats.dismissed) }})
                         </button>
+
                         <button 
                             v-if="reconcileStats.deceased > 0"
                             type="button" 
@@ -1065,6 +1135,7 @@ onMounted(() => {
                             <i class="pi pi-heart"></i>
                             Deceased ({{ formatNumber(reconcileStats.deceased) }})
                         </button>
+
                         <button 
                             v-if="reconcileStats.stop > 0"
                             type="button" 
@@ -1088,18 +1159,21 @@ onMounted(() => {
                                 class="reconcile-search-input"
                                 @input="onReconcileSearchInput"
                             />
-                            <button v-if="reconcileSearch" class="btn-clear-search" @click="reconcileSearch = ''; fetchReconciliation(1)">
+                            <button v-if="reconcileSearch" class="btn-clear-search" @click="reconcileSearch = ''; fetchReconciliation(1)" title="Clear search">
                                 <i class="pi pi-times"></i>
                             </button>
                         </div>
 
                         <div class="reconcile-filter-items">
-                            <select v-model="reconcileLocation" class="reconcile-select" @change="fetchReconciliation(1)">
-                                <option value="">All Locations ({{ reconcileLocations.length }})</option>
-                                <option v-for="loc in reconcileLocations" :key="loc" :value="loc">{{ loc }}</option>
-                            </select>
+                            <div class="reconcile-select-wrap">
+                                <i class="pi pi-map-marker select-icon"></i>
+                                <select v-model="reconcileLocation" class="reconcile-select" @change="fetchReconciliation(1)">
+                                    <option value="">All Locations ({{ reconcileLocations.length }})</option>
+                                    <option v-for="loc in reconcileLocations" :key="loc" :value="loc">{{ loc }}</option>
+                                </select>
+                            </div>
 
-                            <select v-model="reconcilePerPage" class="reconcile-select" @change="fetchReconciliation(1)">
+                            <select v-model="reconcilePerPage" class="reconcile-select per-page-select" @change="fetchReconciliation(1)">
                                 <option :value="25">25 per page</option>
                                 <option :value="50">50 per page</option>
                                 <option :value="100">100 per page</option>
@@ -1107,8 +1181,9 @@ onMounted(() => {
 
                             <button 
                                 type="button" 
-                                class="btn btn-outline" 
+                                class="btn btn-outline-reset" 
                                 @click="reconcileSearch = ''; reconcileLocation = ''; reconcileStatusFilter = 'all'; fetchReconciliation(1)"
+                                title="Reset all filters"
                             >
                                 <i class="pi pi-filter-slash"></i> Reset
                             </button>
@@ -1120,33 +1195,45 @@ onMounted(() => {
                         <table class="reconcile-table">
                             <thead>
                                 <tr>
-                                    <th>Sr.</th>
-                                    <th>Emp ID</th>
-                                    <th>Payroll Employee Name</th>
-                                    <th>Location / Branch</th>
-                                    <th>Designation</th>
-                                    <th>Onboarding Status</th>
-                                    <th>Audit Recommendation</th>
-                                    <th>Actions</th>
+                                    <th class="th-sr">Sr.</th>
+                                    <th class="th-empid">Emp ID</th>
+                                    <th class="th-name">Payroll Employee Name</th>
+                                    <th class="th-location">Location / Branch</th>
+                                    <th class="th-designation">Designation</th>
+                                    <th class="th-status">Onboarding Status</th>
+                                    <th class="th-audit">Audit Status & Action</th>
+                                    <th class="th-actions text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr v-if="reconcileLoading">
                                     <td colspan="8" class="text-center py-5">
-                                        <i class="pi pi-spin pi-spinner text-2xl text-indigo"></i>
-                                        <p class="mt-2 text-muted">Auditing and cross-referencing records...</p>
+                                        <div class="table-loading-wrap">
+                                            <i class="pi pi-spin pi-spinner text-3xl text-indigo"></i>
+                                            <p class="mt-2 text-muted font-medium">Cross-referencing payroll and onboarding records...</p>
+                                        </div>
                                     </td>
                                 </tr>
 
                                 <tr v-else-if="reconcileEmployees.length === 0">
                                     <td colspan="8" class="text-center py-5">
-                                        <i class="pi pi-check-circle text-3xl text-emerald mb-2"></i>
-                                        <h3>No Records in This View</h3>
-                                        <p class="text-muted">No employees match the selected status or search filter.</p>
+                                        <div class="table-empty-wrap">
+                                            <i class="pi pi-check-circle text-4xl text-emerald mb-2"></i>
+                                            <h3>No Records Found</h3>
+                                            <p class="text-muted">No employees match the selected status or search filter.</p>
+                                        </div>
                                     </td>
                                 </tr>
 
-                                <tr v-for="emp in reconcileEmployees" :key="emp.monthly_id" class="reconcile-row" :class="{ 'row-discrepancy': emp.onboarding_status.is_discrepancy }">
+                                <tr 
+                                    v-for="emp in reconcileEmployees" 
+                                    :key="emp.monthly_id" 
+                                    class="reconcile-row" 
+                                    :class="{ 
+                                        'row-discrepancy': emp.onboarding_status.is_discrepancy,
+                                        'row-conflict': emp.onboarding_matched && emp.onboarding_status.is_discrepancy 
+                                    }"
+                                >
                                     <td class="col-sr">{{ emp.sr_no || '—' }}</td>
                                     <td class="col-empid">
                                         <span class="emp-code-badge">#{{ emp.emp_id }}</span>
@@ -1154,8 +1241,8 @@ onMounted(() => {
                                     <td class="col-name">
                                         <div class="name-box">
                                             <span class="payroll-name">{{ emp.employee_name }}</span>
-                                            <span v-if="emp.onboarding_name && emp.onboarding_name !== emp.employee_name" class="onboarding-subname">
-                                                HR: {{ emp.onboarding_name }}
+                                            <span v-if="emp.onboarding_name && emp.onboarding_name.toUpperCase() !== emp.employee_name.toUpperCase()" class="onboarding-subname">
+                                                <i class="pi pi-user text-xs"></i> HR Dossier: {{ emp.onboarding_name }}
                                             </span>
                                         </div>
                                     </td>
@@ -1169,46 +1256,45 @@ onMounted(() => {
                                     </td>
                                     <td class="col-onboarding-status">
                                         <span 
-                                            class="badge" 
-                                            :class="{
-                                                'badge-active': emp.onboarding_status.code === 'ACTIVE',
-                                                'badge-not-onboarded': emp.onboarding_status.code === 'NOT_ONBOARDED',
-                                                'badge-resigned': emp.onboarding_status.code === 'RESIGNED',
-                                                'badge-terminated': emp.onboarding_status.code === 'TERMINATED',
-                                                'badge-absconded': emp.onboarding_status.code === 'ABSCONDED',
-                                                'badge-dismissed': emp.onboarding_status.code === 'DISMISSED',
-                                                'badge-deceased': emp.onboarding_status.code === 'DECEASED',
-                                                'badge-stop': emp.onboarding_status.code === 'STOP',
-                                            }"
+                                            class="status-pill-badge" 
+                                            :class="emp.onboarding_status.badge_class || (emp.onboarding_status.code === 'ACTIVE' ? 'badge-active' : (emp.onboarding_status.code === 'NOT_ONBOARDED' ? 'badge-not-onboarded' : 'badge-danger'))"
                                         >
-                                            <i class="pi" :class="emp.onboarding_status.code === 'ACTIVE' ? 'pi-check-circle' : (emp.onboarding_status.code === 'NOT_ONBOARDED' ? 'pi-exclamation-circle' : 'pi-exclamation-triangle')"></i>
+                                            <i 
+                                                class="pi" 
+                                                :class="emp.onboarding_status.code === 'ACTIVE' ? 'pi-check-circle' : (emp.onboarding_status.code === 'NOT_ONBOARDED' ? 'pi-exclamation-circle' : 'pi-exclamation-triangle')"
+                                            ></i>
                                             {{ emp.onboarding_status.label }}
                                         </span>
                                     </td>
                                     <td class="col-audit-flag">
-                                        <span 
-                                            class="audit-pill"
-                                            :class="{
-                                                'audit-compliant': !emp.onboarding_status.is_discrepancy,
-                                                'audit-warning': emp.onboarding_status.code === 'NOT_ONBOARDED',
-                                                'audit-danger': emp.onboarding_status.is_discrepancy && emp.onboarding_status.code !== 'NOT_ONBOARDED'
-                                            }"
-                                        >
-                                            {{ emp.onboarding_status.audit_flag }}
-                                        </span>
+                                        <div class="audit-flag-cell">
+                                            <span 
+                                                class="audit-pill"
+                                                :class="{
+                                                    'audit-compliant': !emp.onboarding_status.is_discrepancy,
+                                                    'audit-warning': emp.onboarding_status.code === 'NOT_ONBOARDED',
+                                                    'audit-danger': emp.onboarding_status.is_discrepancy && emp.onboarding_status.code !== 'NOT_ONBOARDED'
+                                                }"
+                                            >
+                                                {{ emp.onboarding_status.audit_flag }}
+                                            </span>
+                                            <span v-if="emp.onboarding_status.recommendation" class="audit-rec-sub">
+                                                {{ emp.onboarding_status.recommendation }}
+                                            </span>
+                                        </div>
                                     </td>
-                                    <td class="col-actions">
+                                    <td class="col-actions text-center">
                                         <a 
                                             v-if="emp.onboarding_id" 
                                             :href="'/employee/' + emp.onboarding_id" 
                                             target="_blank" 
                                             class="btn-view-profile"
-                                            title="Open full onboarding dossier"
+                                            title="View employee dossier in Onboarding"
                                         >
-                                            <i class="pi pi-external-link"></i> Profile
+                                            <i class="pi pi-external-link"></i> Dossier
                                         </a>
-                                        <span v-else class="text-xs text-muted font-italic">
-                                            Not Registered
+                                        <span v-else class="badge-no-dossier" title="Employee does not have an Onboarding dossier yet">
+                                            Missing Dossier
                                         </span>
                                     </td>
                                 </tr>
@@ -1230,7 +1316,7 @@ onMounted(() => {
                                 <i class="pi pi-chevron-left"></i> Prev
                             </button>
                             <span class="current-page-indicator">
-                                {{ reconcilePagination.current_page }} / {{ reconcilePagination.last_page || 1 }}
+                                Page {{ reconcilePagination.current_page }} of {{ reconcilePagination.last_page || 1 }}
                             </span>
                             <button 
                                 class="page-btn" 
@@ -2086,29 +2172,39 @@ onMounted(() => {
     box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
 }
 
-/* Modal Overlay */
+/* Modal Overlay & Transitions */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+    opacity: 0;
+    transform: scale(0.98);
+}
+
 .reconcile-modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(15, 23, 42, 0.7);
-    backdrop-filter: blur(4px);
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(6px);
     z-index: 9999;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1.5rem;
+    padding: 1.25rem;
 }
 
 .reconcile-modal-container {
     width: 100%;
-    max-width: 1280px;
-    max-height: 92vh;
+    max-width: 1380px;
+    max-height: 94vh;
     background: var(--surface-card, #ffffff);
-    border-radius: 16px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    border-radius: 20px;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.05);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -2120,31 +2216,39 @@ onMounted(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1.25rem 1.5rem;
-    background: #0f172a;
+    padding: 1.25rem 1.75rem;
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
     color: #ffffff;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-wrap: wrap;
     gap: 1rem;
 }
 .reconcile-title-group h2 {
-    font-size: 1.25rem;
-    font-weight: 700;
-    margin: 0.25rem 0 0.15rem 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    margin: 0.25rem 0 0.2rem 0;
     color: #ffffff;
+    letter-spacing: -0.02em;
 }
 .reconcile-badge {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 3px 8px;
+    gap: 6px;
+    padding: 3px 10px;
     font-size: 0.6875rem;
     font-weight: 800;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     border-radius: 9999px;
-    background: rgba(99, 102, 241, 0.2);
-    color: #a5b4fc;
-    border: 1px solid rgba(165, 180, 252, 0.3);
+    background: rgba(99, 102, 241, 0.25);
+    color: #c7d2fe;
+    border: 1px solid rgba(165, 180, 252, 0.35);
+}
+.badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
 }
 .reconcile-subtitle {
     font-size: 0.8125rem;
@@ -2152,7 +2256,7 @@ onMounted(() => {
     margin: 0;
 }
 .reconcile-subtitle strong {
-    color: #e2e8f0;
+    color: #f1f5f9;
 }
 .reconcile-header-actions {
     display: flex;
@@ -2163,98 +2267,139 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255, 255, 255, 0.1);
-    padding: 4px 10px;
-    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 5px 12px;
+    border-radius: 10px;
     font-size: 0.8125rem;
 }
 .reconcile-batch-select-wrap label {
     color: #cbd5e1;
     font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 .reconcile-batch-select {
     background: transparent;
     border: none;
     color: #ffffff;
-    font-weight: 600;
+    font-weight: 700;
     outline: none;
     cursor: pointer;
+    font-size: 0.8125rem;
 }
 .reconcile-batch-select option {
     background: #0f172a;
     color: #ffffff;
 }
 .btn-export-audit {
-    background: #4f46e5;
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
     color: #ffffff;
-    border: none;
-    font-weight: 600;
-    padding: 6px 12px;
-    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    font-weight: 700;
+    padding: 7px 14px;
+    border-radius: 10px;
     cursor: pointer;
     font-size: 0.8125rem;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 6px;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+    transition: all 0.15s ease;
 }
-.btn-export-audit:hover {
-    background: #4338ca;
+.btn-export-audit:hover:not(:disabled) {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.5);
 }
 .btn-close-modal {
-    background: transparent;
-    border: none;
-    color: #94a3b8;
-    font-size: 1.75rem;
-    line-height: 1;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    padding: 0 4px;
+    transition: all 0.2s;
+    font-size: 0.95rem;
 }
 .btn-close-modal:hover {
-    color: #ffffff;
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #f87171;
+    transform: rotate(90deg);
 }
 
-/* Executive KPI Banner */
+/* Executive KPI Banner (5 Cards Grid) */
 .reconcile-stats-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(5, 1fr);
     gap: 1rem;
-    padding: 1rem 1.5rem;
+    padding: 1.15rem 1.75rem;
     background: var(--surface-ground, #f8fafc);
     border-bottom: 1px solid var(--border-color, #e2e8f0);
 }
+@media (max-width: 1100px) {
+    .reconcile-stats-row {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+}
 .reconcile-stat-card {
     background: var(--surface-card, #ffffff);
-    padding: 1rem 1.25rem;
-    border-radius: 12px;
+    padding: 0.9rem 1.15rem;
+    border-radius: 14px;
     border: 1px solid var(--border-color, #e2e8f0);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     display: flex;
     flex-direction: column;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 .reconcile-stat-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
 }
 .reconcile-stat-card.active-card {
-    border-color: #4f46e5;
-    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+    box-shadow: 0 0 0 2px #4f46e5, 0 4px 12px rgba(79, 70, 229, 0.15);
 }
+.payroll-card { border-top: 3px solid #3b82f6; }
+.onboarding-total-card { border-top: 3px solid #8b5cf6; cursor: default; }
+.active-card-stat { border-top: 3px solid #10b981; }
+.warning-card { border-top: 3px solid #f59e0b; }
+.danger-card { border-top: 3px solid #f43f5e; }
+
 .stat-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.35rem;
 }
 .stat-num {
-    font-size: 1.5rem;
+    font-size: 1.6rem;
     font-weight: 800;
-    color: var(--text-color, #0f172a);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
 }
-.stat-icon {
-    font-size: 1.25rem;
-    color: #94a3b8;
+.stat-icon-wrap {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
 }
+.icon-blue { background: #eff6ff; color: #2563eb; }
+.icon-purple { background: #f5f3ff; color: #7c3aed; }
+.icon-emerald { background: #ecfdf5; color: #059669; }
+.icon-amber { background: #fffbeb; color: #d97706; }
+.icon-rose { background: #fff1f2; color: #e11d48; }
+
 .stat-name {
     font-size: 0.8125rem;
     font-weight: 700;
@@ -2263,7 +2408,13 @@ onMounted(() => {
 .stat-sub {
     font-size: 0.6875rem;
     color: var(--text-secondary, #64748b);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
 }
+.text-blue { color: #2563eb !important; }
+.text-purple { color: #7c3aed !important; }
 .text-emerald { color: #059669 !important; }
 .text-amber { color: #d97706 !important; }
 .text-rose { color: #e11d48 !important; }
@@ -2273,44 +2424,54 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem 1.5rem 0.5rem;
+    padding: 0.75rem 1.75rem 0.6rem;
     overflow-x: auto;
+    background: var(--surface-card, #ffffff);
     border-bottom: 1px solid var(--border-color, #f1f5f9);
 }
 .reconcile-tab {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
+    padding: 6px 14px;
     font-size: 0.775rem;
     font-weight: 600;
     border-radius: 9999px;
-    background: transparent;
-    border: 1px solid transparent;
+    background: var(--surface-ground, #f8fafc);
+    border: 1px solid var(--border-color, #e2e8f0);
     color: var(--text-secondary, #64748b);
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s ease;
 }
 .reconcile-tab:hover {
-    background: var(--surface-ground, #f1f5f9);
+    background: #f1f5f9;
     color: var(--text-color, #0f172a);
+    border-color: #cbd5e1;
 }
 .reconcile-tab.active {
     background: #0f172a;
     color: #ffffff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border-color: #0f172a;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 .reconcile-tab.tab-not-onboarded.active {
     background: #d97706;
+    border-color: #d97706;
 }
 .reconcile-tab.tab-active.active {
     background: #059669;
+    border-color: #059669;
 }
+.reconcile-tab.tab-conflicts.active,
 .reconcile-tab.tab-resigned.active,
 .reconcile-tab.tab-terminated.active,
+.reconcile-tab.tab-absconded.active,
+.reconcile-tab.tab-dismissed.active,
+.reconcile-tab.tab-deceased.active,
 .reconcile-tab.tab-stop.active {
     background: #e11d48;
+    border-color: #e11d48;
 }
 
 /* Toolbar */
@@ -2318,18 +2479,20 @@ onMounted(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1.5rem;
+    padding: 0.75rem 1.75rem;
     gap: 1rem;
+    background: var(--surface-card, #ffffff);
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
     flex-wrap: wrap;
 }
 .reconcile-search-box {
     position: relative;
-    flex: 1 1 300px;
+    flex: 1 1 320px;
     max-width: 480px;
 }
-.reconcile-search-box i {
+.reconcile-search-box i.pi-search {
     position: absolute;
-    left: 10px;
+    left: 12px;
     top: 50%;
     transform: translateY(-50%);
     color: #94a3b8;
@@ -2337,32 +2500,86 @@ onMounted(() => {
 }
 .reconcile-search-input {
     width: 100%;
-    padding: 6px 28px 6px 30px;
+    padding: 7px 32px 7px 34px;
     font-size: 0.8125rem;
-    border-radius: 8px;
+    border-radius: 10px;
     border: 1px solid var(--border-color, #e2e8f0);
     background: var(--surface-ground, #f8fafc);
     color: var(--text-color, #0f172a);
     outline: none;
+    transition: all 0.15s ease;
 }
 .reconcile-search-input:focus {
     border-color: #4f46e5;
-    background: var(--surface-card, #ffffff);
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+.btn-clear-search {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    font-size: 0.75rem;
+}
+.btn-clear-search:hover {
+    color: #334155;
 }
 .reconcile-filter-items {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.65rem;
+}
+.reconcile-select-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.reconcile-select-wrap .select-icon {
+    position: absolute;
+    left: 10px;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    pointer-events: none;
 }
 .reconcile-select {
-    padding: 6px 10px;
+    padding: 7px 12px;
     font-size: 0.8125rem;
-    border-radius: 8px;
+    border-radius: 10px;
     border: 1px solid var(--border-color, #e2e8f0);
     background: var(--surface-card, #ffffff);
     color: var(--text-color, #0f172a);
     outline: none;
     cursor: pointer;
+}
+.reconcile-select-wrap .reconcile-select {
+    padding-left: 28px;
+}
+.reconcile-select:focus {
+    border-color: #4f46e5;
+}
+.btn-outline-reset {
+    background: var(--surface-ground, #f8fafc);
+    border: 1px solid var(--border-color, #e2e8f0);
+    color: var(--text-secondary, #64748b);
+    padding: 7px 14px;
+    border-radius: 10px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+}
+.btn-outline-reset:hover {
+    background: #fee2e2;
+    color: #dc2626;
+    border-color: #fca5a5;
 }
 
 /* Reconcile Table */
@@ -2371,58 +2588,118 @@ onMounted(() => {
     overflow-y: auto;
     overflow-x: auto;
     max-height: 52vh;
+    background: var(--surface-card, #ffffff);
 }
 .reconcile-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 0.8125rem;
 }
 .reconcile-table th {
     position: sticky;
     top: 0;
-    background: var(--surface-ground, #f8fafc);
-    color: var(--text-secondary, #64748b);
+    background: #f8fafc;
+    color: #475569;
     font-weight: 700;
     text-transform: uppercase;
     font-size: 0.6875rem;
     letter-spacing: 0.05em;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border-color, #e2e8f0);
+    padding: 11px 16px;
+    border-bottom: 1px solid #e2e8f0;
     text-align: left;
     z-index: 10;
 }
 .reconcile-row {
-    border-bottom: 1px solid var(--border-color, #f1f5f9);
+    border-bottom: 1px solid #f1f5f9;
     transition: background 0.1s;
 }
 .reconcile-row:hover {
-    background: var(--surface-ground, #f8fafc);
+    background: #f8fafc;
 }
 .reconcile-row.row-discrepancy {
-    background: rgba(254, 242, 242, 0.3);
+    background: rgba(254, 242, 242, 0.35);
+}
+.reconcile-row.row-conflict {
+    background: rgba(254, 226, 226, 0.45);
 }
 .reconcile-table td {
-    padding: 10px 14px;
+    padding: 10px 16px;
     vertical-align: middle;
+    border-bottom: 1px solid #f1f5f9;
+}
+.col-sr {
+    color: #94a3b8;
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+.emp-code-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    font-family: monospace;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #1e293b;
+    border: 1px solid #e2e8f0;
 }
 .name-box {
     display: flex;
     flex-direction: column;
+    gap: 1px;
 }
 .payroll-name {
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-color, #0f172a);
 }
 .onboarding-subname {
     font-size: 0.7rem;
     color: #4f46e5;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+}
+.location-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+}
+.designation-text {
+    font-size: 0.775rem;
+    color: #334155;
+    font-weight: 500;
 }
 
-/* Badges & Pills */
+/* Status Pill Badges */
+.status-pill-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    font-size: 0.725rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.badge-active {
+    background: #ecfdf5 !important;
+    color: #059669 !important;
+    border: 1px solid #a7f3d0 !important;
+}
 .badge-not-onboarded {
-    background: #fef3c7 !important;
+    background: #fffbeb !important;
     color: #b45309 !important;
-    border: 1px solid #fcd34d !important;
+    border: 1px solid #fde68a !important;
+}
+.badge-absconded {
+    background: #fae8ff !important;
+    color: #a21caf !important;
+    border: 1px solid #f0abfc !important;
 }
 .badge-resigned {
     background: #ffedd5 !important;
@@ -2433,11 +2710,6 @@ onMounted(() => {
     background: #ffe4e6 !important;
     color: #e11d48 !important;
     border: 1px solid #fda4af !important;
-}
-.badge-absconded {
-    background: #fae8ff !important;
-    color: #a21caf !important;
-    border: 1px solid #f0abfc !important;
 }
 .badge-dismissed {
     background: #f3e8ff !important;
@@ -2454,9 +2726,22 @@ onMounted(() => {
     color: #dc2626 !important;
     border: 1px solid #fca5a5 !important;
 }
+.badge-danger {
+    background: #fee2e2 !important;
+    color: #dc2626 !important;
+    border: 1px solid #fca5a5 !important;
+}
 
+/* Audit Flag Cell */
+.audit-flag-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
 .audit-pill {
     display: inline-flex;
+    align-items: center;
+    width: fit-content;
     padding: 2px 8px;
     border-radius: 6px;
     font-size: 0.725rem;
@@ -2477,16 +2762,21 @@ onMounted(() => {
     color: #e11d48;
     border: 1px solid #fecdd3;
 }
+.audit-rec-sub {
+    font-size: 0.6875rem;
+    color: #64748b;
+}
 
+/* Action Buttons */
 .btn-view-profile {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    border-radius: 6px;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 8px;
     background: #eef2ff;
     color: #4f46e5;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.75rem;
     text-decoration: none;
     border: 1px solid #e0e7ff;
@@ -2495,6 +2785,15 @@ onMounted(() => {
 .btn-view-profile:hover {
     background: #4f46e5;
     color: #ffffff;
+    border-color: #4f46e5;
+    transform: translateY(-1px);
+}
+.badge-no-dossier {
+    display: inline-block;
+    font-size: 0.725rem;
+    color: #94a3b8;
+    font-weight: 500;
+    font-style: italic;
 }
 
 /* Pagination Bar */
@@ -2502,7 +2801,7 @@ onMounted(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.875rem 1.5rem;
+    padding: 0.85rem 1.75rem;
     background: var(--surface-card, #ffffff);
     border-top: 1px solid var(--border-color, #e2e8f0);
 }
@@ -2513,7 +2812,25 @@ onMounted(() => {
 .reconcile-page-controls {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+}
+.current-page-indicator {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--surface-ground, #f1f5f9);
+    color: var(--text-color, #0f172a);
+}
+
+/* Table empty & loading states */
+.table-loading-wrap,
+.table-empty-wrap {
+    padding: 2.5rem 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Dark Mode Overrides for Modal */
@@ -2529,14 +2846,35 @@ onMounted(() => {
     background: #1e293b;
     border-color: #334155;
 }
+:global(body.dark-mode) .reconcile-tabs-row {
+    background: #1e293b;
+    border-color: #334155;
+}
+:global(body.dark-mode) .reconcile-tab {
+    background: #0f172a;
+    border-color: #334155;
+    color: #94a3b8;
+}
+:global(body.dark-mode) .reconcile-toolbar {
+    background: #1e293b;
+    border-color: #334155;
+}
 :global(body.dark-mode) .reconcile-search-input,
-:global(body.dark-mode) .reconcile-select {
+:global(body.dark-mode) .reconcile-select,
+:global(body.dark-mode) .btn-outline-reset {
     background: #0f172a;
     border-color: #334155;
     color: #ffffff;
 }
+:global(body.dark-mode) .reconcile-table-wrapper {
+    background: #1e293b;
+}
 :global(body.dark-mode) .reconcile-table th {
     background: #0f172a;
+    border-color: #334155;
+    color: #94a3b8;
+}
+:global(body.dark-mode) .reconcile-row {
     border-color: #334155;
 }
 :global(body.dark-mode) .reconcile-row:hover {
