@@ -1,0 +1,608 @@
+================================================================================
+          MELCOM HR PORTAL & PERFORMANCE MANAGEMENT SYSTEM (PMS)
+                  COMPREHENSIVE END-TO-END PROJECT WALKTHROUGH
+================================================================================
+Generated: September 2026
+System: Melcom Group HR Portal & Performance Management System (PMS)
+File: PMS_PROJECT_WALKTHROUGH.txt
+================================================================================
+
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & SYSTEM TOPOLOGY
+2. USER ROLES, RBAC & DYNAMIC PERMISSIONS MATRIX
+3. COMPLETE DIRECTORY & REPOSITORY STRUCTURE
+4. TAB-BY-TAB WALKTHROUGH (FRONTEND, BACKEND & DATABASE FLOW)
+   4.1  Authentication & Session (Login)
+   4.2  Global HR Dashboard
+   4.3  Employee Onboarding Module
+   4.4  Employees Directory & Detail Dossier
+   4.5  PMS Dashboard (Performance Analytics)
+   4.6  My SMART Goals
+   4.7  Performance Appraisal Module
+   4.8  Performance Review Module
+   4.9  Appraisal Submissions & HR Audit Console
+   4.10 Employee Leaderboard
+   4.11 Line Manager Console (Employee Master)
+   4.12 Manage Employees (Payroll Ingestion & Reconciliation)
+   4.13 Manage Users (Portal Identity & Permissions)
+   4.14 User Profile & Security
+5. DATABASE ARCHITECTURE, SCHEMAS & RELATIONSHIPS
+6. DATA SEEDING, INGESTION & SYNCHRONIZATION SYSTEMS
+   6.1  Payroll Master Ingestion (August 2026 Payroll Ingestion)
+   6.2  Live Central Synchronization (Server 17 -> Server 20)
+   6.3  Automated User Account & Goal Provisioning
+   6.4  Maintenance & Emergency Seeding Routes
+7. DEPLOYMENT LIFECYCLE & MULTI-SERVER SYNC GUIDE
+
+================================================================================
+1. EXECUTIVE SUMMARY & SYSTEM TOPOLOGY
+================================================================================
+The Melcom HR Portal & PMS is an enterprise-grade platform uniting Employee 
+Onboarding, Personnel Records, Payroll Cross-Verification, and Annual Performance 
+Reviews (SMART Goals and Appraisals) across thousands of employees in Ghana.
+
+The infrastructure consists of four primary environments:
+- LOCAL WORKSPACE:
+  Path: c:\Users\USER\Workspaces\htdocs\PMS
+  Hosts twin frontend and backend development codebases.
+- CENTRAL PRODUCTION DATABASE (SERVER 17):
+  IP: 192.168.0.17:3306 (Database: hrproject)
+  Source of truth for all historical and live onboarding data.
+  *STRICT RULE*: Strictly read-only connection. Never write or alter tables.
+- STAGING NETWORK SHARE (SERVER 24):
+  Path: \\192.168.0.24\it-software\IT DEV DAVID\PMS
+  Central staging directory where compiled production builds and sanitized
+  backend controllers are mirrored before live server deployment.
+- LIVE APPLICATION SERVER (SERVER 20):
+  IP: 192.168.0.20 (XAMPP: Apache + MySQL on Ports 5050 and 9090)
+  Production runtime server hosting live web instances:
+  - PMS Portal: http://192.168.0.20:5050/ (pms_frontend + pms_backend)
+  - HR Onboarding Portal: http://192.168.0.20:9090/ (HR_PROJECT)
+
+================================================================================
+2. USER ROLES, RBAC & DYNAMIC PERMISSIONS MATRIX
+================================================================================
+Access control is implemented in both Vue Router navigation guards 
+(PMS_FRONTEND_VUE/src/router/index.js) and Laravel Sanctum middleware.
+
+POSITION / ROLE IDS:
+- Position 4 (Admin / HR Head):
+  Full administrative visibility across all modules, user creation, CSV bulk
+  sync, company-wide fresh goal generation, and reconciliation exports.
+- Position 3 / Manager Flag (Line Manager):
+  Authorized for Line Manager Console, Team Allocation, Subordinate Goal
+  Appraisals, Scoring Reviews, and Leaderboards.
+- Position 5 / Basic Role (Standard Employee):
+  Restricted exclusively to /pms/goals (My SMART Goals) and /profile.
+  Attempting to navigate to any other tab automatically redirects to /pms/goals.
+
+DYNAMIC PERMISSIONS ATTRIBUTE:
+The `users.permissions` database column stores a JSON array of allowed routes 
+(e.g., `["/pms/goals", "/pms/appraisal", "/pms/review", "/hr/submissions"]`).
+The router guard verifies route access against both `user.position_id` and the 
+explicit `permissions` array.
+
+================================================================================
+3. COMPLETE DIRECTORY & REPOSITORY STRUCTURE
+================================================================================
+c:\Users\USER\Workspaces\htdocs\PMS\
+|
+|-- PMS_FRONTEND_VUE\                       [Primary PMS Vue 3 SPA]
+|   |-- src\
+|   |   |-- components\
+|   |   |   |-- Nav.vue                     [Hover-expand sidebar navigation]
+|   |   |   |-- LoadingOverlay.vue          [Global loading progress spinner]
+|   |   |-- helpers\
+|   |   |   |-- pms_axios.js                [Configured Axios instance with auth]
+|   |   |   |-- essential.js                [SweetAlert2, formatting, utilities]
+|   |   |-- router\
+|   |   |   |-- index.js                    [Vue-Router definition & RBAC guards]
+|   |   |-- stores\
+|   |   |   |-- user.js                     [Pinia store for authenticated user]
+|   |   |-- views\
+|   |       |-- LoginView.vue               [Corporate Login Interface]
+|   |       |-- AppInterface.vue            [Master layout shell]
+|   |       |-- app\
+|   |           |-- DashboardView.vue       [Global HR Dashboard]
+|   |           |-- OnbaordingView.vue      [Employee Onboarding Wizard]
+|   |           |-- EmployeesView.vue       [Employees Directory & Table]
+|   |           |-- EmployeeView.vue        [Individual Dossier & Documents]
+|   |           |-- UsersView.vue           [Manage Users & Permissions]
+|   |           |-- ProfileView.vue         [User Account & Password]
+|   |           |-- pms\
+|   |           |   |-- DashboardView.vue   [PMS Analytics & Status Cards]
+|   |           |   |-- GoalsView.vue       [SMART Goals Definition]
+|   |           |   |-- AppraisalView.vue   [Competency Scoring Assessment]
+|   |           |   |-- ReviewView.vue      [Manager Performance Review]
+|   |           |   |-- LeaderboardView.vue [Employee Rankings]
+|   |           |   |-- EmployeeMasterView.vue [Line Manager Console & Team Sync]
+|   |           |-- hr\
+|   |               |-- SubmissionsView.vue [Audit & Submissions Overview]
+|   |               |-- ManageEmployeesView.vue [Payroll Ingestion & Reconcile]
+|
+|-- PMS_BACKEND_LARAVEL\                    [Primary PMS Laravel API]
+|   |-- app\Http\Controllers\
+|   |   |-- APIUserController.php           [Auth, Users CRUD, Passwords]
+|   |   |-- DashboardController.php         [Global HR Statistics]
+|   |   |-- EmployeeController.php          [Onboarding, Directory, Server 17 Sync]
+|   |   |-- EmployeeMasterController.php    [Line Manager Teams, Push Fresh Goals]
+|   |   |-- GoalController.php              [SMART Goals, Appraisals, Attachments]
+|   |   |-- MonthlyEmployeeController.php   [Payroll Excel Ingest, Reconciliation]
+|   |   |-- PMSDashboardController.php      [PMS Analytics & Leaderboard]
+|   |   |-- ReviewController.php            [Manager Reviews & Ratings]
+|   |   |-- ReportsController.php           [Exporting & Audit Reports]
+|   |-- app\Models\                         [Eloquent ORM Models]
+|   |-- routes\
+|   |   |-- api.php                         [All API endpoint definitions]
+|   |-- database\
+|       |-- migrations\                     [Schema definitions]
+|       |-- seeders\                        [Initial database seeds]
+|
+|-- HR Onboarding\                          [Twin HR Onboarding Codebase]
+|   |-- hr\hr\                              [Twin Laravel Backend]
+|   |-- hrproject Vue\hrproject\            [Twin Vue 3 Frontend]
+|
+|-- deployment\                             [Automated Deployment Scripts]
+|   |-- deploy_pms_to_share.bat             [Builds & mirrors to Server 24 Share]
+|   |-- deploy_frontend.bat                 [Direct transfer to Server 20]
+|   |-- deploy_hronboarding.bat             [HR Project deployment script]
+|   |-- backup_server20.bat                 [Timestamped backup of Server 20]
+|
+|-- AUGUST 2026 PAYROLL DATA.xlsx           [Master Payroll Dataset - 5,920 records]
+
+================================================================================
+4. TAB-BY-TAB WALKTHROUGH (FRONTEND, BACKEND & DATABASE FLOW)
+================================================================================
+
+--------------------------------------------------------------------------------
+4.1 AUTHENTICATION & SESSION (LOGIN)
+--------------------------------------------------------------------------------
+- Purpose: Secure portal entry for all Melcom employees and administrators.
+- Frontend View: PMS_FRONTEND_VUE/src/views/LoginView.vue
+- Route: / (name: 'home')
+- Backend Controller: APIUserController.php -> login()
+- API Endpoint: POST /api/login
+- Database Tables: `users`
+- Flow & Mechanics:
+  1. User submits Username/Employee ID and Password.
+  2. Backend matches `username`, `employee_code`, or `email`.
+  3. Verifies password hash using `Hash::check()`.
+  4. Returns Laravel Sanctum plaintext token and user profile payload.
+  5. Frontend saves token and profile in `localStorage` under `hrproject_user_token`
+     and `hrproject_user`, initializing Pinia store (`user.js`).
+  6. Redirects automatically based on role:
+     - Admins/Managers -> /pms/dashboard or /dashboard
+     - Basic Employees -> /pms/goals
+
+--------------------------------------------------------------------------------
+4.2 GLOBAL HR DASHBOARD
+--------------------------------------------------------------------------------
+- Purpose: High-level HR executive metrics for headcount, branch distribution,
+  and department allocations.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/DashboardView.vue
+- Route: /dashboard (roles: [4])
+- Backend Controller: DashboardController.php -> index(), loadEmpDepts()
+- API Endpoints:
+  - GET /api/dashboard
+  - POST /api/loadEmpDepts
+- Database Tables: `employees`, `departments`, `Monthly_Employees`
+- Key Features:
+  - Metric cards: Total Headcount, Active Staff, Branches, Departments.
+  - Interactive ApexCharts / Chart.js graphs displaying department breakdown.
+  - Quick links to onboarding and employee directory.
+
+--------------------------------------------------------------------------------
+4.3 EMPLOYEE ONBOARDING MODULE
+--------------------------------------------------------------------------------
+- Purpose: Comprehensive digital capture of new hires, personal background,
+  guarantors, bank details, and compliance documents.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/OnbaordingView.vue
+- Route: /onboarding (roles: [2, 4])
+- Backend Controller: EmployeeController.php -> show(), syncFromCentral()
+- API Endpoints:
+  - POST /api/employee (Fetches candidate details)
+  - POST /api/sync-central-employees (Live pull from Server 17)
+  - GET  /api/file/{folder}/{filename} (Document & photo viewing)
+- Database Tables:
+  - `employees` (Master record: firstname, surname, employeeid, status, etc.)
+  - `bank_socials`, `children`, `driverlicenses`, `education`, `emergency_contacts`
+  - `guarantors`, `histories`, `irr_guarantees`, `irr_guar_witnesses`, `nominees`
+  - `present_jobs`, `references`, `social_contacts`, `unions`, `uploads`, `wives`
+- Key Features:
+  - Multi-tab onboarding wizard: Position Details, Personal Info, Education,
+    Emergency Contacts, Bank/SSNIT, Guarantors, Documents.
+  - Profile image upload with live crop preview.
+  - "Sync Central Data" button: Incremental sync pulling newly submitted
+    onboarding files directly from Central Server 17 without locking tables.
+
+--------------------------------------------------------------------------------
+4.4 EMPLOYEES DIRECTORY & DETAIL DOSSIER
+--------------------------------------------------------------------------------
+- Purpose: Searchable, sortable, exportable employee database with custom
+  persisted columns.
+- Frontend Views:
+  - Directory: PMS_FRONTEND_VUE/src/views/app/EmployeesView.vue
+  - Dossier Detail: PMS_FRONTEND_VUE/src/views/app/EmployeeView.vue
+- Routes:
+  - /employees (roles: [2, 4])
+  - /employee/:empid (roles: [2, 4])
+- Backend Controller: EmployeeController.php -> index(), fetchemployeesforexport()
+- API Endpoints:
+  - POST /api/fetchemployees (Paginated search & filtering)
+  - POST /api/fetchemployeesforexport (Excel/CSV export dump)
+  - POST /api/updateempstatus (Active, Suspended, Resigned, Terminated)
+- Database Tables: `employees`, `Monthly_Employees`, `users`
+- Key Features:
+  - Column Selector Modal: Allows selecting visible columns. Persisted across
+    refreshes via localStorage (`hr_employees_visible_columns_v3`).
+  - Unlocked default columns: Users can freely toggle/replace columns.
+  - Individual Dossier View: Shows full historical employment journey,
+    uploaded certificates, guarantor vetting status, and print-ready PDF view.
+
+--------------------------------------------------------------------------------
+4.5 PMS DASHBOARD (PERFORMANCE ANALYTICS)
+--------------------------------------------------------------------------------
+- Purpose: Executive performance tracking for the active appraisal year.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/pms/DashboardView.vue
+- Route: /pms/dashboard (roles: [3, 4])
+- Backend Controller: PMSDashboardController.php -> index()
+- API Endpoint: GET /api/pms/dashboard
+- Database Tables: `goals`, `users`, `employees`
+- Key Features:
+  - Status overview cards: Total Assigned Goals, In Progress, Submitted,
+    Completed Appraisals, and Overdue Reviews.
+  - Department performance radar/bar charts.
+  - Filter by evaluation year (defaults to 2026).
+
+--------------------------------------------------------------------------------
+4.6 MY SMART GOALS
+--------------------------------------------------------------------------------
+- Purpose: Primary workspace for employees to draft, review, and submit their
+  annual SMART goals and quarterly objectives.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/pms/GoalsView.vue
+- Route: /pms/goals (roles: [3, 4, 5])
+- Backend Controller: GoalController.php -> index(), store(), update(), uploadAttachment()
+- API Endpoints:
+  - GET    /api/pms/goals (Returns goals for logged-in user or manager subordinates)
+  - POST   /api/pms/goals (Create or update goal draft)
+  - PATCH  /api/pms/goals/{id} (Submit goal or revise target)
+  - POST   /api/pms/goals/upload-attachment (Upload supporting PDFs/images)
+  - DELETE /api/pms/goals/{id} (Delete unsubmitted draft)
+- Database Tables: `goals`
+- Key Columns in `goals`:
+  - `user_id`, `employee_code`, `candidate_name`, `created_by`, `manager_name`
+  - `year`, `title`, `description` (JSON array), `purposes` (JSON array)
+  - `challenges` (JSON array), `category`, `target`, `due_date`, `status`
+  - `smart_criteria` (JSON: specific, measurable, attainable, relevant, time_bound)
+  - `appraisal_data` (JSON: competencies, comments, ratings, signatures)
+- Status Workflow:
+  assigned -> in_progress -> submitted -> appraisal_completed -> review_completed
+
+--------------------------------------------------------------------------------
+4.7 PERFORMANCE APPRAISAL MODULE
+--------------------------------------------------------------------------------
+- Purpose: Comprehensive competency evaluation where employees perform self-
+  evaluation and line managers rate performance against benchmarks.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/pms/AppraisalView.vue
+- Route: /pms/appraisal (roles: [3, 4])
+- Backend Controller: GoalController.php -> appraisals(), reviewAppraisal(), saveManagerTemplate()
+- API Endpoints:
+  - GET   /api/pms/appraisals (Fetch appraisal dossiers for manager's team)
+  - PATCH /api/pms/appraisals/{id}/review (Save competency ratings & feedback)
+  - GET   /api/pms/manager-template (Load manager's custom competencies)
+  - POST  /api/pms/manager-template (Save customized department competencies)
+- Database Tables: `goals`, `users`
+- Appraisal Competency Structure:
+  Core competencies include:
+  1. Job Knowledge & Technical Competence
+  2. Quality of Work & Accuracy
+  3. Initiative & Problem Solving
+  4. Teamwork & Interpersonal Relations
+  5. Dependability & Punctuality
+  6. Customer Focus & Communication
+  Each competency evaluates: Self Rating (1-5), Manager Rating (1-5), and Comments.
+  Calculates aggregate weighted performance scores automatically.
+
+--------------------------------------------------------------------------------
+4.8 PERFORMANCE REVIEW MODULE
+--------------------------------------------------------------------------------
+- Purpose: Formal manager review meeting interface where managers record
+  strengths, developmental areas, training needs, and digital signatures.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/pms/ReviewView.vue
+- Route: /pms/review (roles: [3, 4])
+- Backend Controller: ReviewController.php -> index(), store()
+- API Endpoints:
+  - GET  /api/pms/reviews
+  - POST /api/pms/reviews
+- Database Tables: `reviews`, `goals`
+- Key Features:
+  - Side-by-side comparison of employee self-ratings vs manager ratings.
+  - Narrative review sections: "Impressed Most By", "Areas for Improvement",
+    "Agreed Training Actions for FY 2026".
+  - Digital signature capture with timestamp lock.
+
+--------------------------------------------------------------------------------
+4.9 APPRAISAL SUBMISSIONS & HR AUDIT CONSOLE
+--------------------------------------------------------------------------------
+- Purpose: HR Administrator audit console overseeing company-wide appraisal
+  progress across all divisions and line managers.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/hr/SubmissionsView.vue
+- Route: /hr/submissions (roles: [4])
+- Backend Controller: GoalController.php -> allAppraisals()
+- API Endpoint: GET /api/pms/appraisals/all
+- Database Tables: `goals`, `users`
+- Key Features:
+  - Real-time audit table showing submission status per department and branch.
+  - Drill-down modal to inspect any employee's submitted appraisal answers.
+  - One-click PDF export of complete appraisal dossiers with signatures.
+
+--------------------------------------------------------------------------------
+4.10 EMPLOYEE LEADERBOARD
+--------------------------------------------------------------------------------
+- Purpose: Recognition ranking of top performing employees based on verified
+  appraisal scores.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/pms/LeaderboardView.vue
+- Route: /pms/leaderboard (roles: [3, 4])
+- Backend Controller: PMSDashboardController.php -> leaderboard()
+- API Endpoint: GET /api/pms/leaderboard
+- Database Tables: `goals`, `users`, `employees`
+- Key Features:
+  - Top performers podium (Gold, Silver, Bronze) with average rating display.
+  - Departmental filtering and search.
+
+--------------------------------------------------------------------------------
+4.11 LINE MANAGER CONSOLE (EMPLOYEE MASTER)
+--------------------------------------------------------------------------------
+- Purpose: Line manager governance, team allocation, CSV bulk mapping, and
+  fresh FY 2026 goal template provisioning.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/pms/EmployeeMasterView.vue
+- Route: /pms/employee-master (roles: [4])
+- Backend Controller: EmployeeMasterController.php
+- API Endpoints:
+  - GET   /api/pms/employee-master (List all managers and member counts)
+  - GET   /api/pms/get-employees?all=1 (Master searchable employee list)
+  - POST  /api/pms/sync-team (Assign team members to a line manager)
+  - POST  /api/pms/parse-team-csv (Upload CSV of employee codes to map team)
+  - POST  /api/pms/push-fresh-goals (Push 2026 templates to single manager's team)
+  - POST  /api/pms/push-all-fresh-goals (Company-wide push with graceful skips)
+- Database Tables: `users`, `employees`, `Monthly_Employees`, `goals`
+- Key Features & Resilience:
+  - Team member discovery checks `users`, `employees`, and `Monthly_Employees`.
+  - Push All Fresh Goals: Categorizes managers into those with assigned members
+    vs those without. Gracefully skips unassigned managers without failing.
+  - Auto-provisions employee user logins (`username` = Employee Code,
+    `password` = `Password`, `position_id` = 5) if accounts don't exist.
+  - Preserves submitted historical reviews while initializing clean 2026 blanks.
+
+--------------------------------------------------------------------------------
+4.12 MANAGE EMPLOYEES (PAYROLL INGESTION & RECONCILIATION)
+--------------------------------------------------------------------------------
+- Purpose: Monthly payroll upload and intelligent reconciliation comparing
+  payroll data against HR Onboarding records to identify discrepancies.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/hr/ManageEmployeesView.vue
+- Route: /hr/manage-employees (roles: [3, 4])
+- Backend Controller: MonthlyEmployeeController.php
+- API Endpoints:
+  - GET  /api/pms/monthly-employees (Paginated list of payroll employees)
+  - GET  /api/pms/monthly-employees/stats (Metrics: Active, Resigned, etc.)
+  - GET  /api/pms/monthly-employees/locations (Unique location filter list)
+  - POST /api/pms/monthly-employees/upload (Upload monthly Excel file)
+  - GET  /api/pms/monthly-employees/template (Download standardized Excel template)
+  - GET  /api/pms/monthly-employees/reconcile (Reconciliation comparison engine)
+  - GET  /api/pms/monthly-employees/reconcile-export (Export discrepancies to CSV)
+  - GET/POST /api/pms/clean-reingest (Ingests 5,920 master payroll records)
+- Database Tables: `Monthly_Employees` / `monthly_employees`, `employees`
+- Reconciliation Engine Rules:
+  - Source of Truth for Employee Existence: Uploaded Payroll Data.
+  - Source of Truth for Status: HR Onboarding Table (`employees.status`).
+  - If Employee ID exists in both Payroll and Onboarding -> Displays Onboarding
+    Status (Active, Resigned, Deceased, Terminated, Absconded, Dismissed).
+  - If Employee ID exists in Payroll but NOT in Onboarding -> "NOT Onboarded".
+  - Metrics cards update dynamically when filtering by location.
+
+--------------------------------------------------------------------------------
+4.13 MANAGE USERS (PORTAL IDENTITY & PERMISSIONS)
+--------------------------------------------------------------------------------
+- Purpose: Administrative user identity management, password resets, role
+  assignment, and granular checkbox permissions.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/UsersView.vue
+- Route: /users (roles: [4])
+- Backend Controller: APIUserController.php
+- API Endpoints:
+  - GET    /api/users (List all portal accounts)
+  - POST   /api/users (Create user account)
+  - POST   /api/updateuser (Update roles, position_id, and permissions)
+  - POST   /api/deleteuser or DELETE /api/users/{id} (Deactivate account)
+  - POST   /api/updatepassword (Reset password)
+- Database Tables: `users`
+- Key Features:
+  - Tabs under HR Admin: Manage Users, Line Manager Console, Manage Employees.
+  - Checkbox permissions matrix (`permissions` column) controlling route access.
+  - Quick toggle between Administrator, Manager, and Employee roles.
+
+--------------------------------------------------------------------------------
+4.14 USER PROFILE & SECURITY
+--------------------------------------------------------------------------------
+- Purpose: Individual user account details, corporate email, and self-service
+  password updates.
+- Frontend View: PMS_FRONTEND_VUE/src/views/app/ProfileView.vue
+- Route: /profile (roles: [1, 2, 3, 4, 5])
+- Backend Controller: APIUserController.php -> updatepassword()
+- API Endpoint: POST /api/updatepassword
+- Database Tables: `users`
+
+================================================================================
+5. DATABASE ARCHITECTURE, SCHEMAS & RELATIONSHIPS
+================================================================================
+
+PRIMARY TABLES & ENTITIES:
+
+1. `users`
+   - Primary key: `id` (bigint unsigned)
+   - Core fields: `name`, `username`, `email`, `password`, `employee_code`,
+     `line_manager_id`, `report_to`, `department`, `location`, `designation`,
+     `position_id`, `is_manager`, `admin`, `permissions` (JSON), `remember_token`
+   - Purpose: Portal identity and authentication.
+
+2. `employees` (Master Onboarding Records from Server 17)
+   - Primary key: `id` (bigint unsigned)
+   - Core fields: `employeeid`, `emp_code`, `firstname`, `surname`, `othername`,
+     `email`, `phoneno`, `department`, `job_title`, `status`, `joininglocation`,
+     `line_manager_id`, `created_at`, `updated_at`
+   - Purpose: Complete legal HR onboarding dossier.
+
+3. `Monthly_Employees` / `monthly_employees` (Monthly Payroll Ingestion)
+   - Primary key: `id` (bigint unsigned)
+   - Core fields: `emp_id` (varchar 50, indexed), `employee_name`, `department`,
+     `designation`, `location`, `status`, `cost_centre`, `date_of_joining`,
+     `line_manager_id`, `month`, `year`
+   - Purpose: Source of truth for active payroll employees.
+
+4. `goals` (SMART Goals & Appraisal Dossiers)
+   - Primary key: `id` (bigint unsigned)
+   - Core fields: `user_id` (FK -> users.id), `employee_code`, `candidate_name`,
+     `created_by` (FK -> users.id / manager), `manager_name`, `year`, `title`,
+     `description` (JSON), `purposes` (JSON), `challenges` (JSON), `category`,
+     `target`, `due_date`, `status` (assigned, submitted, completed),
+     `smart_criteria` (JSON), `appraisal_data` (JSON), `attachment_path`
+   - Purpose: Full performance evaluation cycle records.
+
+5. `reviews` (Manager Periodic Reviews)
+   - Primary key: `id` (bigint unsigned)
+   - Core fields: `goal_id`, `user_id`, `manager_id`, `strengths`,
+     `improvements`, `agreed_actions`, `rating`, `review_date`
+
+6. Onboarding Child Tables (Linked to `employees.id` via `employee_id`):
+   - `bank_socials`, `children`, `driverlicenses`, `education`
+   - `emergency_contacts`, `guarantors`, `histories`, `irr_guarantees`
+   - `irr_guar_witnesses`, `nominees`, `present_jobs`, `references`
+   - `social_contacts`, `unions`, `uploads`, `wives`, `work_experiences`
+
+DYNAMIC RESOLUTION ENGINE:
+Because records originate across both the legacy Onboarding system (`employees`)
+and monthly payroll Excel ingests (`Monthly_Employees`), controllers like
+EmployeeMasterController and MonthlyEmployeeController use a dynamic union resolver:
+1. Matches `Monthly_Employees.emp_id` against `employees.employeeid` or `emp_code`.
+2. Resolves department and branch names through dynamic lookup dictionaries.
+3. Automatically maps user portal accounts in `users` via `employee_code`.
+
+================================================================================
+6. DATA SEEDING, INGESTION & SYNCHRONIZATION SYSTEMS
+================================================================================
+
+--------------------------------------------------------------------------------
+6.1 PAYROLL MASTER INGESTION (AUGUST 2026 PAYROLL INGESTION)
+--------------------------------------------------------------------------------
+- Responsible File: PMS_BACKEND_LARAVEL/app/Http/Controllers/MonthlyEmployeeController.php
+- Source Dataset: c:\Users\USER\Workspaces\htdocs\PMS\AUGUST 2026 PAYROLL DATA.xlsx
+- Process:
+  1. The spreadsheet contains 5,920 employee records across 16 columns:
+     EMP ID, EMPLOYEE NAME, DESIGNATION, DEPARTMENT, LOCATION, DATE OF JOINING,
+     STATUS, COST CENTRE, etc.
+  2. Executing GET or POST `/api/pms/clean-reingest`:
+     - Truncates existing `Monthly_Employees` table.
+     - Reads the master Excel spreadsheet using PhpSpreadsheet.
+     - Sanitizes dates and employee codes.
+     - Performs high-speed chunked batch insertions (1,000 records per chunk).
+     - Result: Populates 5,920 records in seconds without memory exhaustion.
+
+--------------------------------------------------------------------------------
+6.2 LIVE CENTRAL SYNCHRONIZATION (SERVER 17 -> SERVER 20)
+--------------------------------------------------------------------------------
+- Responsible File: PMS_BACKEND_LARAVEL/app/Http/Controllers/EmployeeController.php -> syncFromCentral()
+- Endpoint: POST or GET /api/sync-central-employees
+- Frontend Trigger: "Sync Central Data" button on /onboarding
+- Process:
+  1. Opens a secure, read-only MySQL PDO connection to Central Server 17 (192.168.0.17).
+  2. Queries Server 20 local database for `MAX(id)` on `employees`.
+  3. Queries Server 17 for `WHERE id > localMaxId`.
+  4. Copies new employees and corresponding child rows across 19 onboarding tables.
+  5. Uses `insertOrIgnore` to guarantee zero duplicate keys or conflicts.
+  6. Leaves Server 17 100% untouched and non-locked.
+
+--------------------------------------------------------------------------------
+6.3 AUTOMATED USER ACCOUNT & GOAL PROVISIONING
+--------------------------------------------------------------------------------
+- Responsible File: PMS_BACKEND_LARAVEL/app/Http/Controllers/EmployeeMasterController.php
+- Methods: `syncTeam()`, `pushFreshGoals()`, `pushAllFreshGoals()`
+- Process:
+  1. When managers are assigned subordinates (via UI multiselect or CSV upload):
+     - `syncTeam()` maps `line_manager_id` across `users`, `employees`, and `Monthly_Employees`.
+  2. When clicking "Push All Goals & Appraisal":
+     - Finds all assigned team members across all line managers.
+     - Automatically creates user portal accounts for any un-provisioned employee:
+       - Username: Employee Code (e.g., EX001)
+       - Password: 'Password' (hashed with bcrypt)
+       - Role: Basic (position_id = 5)
+       - Permissions: ['/pms/goals', '/pms/appraisal']
+     - Skips line managers who do not have any team members assigned and reports
+       their names cleanly in the outcome notice.
+     - Generates blank FY 2026 SMART goal and appraisal dossiers with default
+       competency rubrics.
+
+--------------------------------------------------------------------------------
+6.4 MAINTENANCE & EMERGENCY SEEDING ROUTES
+--------------------------------------------------------------------------------
+Defined in `PMS_BACKEND_LARAVEL/routes/api.php`:
+- GET /api/create-admin:
+  Creates or resets primary administrator: Username `Admin`, Password `Password`.
+- GET /api/sync-pms-users:
+  Crawls all goals and retroactively creates/updates missing user records.
+- GET /api/pms/clear-test-data:
+  Purges temporary testing goals while keeping authentic employee reviews.
+- GET /api/run-migrate:
+  Executes `php artisan migrate` on production environments via web browser.
+- GET /api/run-route-clear:
+  Clears route cache via `php artisan route:clear`.
+
+================================================================================
+7. DEPLOYMENT LIFECYCLE & MULTI-SERVER SYNC GUIDE
+================================================================================
+
+STAGING & PRODUCTION PIPELINE:
+
+Step 1: Local Code Compilation
+```cmd
+cd /d "c:\Users\USER\Workspaces\htdocs\PMS\PMS_FRONTEND_VUE"
+npm run build
+```
+Generates production assets in `dist/`.
+
+Step 2: Automated Push to Staging Share (Server 24)
+Execute the batch script:
+```cmd
+cmd /c "c:\Users\USER\Workspaces\htdocs\PMS\deployment\deploy_pms_to_share.bat /nopause"
+```
+Actions performed by the script:
+1. Compiles Vue frontend.
+2. Robocopy mirrors `dist/` to `\\192.168.0.24\it-software\IT DEV DAVID\PMS\pms_frontend`.
+3. Robocopy mirrors backend controllers and models to `\\192.168.0.24\...\pms_backend`
+   (strictly excluding `vendor`, `node_modules`, `.git`, `storage`, and `.env`).
+4. Copies master Excel payroll sheet to the share.
+
+Step 3: Pull & Activate on Server 20
+On **Server 20**, open Command Prompt as Administrator and run:
+```cmd
+:: 1. Mirror frontend build
+robocopy "\\192.168.0.24\it-software\IT DEV DAVID\PMS\pms_frontend" "C:\xampp\htdocs\PMS\pms_frontend" /MIR /NP /R:2 /W:3
+
+:: 2. Mirror backend code (protecting server .env and vendor)
+robocopy "\\192.168.0.24\it-software\IT DEV DAVID\PMS\pms_backend" "C:\xampp\htdocs\PMS\pms_backend" /MIR /NP /R:2 /W:3 /XD vendor node_modules .git storage public\storage /XF .env .env.local .env.development
+
+:: 3. Copy reference payroll dataset
+copy /Y "\\192.168.0.24\it-software\IT DEV DAVID\PMS\AUGUST 2026 PAYROLL DATA.xlsx" "C:\xampp\htdocs\PMS\AUGUST 2026 PAYROLL DATA.xlsx"
+
+:: 4. Clear Laravel application cache
+cd /d "C:\xampp\htdocs\PMS\pms_backend" && php artisan optimize:clear
+```
+
+CRITICAL PRODUCTION RULES:
+1. SERVER 17 IS IMMUTABLE: Never write, drop, or alter tables on Server 17.
+2. PRESERVE .ENV: Never overwrite server `.env` files with local configurations.
+3. TWIN SYNCHRONIZATION: Always keep `PMS_FRONTEND_VUE` & `HR Onboarding/hrproject Vue`
+   and `PMS_BACKEND_LARAVEL` & `HR Onboarding/hr/hr` strictly synchronized.
+
+================================================================================
+END OF WALKTHROUGH DOCUMENT
+================================================================================
