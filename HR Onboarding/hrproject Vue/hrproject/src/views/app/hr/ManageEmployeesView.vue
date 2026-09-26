@@ -962,7 +962,7 @@ onMounted(() => {
                             title="Filter: All employees on monthly payroll"
                         >
                             <div class="stat-top">
-                                <span class="stat-num text-blue">{{ formatNumber(reconcileStats.total_payroll) }}</span>
+                                <span class="stat-num">{{ formatNumber(reconcileStats.total_payroll) }}</span>
                                 <div class="stat-icon-wrap icon-blue">
                                     <i class="pi pi-users"></i>
                                 </div>
@@ -977,7 +977,7 @@ onMounted(() => {
                             title="Total employee dossiers in HR system"
                         >
                             <div class="stat-top">
-                                <span class="stat-num text-purple">{{ formatNumber(reconcileStats.total_onboarding) }}</span>
+                                <span class="stat-num">{{ formatNumber(reconcileStats.total_onboarding) }}</span>
                                 <div class="stat-icon-wrap icon-purple">
                                     <i class="pi pi-id-card"></i>
                                 </div>
@@ -994,7 +994,7 @@ onMounted(() => {
                             title="Filter: Verified Active in HR & Payroll"
                         >
                             <div class="stat-top">
-                                <span class="stat-num text-emerald">{{ formatNumber(reconcileStats.active) }}</span>
+                                <span class="stat-num">{{ formatNumber(reconcileStats.active) }}</span>
                                 <div class="stat-icon-wrap icon-emerald">
                                     <i class="pi pi-check-circle"></i>
                                 </div>
@@ -1011,7 +1011,7 @@ onMounted(() => {
                             title="Filter: On payroll without HR onboarding profile"
                         >
                             <div class="stat-top">
-                                <span class="stat-num text-amber">{{ formatNumber(reconcileStats.not_onboarded) }}</span>
+                                <span class="stat-num">{{ formatNumber(reconcileStats.not_onboarded) }}</span>
                                 <div class="stat-icon-wrap icon-amber">
                                     <i class="pi pi-user-plus"></i>
                                 </div>
@@ -1028,7 +1028,7 @@ onMounted(() => {
                             title="Filter: Non-Active in HR (Absconded, Resigned, etc.)"
                         >
                             <div class="stat-top">
-                                <span class="stat-num text-rose">{{ formatNumber(reconcileStats.status_conflicts) }}</span>
+                                <span class="stat-num">{{ formatNumber(reconcileStats.status_conflicts) }}</span>
                                 <div class="stat-icon-wrap icon-rose">
                                     <i class="pi pi-shield"></i>
                                 </div>
@@ -1345,11 +1345,12 @@ onMounted(() => {
 
 /* Header Card */
 .header-card {
-    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    border-radius: 10px;
-    padding: 10px 16px;
-    color: white;
-    box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.2);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px 18px;
+    color: #0f172a;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .header-content {
@@ -1365,32 +1366,32 @@ onMounted(() => {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: rgba(99, 102, 241, 0.2);
-    border: 1px solid rgba(129, 140, 248, 0.3);
-    color: #a5b4fc;
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    color: #4f46e5;
     font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    padding: 1px 6px;
+    padding: 2px 8px;
     border-radius: 9999px;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
 }
 
 .title-section h1 {
-    font-size: 1.15rem;
+    font-size: 1.25rem;
     font-weight: 800;
     margin: 0;
     letter-spacing: -0.02em;
-    color: #ffffff;
+    color: #0f172a;
 }
 
 .subtitle {
     margin: 2px 0 0 0;
-    font-size: 0.78rem;
-    color: #94a3b8;
+    font-size: 0.8rem;
+    color: #64748b;
     max-width: 680px;
-    line-height: 1.25;
+    line-height: 1.35;
 }
 
 .header-actions {
@@ -1414,20 +1415,21 @@ onMounted(() => {
 }
 
 .stat-card {
-    background: rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
-    padding: 5px 10px;
+    padding: 6px 12px;
     display: flex;
     align-items: center;
     gap: 8px;
-    transition: transform 0.2s ease, background 0.2s ease;
+    transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
 .stat-card:hover {
     transform: translateY(-2px);
-    background: rgba(255, 255, 255, 0.09);
+    background: #ffffff;
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
 .stat-icon {
@@ -1441,11 +1443,11 @@ onMounted(() => {
     flex-shrink: 0;
 }
 
-.icon-blue { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
-.icon-emerald { background: rgba(16, 185, 129, 0.2); color: #34d399; }
-.icon-amber { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-.icon-indigo { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
-.icon-purple { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+.icon-blue { background: rgba(59, 130, 246, 0.15); color: #2563eb; }
+.icon-emerald { background: rgba(16, 185, 129, 0.15); color: #059669; }
+.icon-amber { background: rgba(245, 158, 11, 0.15); color: #d97706; }
+.icon-indigo { background: rgba(99, 102, 241, 0.15); color: #4f46e5; }
+.icon-purple { background: rgba(168, 85, 247, 0.15); color: #7c3aed; }
 
 .stat-info {
     display: flex;
@@ -1453,9 +1455,9 @@ onMounted(() => {
 }
 
 .stat-label {
-    font-size: 0.62rem;
+    font-size: 0.65rem;
     font-weight: 600;
-    color: #94a3b8;
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
@@ -1463,7 +1465,7 @@ onMounted(() => {
 .stat-value {
     font-size: 1.0rem;
     font-weight: 800;
-    color: #ffffff;
+    color: #0f172a;
     line-height: 1.2;
 }
 
@@ -2217,9 +2219,9 @@ onMounted(() => {
     align-items: center;
     justify-content: space-between;
     padding: 1.25rem 1.75rem;
-    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-    color: #ffffff;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: #ffffff;
+    color: #0f172a;
+    border-bottom: 1px solid #e2e8f0;
     flex-wrap: wrap;
     gap: 1rem;
 }
@@ -2227,7 +2229,7 @@ onMounted(() => {
     font-size: 1.35rem;
     font-weight: 800;
     margin: 0.25rem 0 0.2rem 0;
-    color: #ffffff;
+    color: #0f172a;
     letter-spacing: -0.02em;
 }
 .reconcile-badge {
@@ -2239,9 +2241,9 @@ onMounted(() => {
     font-weight: 800;
     letter-spacing: 0.06em;
     border-radius: 9999px;
-    background: rgba(99, 102, 241, 0.25);
-    color: #c7d2fe;
-    border: 1px solid rgba(165, 180, 252, 0.35);
+    background: #eef2ff;
+    color: #4f46e5;
+    border: 1px solid #c7d2fe;
 }
 .badge-dot {
     width: 6px;
@@ -2252,11 +2254,11 @@ onMounted(() => {
 }
 .reconcile-subtitle {
     font-size: 0.8125rem;
-    color: #94a3b8;
+    color: #64748b;
     margin: 0;
 }
 .reconcile-subtitle strong {
-    color: #f1f5f9;
+    color: #1e293b;
 }
 .reconcile-header-actions {
     display: flex;
@@ -2267,14 +2269,14 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     padding: 5px 12px;
     border-radius: 10px;
     font-size: 0.8125rem;
 }
 .reconcile-batch-select-wrap label {
-    color: #cbd5e1;
+    color: #64748b;
     font-size: 0.75rem;
     display: flex;
     align-items: center;
@@ -2283,15 +2285,15 @@ onMounted(() => {
 .reconcile-batch-select {
     background: transparent;
     border: none;
-    color: #ffffff;
+    color: #0f172a;
     font-weight: 700;
     outline: none;
     cursor: pointer;
     font-size: 0.8125rem;
 }
 .reconcile-batch-select option {
-    background: #0f172a;
-    color: #ffffff;
+    background: #ffffff;
+    color: #0f172a;
 }
 .btn-export-audit {
     background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
@@ -2305,21 +2307,21 @@ onMounted(() => {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
     transition: all 0.15s ease;
 }
 .btn-export-audit:hover:not(:disabled) {
     background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.5);
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
 }
 .btn-close-modal {
     width: 34px;
     height: 34px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: #cbd5e1;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2328,9 +2330,9 @@ onMounted(() => {
     font-size: 0.95rem;
 }
 .btn-close-modal:hover {
-    background: rgba(239, 68, 68, 0.2);
-    border-color: rgba(239, 68, 68, 0.4);
-    color: #f87171;
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #ef4444;
     transform: rotate(90deg);
 }
 
@@ -2367,11 +2369,11 @@ onMounted(() => {
 .reconcile-stat-card.active-card {
     box-shadow: 0 0 0 2px #4f46e5, 0 4px 12px rgba(79, 70, 229, 0.15);
 }
-.payroll-card { border-top: 3px solid #3b82f6; }
-.onboarding-total-card { border-top: 3px solid #8b5cf6; cursor: default; }
-.active-card-stat { border-top: 3px solid #10b981; }
-.warning-card { border-top: 3px solid #f59e0b; }
-.danger-card { border-top: 3px solid #f43f5e; }
+.payroll-card { border-top: none; }
+.onboarding-total-card { border-top: none; cursor: default; }
+.active-card-stat { border-top: none; }
+.warning-card { border-top: none; }
+.danger-card { border-top: none; }
 
 .stat-top {
     display: flex;
@@ -2384,6 +2386,7 @@ onMounted(() => {
     font-weight: 800;
     letter-spacing: -0.02em;
     line-height: 1.1;
+    color: #0f172a;
 }
 .stat-icon-wrap {
     width: 32px;
@@ -2413,11 +2416,11 @@ onMounted(() => {
     text-overflow: ellipsis;
     margin-top: 1px;
 }
-.text-blue { color: #2563eb !important; }
-.text-purple { color: #7c3aed !important; }
-.text-emerald { color: #059669 !important; }
-.text-amber { color: #d97706 !important; }
-.text-rose { color: #e11d48 !important; }
+.text-blue { color: #0f172a !important; }
+.text-purple { color: #0f172a !important; }
+.text-emerald { color: #0f172a !important; }
+.text-amber { color: #0f172a !important; }
+.text-rose { color: #0f172a !important; }
 
 /* Status Tabs Row */
 .reconcile-tabs-row {

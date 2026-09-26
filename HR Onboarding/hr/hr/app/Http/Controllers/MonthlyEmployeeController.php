@@ -902,8 +902,11 @@ class MonthlyEmployeeController extends Controller
             $perPage = min(max((int)$request->input('per_page', 50), 10), 500);
             $page = max((int)$request->input('page', 1), 1);
 
-            // Fetch all monthly payroll employees for this batch
+            // Fetch monthly payroll employees for this batch (filtered by location if selected so metrics reflect the filter)
             $payrollQuery = DB::table($tableName)->where('month_year', $monthYear);
+            if (!empty($location) && $location !== 'all') {
+                $payrollQuery->where('location', $location);
+            }
             $allPayrollEmployees = $payrollQuery->orderBy('sr_no', 'asc')->get();
 
             // Fetch all onboarding employees to build the cross-reference map
@@ -912,7 +915,19 @@ class MonthlyEmployeeController extends Controller
             $onboardingMap = [];
             if ($onboardingQuery) {
                 try {
-                    $totalOnboarding = (clone $onboardingQuery)->count();
+                    $obCountQuery = clone $onboardingQuery;
+                    if (!empty($location) && $location !== 'all') {
+                        $branchId = null;
+                        if (Schema::hasTable('branchs')) {
+                            $branchId = DB::table('branchs')->where('name', $location)->value('id');
+                        } elseif (Schema::hasTable('branches')) {
+                            $branchId = DB::table('branches')->where('name', $location)->value('id');
+                        }
+                        if ($branchId) {
+                            $obCountQuery->where('joining_branch_id', $branchId);
+                        }
+                    }
+                    $totalOnboarding = $obCountQuery->count();
                 } catch (\Throwable $e) {
                     $totalOnboarding = 0;
                 }
@@ -921,7 +936,7 @@ class MonthlyEmployeeController extends Controller
                     ->select('id', 'employeeid', 'emp_code', 'firstname', 'surname', 'status', 'email', 'mobileno', 'joiningposition', 'company', 'joining_branch_id')
                     ->get();
 
-                if ($totalOnboarding === 0 && $onboardingRows) {
+                if ($totalOnboarding === 0 && $onboardingRows && (empty($location) || $location === 'all')) {
                     $totalOnboarding = count($onboardingRows);
                 }
 

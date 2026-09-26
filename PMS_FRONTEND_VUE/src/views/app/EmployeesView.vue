@@ -113,19 +113,21 @@
         }
     }
 
-    // ── Dynamic Column Picker ──
+    // ── Dynamic Column Picker with LocalStorage Persistence ──
     const showColumnPicker = ref(false)
+    const STORAGE_COLUMNS_KEY = 'hr_employees_visible_columns_v3'
+    const DEFAULT_COLUMN_KEYS = ['employeeid', 'firstname', 'surname', 'email', 'mobileno', 'status', '_creator']
 
-    // All columns: default (always-on) + optional (onboarding fields)
+    // All available columns
     const allColumns = [
-        // Default columns (checked & locked)
-        { key: 'employeeid', label: 'Employee ID', group: 'Default', default: true },
-        { key: 'firstname', label: 'First Name', group: 'Default', default: true },
-        { key: 'surname', label: 'Surname', group: 'Default', default: true },
-        { key: 'email', label: 'Email', group: 'Default', default: true },
-        { key: 'mobileno', label: 'Mobile No', group: 'Default', default: true },
-        { key: 'status', label: 'Status', group: 'Default', default: true, formatter: (v) => findstatus(v) },
-        { key: '_creator', label: 'Created By', group: 'Default', default: true },
+        // Standard / Default Columns (toggleable - user can uncheck or replace)
+        { key: 'employeeid', label: 'Employee ID', group: 'Standard Columns' },
+        { key: 'firstname', label: 'First Name', group: 'Standard Columns' },
+        { key: 'surname', label: 'Surname', group: 'Standard Columns' },
+        { key: 'email', label: 'Email', group: 'Standard Columns' },
+        { key: 'mobileno', label: 'Mobile No', group: 'Standard Columns' },
+        { key: 'status', label: 'Status', group: 'Standard Columns', formatter: (v) => findstatus(v) },
+        { key: '_creator', label: 'Created By', group: 'Standard Columns' },
         // Position Details
         { key: 'company', label: 'Joining Company', group: 'Position Details', formatter: (v) => findcompany(v) },
         { key: 'contracttype', label: 'Contract Category', group: 'Position Details', formatter: (v) => findconttypes(v) },
@@ -150,17 +152,44 @@
         { key: 'anyotherinfo', label: 'Other Information', group: 'Personal Info' },
     ]
 
-    // Which optional column keys are currently visible
-    const extraColumns = ref([])
+    // Read initial columns from localStorage or default
+    const loadSavedColumns = () => {
+        try {
+            const raw = localStorage.getItem(STORAGE_COLUMNS_KEY)
+            if (raw) {
+                const parsed = JSON.parse(raw)
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const valid = parsed.filter(k => allColumns.some(c => c.key === k))
+                    if (valid.length > 0) return valid
+                }
+            }
+        } catch (e) {
+            console.error('Error loading visible columns from localStorage:', e)
+        }
+        return [...DEFAULT_COLUMN_KEYS]
+    }
+
+    const visibleColumns = ref(loadSavedColumns())
     const pendingSelection = ref([])
 
+    const isColVisible = (key) => visibleColumns.value.includes(key)
+
+    // Dynamic columns are any visible columns beyond the standard 7
+    const dynamicColumns = computed(() => {
+        return visibleColumns.value.filter(k => !DEFAULT_COLUMN_KEYS.includes(k))
+    })
+
     const openColumnPicker = () => {
-        pendingSelection.value = [...extraColumns.value]
+        pendingSelection.value = [...visibleColumns.value]
         showColumnPicker.value = true
     }
 
     const togglePendingCol = (key) => {
         if (pendingSelection.value.includes(key)) {
+            if (pendingSelection.value.length <= 1) {
+                toastt('At least one column must remain visible', 'warning')
+                return
+            }
             pendingSelection.value = pendingSelection.value.filter(k => k !== key)
         } else {
             pendingSelection.value.push(key)
@@ -168,19 +197,40 @@
     }
 
     const applyColumns = () => {
-        extraColumns.value = [...pendingSelection.value]
+        if (!pendingSelection.value.length) {
+            toastt('Please select at least one column', 'warning')
+            return
+        }
+        visibleColumns.value = [...pendingSelection.value]
+        try {
+            localStorage.setItem(STORAGE_COLUMNS_KEY, JSON.stringify(visibleColumns.value))
+        } catch (e) {
+            console.error('Error saving columns to localStorage:', e)
+        }
         showColumnPicker.value = false
+        toastt('Column preferences saved', 'success')
+    }
+
+    const resetDefaultColumns = () => {
+        pendingSelection.value = [...DEFAULT_COLUMN_KEYS]
     }
 
     const removeColumn = (key) => {
-        extraColumns.value = extraColumns.value.filter(k => k !== key)
+        if (visibleColumns.value.length <= 1) {
+            toastt('At least one column must remain visible', 'warning')
+            return
+        }
+        visibleColumns.value = visibleColumns.value.filter(k => k !== key)
+        try {
+            localStorage.setItem(STORAGE_COLUMNS_KEY, JSON.stringify(visibleColumns.value))
+        } catch (e) {
+            console.error('Error saving columns to localStorage:', e)
+        }
     }
 
-    const optionalColumns = allColumns.filter(c => !c.default)
-
-    const groupedOptionalColumns = computed(() => {
+    const groupedAllColumns = computed(() => {
         const groups = {}
-        optionalColumns.forEach(col => {
+        allColumns.forEach(col => {
             if (!groups[col.group]) groups[col.group] = []
             groups[col.group].push(col)
         })
@@ -735,8 +785,8 @@
                     >
                         <i class="pi pi-sliders-h text-xs"></i>
                         <span>Columns</span>
-                        <span v-if="extraColumns.length" class="action-pill">
-                            +{{ extraColumns.length }}
+                        <span class="action-pill">
+                            {{ visibleColumns.length }}
                         </span>
                     </button>
 
@@ -751,15 +801,8 @@
                             <button @click="showColumnPicker = false" class="col-picker-close">&times;</button>
                         </div>
                         <div class="col-picker-body">
-                            <!-- Default columns -->
-                            <div class="col-picker-group">Default Columns (Locked)</div>
-                            <label v-for="col in allColumns.filter(c => c.default)" :key="col.key" class="col-picker-checkbox opacity-70 cursor-not-allowed">
-                                <input type="checkbox" checked disabled />
-                                <span>{{ col.label }}</span>
-                            </label>
-
-                            <!-- Optional columns grouped -->
-                            <template v-for="(cols, group) in groupedOptionalColumns" :key="group">
+                            <!-- All column groups with interactive checkboxes -->
+                            <template v-for="(cols, group) in groupedAllColumns" :key="group">
                                 <div class="col-picker-group">{{ group }}</div>
                                 <label
                                     v-for="col in cols"
@@ -773,8 +816,11 @@
                             </template>
                         </div>
                         <div class="col-picker-footer">
-                            <button class="btn-ghost" @click="showColumnPicker = false">Cancel</button>
-                            <button class="btn-primary" @click="applyColumns()">Apply Changes</button>
+                            <button type="button" class="btn-ghost text-xs" @click="resetDefaultColumns()">Reset</button>
+                            <div class="flex items-center gap-2">
+                                <button type="button" class="btn-ghost" @click="showColumnPicker = false">Cancel</button>
+                                <button type="button" class="btn-primary" @click="applyColumns()">Apply Changes</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1079,37 +1125,49 @@
                 <div class="table-grid-wrap">
                     <!-- Table Header -->
                     <div id="tableheader" class="modern-table-header">
-                        <span class="th-cell sortable-th th-empid" @click="toggleSort('employeeid')" title="Sort by Employee ID">
+                        <!-- Employee ID -->
+                        <span v-if="isColVisible('employeeid')" class="th-cell sortable-th th-empid" @click="toggleSort('employeeid')" title="Sort by Employee ID">
                             <span>Employee ID</span>
                             <i :class="getSortIcon('employeeid')"></i>
                         </span>
 
-                        <span class="th-cell sortable-th th-empname" @click="toggleSort('firstname')" title="Sort by Name">
-                            <span>Employee</span>
+                        <!-- First Name -->
+                        <span v-if="isColVisible('firstname')" class="th-cell sortable-th th-firstname" @click="toggleSort('firstname')" title="Sort by First Name">
+                            <span>First Name</span>
                             <i :class="getSortIcon('firstname')"></i>
                         </span>
 
-                        <span class="th-cell sortable-th th-email" @click="toggleSort('email')" title="Sort by Email">
+                        <!-- Surname -->
+                        <span v-if="isColVisible('surname')" class="th-cell sortable-th th-surname" @click="toggleSort('surname')" title="Sort by Surname">
+                            <span>Surname</span>
+                            <i :class="getSortIcon('surname')"></i>
+                        </span>
+
+                        <!-- Email -->
+                        <span v-if="isColVisible('email')" class="th-cell sortable-th th-email" @click="toggleSort('email')" title="Sort by Email">
                             <span>Email</span>
                             <i :class="getSortIcon('email')"></i>
                         </span>
 
-                        <span class="th-cell th-mobile">
+                        <!-- Mobile No -->
+                        <span v-if="isColVisible('mobileno')" class="th-cell th-mobile">
                             <span>Mobile No</span>
                         </span>
 
-                        <span class="th-cell sortable-th th-status" @click="toggleSort('status')" title="Sort by Status">
+                        <!-- Status -->
+                        <span v-if="isColVisible('status')" class="th-cell sortable-th th-status" @click="toggleSort('status')" title="Sort by Status">
                             <span>Status</span>
                             <i :class="getSortIcon('status')"></i>
                         </span>
 
-                        <span class="th-cell th-creator">
+                        <!-- Created By -->
+                        <span v-if="isColVisible('_creator')" class="th-cell th-creator">
                             <span>Created By</span>
                         </span>
 
                         <!-- Dynamic Extra Columns Header -->
                         <span
-                            v-for="key in extraColumns"
+                            v-for="key in dynamicColumns"
                             :key="'h-' + key"
                             class="th-cell th-extra extra-col-header"
                         >
@@ -1131,7 +1189,7 @@
                     <!-- Column Filters Sub-Row -->
                     <div id="tablefilterrow" class="modern-table-filter-row">
                         <!-- Employee ID Filter -->
-                        <span class="tf-cell th-empid">
+                        <span v-if="isColVisible('employeeid')" class="tf-cell th-empid">
                             <input
                                 type="text"
                                 v-model="columnFilters.employeeid"
@@ -1141,17 +1199,27 @@
                         </span>
 
                         <!-- First Name Filter -->
-                        <span class="tf-cell th-empname">
+                        <span v-if="isColVisible('firstname')" class="tf-cell th-firstname">
                             <input
                                 type="text"
                                 v-model="columnFilters.firstname"
-                                placeholder="Filter name..."
+                                placeholder="Filter first name..."
+                                class="col-filter-input"
+                            />
+                        </span>
+
+                        <!-- Surname Filter -->
+                        <span v-if="isColVisible('surname')" class="tf-cell th-surname">
+                            <input
+                                type="text"
+                                v-model="columnFilters.surname"
+                                placeholder="Filter surname..."
                                 class="col-filter-input"
                             />
                         </span>
 
                         <!-- Email Filter -->
-                        <span class="tf-cell th-email">
+                        <span v-if="isColVisible('email')" class="tf-cell th-email">
                             <input
                                 type="text"
                                 v-model="columnFilters.email"
@@ -1161,7 +1229,7 @@
                         </span>
 
                         <!-- Mobile Filter -->
-                        <span class="tf-cell th-mobile">
+                        <span v-if="isColVisible('mobileno')" class="tf-cell th-mobile">
                             <input
                                 type="text"
                                 v-model="columnFilters.mobileno"
@@ -1171,7 +1239,7 @@
                         </span>
 
                         <!-- Status Filter -->
-                        <span class="tf-cell th-status">
+                        <span v-if="isColVisible('status')" class="tf-cell th-status">
                             <select v-model="columnFilters.status" class="col-filter-select">
                                 <option value="">All Statuses</option>
                                 <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
@@ -1179,7 +1247,7 @@
                         </span>
 
                         <!-- Creator Filter -->
-                        <span class="tf-cell th-creator">
+                        <span v-if="isColVisible('_creator')" class="tf-cell th-creator">
                             <input
                                 type="text"
                                 v-model="columnFilters.creator"
@@ -1189,7 +1257,7 @@
                         </span>
 
                         <!-- Extra Dynamic Columns Filter (Blanks) -->
-                        <span v-for="key in extraColumns" :key="'f-' + key" class="tf-cell th-extra"></span>
+                        <span v-for="key in dynamicColumns" :key="'f-' + key" class="tf-cell th-extra"></span>
 
                         <!-- Clear Filters Button Cell -->
                         <span class="tf-cell th-actions">
@@ -1222,21 +1290,21 @@
                             class="modern-table-row"
                         >
                             <!-- Employee ID Badge -->
-                            <span class="td-cell th-empid">
+                            <span v-if="isColVisible('employeeid')" class="td-cell th-empid">
                                 <span class="empid-badge">
                                     #{{ emp.employeeid || emp.emp_code || '—' }}
                                 </span>
                             </span>
 
-                            <!-- Employee Name + Avatar -->
-                            <span class="td-cell th-empname">
+                            <!-- First Name + Avatar -->
+                            <span v-if="isColVisible('firstname')" class="td-cell th-firstname">
                                 <div class="employee-identity-group">
                                     <div class="employee-avatar" :class="getAvatarClass(emp)">
                                         {{ getAvatarInitials(emp) }}
                                     </div>
                                     <div class="employee-details">
                                         <span class="employee-full-name">
-                                            {{ emp.firstname }} {{ emp.surname }}
+                                            {{ emp.firstname }}
                                         </span>
                                         <span class="employee-meta-sub">
                                             {{ emp.joiningposition || 'Staff' }}
@@ -1245,22 +1313,29 @@
                                 </div>
                             </span>
 
+                            <!-- Surname -->
+                            <span v-if="isColVisible('surname')" class="td-cell th-surname">
+                                <span class="font-medium text-slate-800">
+                                    {{ emp.surname || '—' }}
+                                </span>
+                            </span>
+
                             <!-- Email -->
-                            <span class="td-cell th-email">
+                            <span v-if="isColVisible('email')" class="td-cell th-email">
                                 <span class="cell-text-truncated" :title="emp.email">
                                     {{ emp.email || '—' }}
                                 </span>
                             </span>
 
                             <!-- Mobile No -->
-                            <span class="td-cell th-mobile">
+                            <span v-if="isColVisible('mobileno')" class="td-cell th-mobile">
                                 <span class="font-mono text-xs text-slate-600">
                                     {{ emp.mobileno || '—' }}
                                 </span>
                             </span>
 
                             <!-- Status Pill -->
-                            <span class="td-cell th-status">
+                            <span v-if="isColVisible('status')" class="td-cell th-status">
                                 <span class="status-pill" :class="getStatusStyle(emp.status).pill">
                                     <span class="status-pill-dot" :class="getStatusStyle(emp.status).dot"></span>
                                     <span>{{ getStatusStyle(emp.status).name }}</span>
@@ -1268,7 +1343,7 @@
                             </span>
 
                             <!-- Created By -->
-                            <span class="td-cell th-creator">
+                            <span v-if="isColVisible('_creator')" class="td-cell th-creator">
                                 <span class="cell-text-muted">
                                     {{ emp.creator?.name || '—' }}
                                 </span>
@@ -1276,7 +1351,7 @@
 
                             <!-- Dynamic Extra Columns -->
                             <span
-                                v-for="key in extraColumns"
+                                v-for="key in dynamicColumns"
                                 :key="'b-' + key + '-' + ind"
                                 class="td-cell th-extra"
                             >
@@ -1934,6 +2009,8 @@
     /* Fixed Column Widths for Consistent SaaS Table */
     .th-empid { flex: 0 0 115px; width: 115px; }
     .th-empname { flex: 1 1 220px; min-width: 190px; }
+    .th-firstname { flex: 1 1 170px; min-width: 140px; }
+    .th-surname { flex: 1 1 130px; min-width: 110px; }
     .th-email { flex: 1 1 180px; min-width: 160px; }
     .th-mobile { flex: 0 0 125px; width: 125px; }
     .th-status { flex: 0 0 115px; width: 115px; }

@@ -126,7 +126,8 @@
                 { label: 'Goals', path: '/pms/goals' },
                 { label: 'Appraisal', path: '/pms/appraisal' },
                 { label: 'Review', path: '/pms/review' },
-                { label: 'PMS Submissions', path: '/hr/submissions' }
+                { label: 'PMS Submissions', path: '/hr/submissions' },
+                { label: 'Leaderboard', path: '/pms/leaderboard' }
             ]
         },
         {
@@ -134,7 +135,9 @@
             icon: 'pi pi-shield',
             pages: [
                 { label: 'Manage Users', path: '/users' },
-                { label: 'Line Manager Console', path: '/pms/employee-master' } 
+                { label: 'Line Manager Console', path: '/pms/employee-master' },
+                { label: 'Manage Employees', path: '/hr/manage-employees' },
+                { label: 'Appraisal Submissions', path: '/hr/submissions' }
             ]
         }
     ]
