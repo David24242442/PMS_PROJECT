@@ -7,6 +7,7 @@ use Illuminate\Database\Schema\Blueprint;
 use App\Http\Controllers\APIUserController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\OnlineOnboardingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,6 +25,10 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 });
 
 Route::post('/login', [APIUserController::class, 'login']);
+
+// Public Candidate Online Onboarding Endpoints (Unauthenticated, Mobile-friendly)
+Route::post('/public/onboard', [OnlineOnboardingController::class, 'submit']);
+Route::get('/public/onboarding-meta', [OnlineOnboardingController::class, 'metadata']);
 
 // Emergency route to fix DB
 Route::get('/fix-db', function() {

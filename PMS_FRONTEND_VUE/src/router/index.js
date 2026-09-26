@@ -19,6 +19,16 @@ const router = createRouter({
       component: () => import('@/views/TestView.vue'),
       meta: {  fullname: 'Test' },
     },
+    {
+      path: '/onboard-online',
+      name: 'onboard-online',
+      component: () => import('@/views/OnlineOnboardingView.vue'),
+      meta: { isPublic: true, fullname: 'Melcom Online Employee Onboarding' },
+    },
+    {
+      path: '/join',
+      redirect: '/onboard-online'
+    },
     
     {
       path: '/appinterface',
@@ -136,6 +146,13 @@ const parsePermissions = (perms) => {
 };
 
 router.beforeEach((to, from, next) => {
+  // Public routes accessible by anyone without login redirection
+  if (to.meta.isPublic) {
+    next();
+    if (to.meta.fullname) document.title = to.meta.fullname;
+    return;
+  }
+
   const user = JSON.parse(localStorage.getItem('hrproject_user'))
   
   if (to.meta.requiresAuth === false && user) {

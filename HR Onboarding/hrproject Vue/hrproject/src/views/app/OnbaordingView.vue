@@ -1865,6 +1865,19 @@
     const showsearchpopup = () => {
         showsearchpopupvalue.value = true
     }
+
+    const copyOnlineOnboardingLink = () => {
+        const url = `${window.location.origin}/onboard-online`
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(() => {
+                toastt('Candidate Onboarding URL copied! Share with candidates: ' + url, 'success')
+            }).catch(() => {
+                prompt('Copy Online Onboarding URL:', url)
+            })
+        } else {
+            prompt('Copy Online Onboarding URL:', url)
+        }
+    }
     const handleempselect = (id) =>{
 
         axios.post('fetchemp',{
@@ -2045,6 +2058,15 @@
                     >
                         <i class="pi pi-search text-xs"></i>
                         <span class="font-bold tracking-tight uppercase">Search Employee</span>
+                    </button>
+                    <button 
+                        type="button"
+                        @click="copyOnlineOnboardingLink" 
+                        class="prof-button !bg-red-600 hover:!bg-red-700 border border-red-500/50 px-4 py-2.5 flex items-center gap-2 shadow-lg text-xs text-white font-bold transition-all cursor-pointer rounded-xl"
+                        title="Copy public candidate self-onboarding URL to share via WhatsApp or Email"
+                    >
+                        <i class="pi pi-share-alt text-xs"></i>
+                        <span class="font-bold tracking-tight uppercase">Share Online Link</span>
                     </button>
                 </div>
             </div>
