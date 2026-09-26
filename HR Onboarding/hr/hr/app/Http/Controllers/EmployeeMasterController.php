@@ -1346,21 +1346,46 @@ class EmployeeMasterController extends Controller
             }
 
             // Find all assigned team members
-            $assignedUsers = User::where('line_manager_id', $managerId)->get();
-            $assignedCodes = $assignedUsers->pluck('employee_code')->filter()->unique()->toArray();
+            $assignedCodes = [];
 
-            // Also check Monthly_Employees for members assigned to this manager
+            // 1. Check users table
+            if (Schema::hasColumn('users', 'line_manager_id')) {
+                $assignedUsers = User::where('line_manager_id', $managerId)->get();
+                $uCodes = $assignedUsers->map(function($u) { return $u->employee_code ?: $u->username; })->filter()->toArray();
+                $assignedCodes = array_merge($assignedCodes, $uCodes);
+            }
+
+            // 2. Also check Monthly_Employees for members assigned to this manager
             $mTable = \App\Http\Controllers\MonthlyEmployeeController::getActualTableName();
             if (Schema::hasTable($mTable) && Schema::hasColumn($mTable, 'line_manager_id')) {
-                $monthlyCodes = DB::table($mTable)->where('line_manager_id', $managerId)->pluck('emp_id')->filter()->unique()->toArray();
-                $assignedCodes = array_values(array_unique(array_merge($assignedCodes, $monthlyCodes)));
+                $monthlyCodes = DB::table($mTable)->where('line_manager_id', $managerId)->pluck('emp_id')->filter()->toArray();
+                $assignedCodes = array_merge($assignedCodes, $monthlyCodes);
             }
+
+            // 3. Also check employees table
+            if (Schema::hasTable('employees') && Schema::hasColumn('employees', 'line_manager_id')) {
+                $empQ = DB::table('employees')->where('line_manager_id', $managerId);
+                $empCodes = [];
+                if (Schema::hasColumn('employees', 'employeeid')) {
+                    $empCodes = array_merge($empCodes, (clone $empQ)->pluck('employeeid')->filter()->toArray());
+                }
+                if (Schema::hasColumn('employees', 'emp_code')) {
+                    $empCodes = array_merge($empCodes, (clone $empQ)->pluck('emp_code')->filter()->toArray());
+                }
+                $assignedCodes = array_merge($assignedCodes, $empCodes);
+            }
+
+            // Filter out empty values and manager's own codes
+            $managerCodes = array_filter([$manager->employee_code, $manager->username]);
+            $assignedCodes = array_values(array_unique(array_filter($assignedCodes, function($c) use ($managerCodes) {
+                return !empty($c) && !in_array($c, $managerCodes);
+            })));
 
             if (empty($assignedCodes)) {
                 return response()->json([
-                    'status' => 'error',
-                    'message' => 'No team members are currently assigned to ' . $manager->name . '.'
-                ], 400);
+                    'status' => 'warning',
+                    'message' => 'No team members are currently assigned to ' . ($manager->name ?: $manager->username) . '. Please assign team members first.'
+                ], 200);
             }
 
             // Load manager custom competencies or standard defaults
@@ -1553,9 +1578,13 @@ class EmployeeMasterController extends Controller
 
             if (empty($managerIds)) {
                 return response()->json([
-                    'status' => 'error',
-                    'message' => 'No line managers found with assigned team members.'
-                ], 400);
+                    'status' => 'warning',
+                    'message' => 'No line managers found in the system.',
+                    'total_managers' => 0,
+                    'total_goals_pushed' => 0,
+                    'skipped_managers_count' => 0,
+                    'skipped_managers' => []
+                ], 200);
             }
 
             $managers = User::whereIn('id', $managerIds)->get()->keyBy('id');
@@ -1572,30 +1601,78 @@ class EmployeeMasterController extends Controller
                     ->get();
                 foreach ($uRows as $ur) {
                     $c = $ur->employee_code ?: $ur->username;
-                    if ($c) $managerTeamMap[$ur->line_manager_id][] = $c;
+                    if ($c && isset($managerTeamMap[$ur->line_manager_id])) {
+                        $managerTeamMap[$ur->line_manager_id][] = $c;
+                    }
                 }
             }
 
             if ($hasMonthly && Schema::hasColumn($mTable, 'line_manager_id')) {
                 $mRows = DB::table($mTable)->whereIn('line_manager_id', $managerIds)->select('emp_id', 'line_manager_id')->get();
                 foreach ($mRows as $mr) {
-                    if ($mr->emp_id) $managerTeamMap[$mr->line_manager_id][] = $mr->emp_id;
+                    if ($mr->emp_id && isset($managerTeamMap[$mr->line_manager_id])) {
+                        $managerTeamMap[$mr->line_manager_id][] = $mr->emp_id;
+                    }
                 }
             }
 
-            // Flatten all unique employee codes to preload data in bulk
-            $allEmpCodes = [];
-            foreach ($managerTeamMap as $mId => $codes) {
-                $managerTeamMap[$mId] = array_values(array_unique(array_filter($codes)));
-                $allEmpCodes = array_merge($allEmpCodes, $managerTeamMap[$mId]);
+            if (Schema::hasTable('employees') && Schema::hasColumn('employees', 'line_manager_id')) {
+                $empCols = ['line_manager_id'];
+                if (Schema::hasColumn('employees', 'employeeid')) $empCols[] = 'employeeid';
+                if (Schema::hasColumn('employees', 'emp_code')) $empCols[] = 'emp_code';
+                $eRows = DB::table('employees')->whereIn('line_manager_id', $managerIds)->select($empCols)->get();
+                foreach ($eRows as $er) {
+                    $code = (!empty($er->employeeid)) ? $er->employeeid : ($er->emp_code ?? null);
+                    if ($code && isset($managerTeamMap[$er->line_manager_id])) {
+                        $managerTeamMap[$er->line_manager_id][] = $code;
+                    }
+                }
             }
+
+            // Separate managers into those with team members vs those without
+            $allEmpCodes = [];
+            $managersWithMembers = [];
+            $managersWithoutMembers = [];
+
+            foreach ($managerTeamMap as $mId => $codes) {
+                $manager = $managers[$mId] ?? null;
+                $managerCodes = $manager ? array_filter([$manager->employee_code, $manager->username]) : [];
+
+                // Filter duplicates, empty values, and prevent self-assignment
+                $uniqueCodes = array_values(array_unique(array_filter($codes, function ($code) use ($managerCodes) {
+                    return !empty($code) && !in_array($code, $managerCodes);
+                })));
+
+                $managerTeamMap[$mId] = $uniqueCodes;
+
+                $mgrInfo = [
+                    'id' => $mId,
+                    'name' => $manager ? ($manager->name ?: $manager->username) : "Manager #{$mId}",
+                    'employee_code' => $manager ? $manager->employee_code : null,
+                    'department' => $manager ? $manager->department : null,
+                    'member_count' => count($uniqueCodes)
+                ];
+
+                if (!empty($uniqueCodes)) {
+                    $managersWithMembers[$mId] = $mgrInfo;
+                    $allEmpCodes = array_merge($allEmpCodes, $uniqueCodes);
+                } else {
+                    $managersWithoutMembers[] = $mgrInfo;
+                }
+            }
+
             $allEmpCodes = array_values(array_unique(array_filter($allEmpCodes)));
 
             if (empty($allEmpCodes)) {
+                $skippedCount = count($managersWithoutMembers);
                 return response()->json([
-                    'status' => 'error',
-                    'message' => 'No team members are currently assigned to any line manager.'
-                ], 400);
+                    'status' => 'warning',
+                    'message' => "None of the {$skippedCount} line manager(s) currently have team members assigned. Please assign members before pushing goals.",
+                    'skipped_managers_count' => $skippedCount,
+                    'skipped_managers' => $managersWithoutMembers,
+                    'total_managers' => 0,
+                    'total_goals_pushed' => 0
+                ], 200);
             }
 
             // Preload monthly employees and users
@@ -1636,7 +1713,8 @@ class EmployeeMasterController extends Controller
             $totalGoalsPushed = 0;
             $managersProcessed = 0;
 
-            foreach ($managerTeamMap as $mId => $teamCodes) {
+            foreach ($managersWithMembers as $mId => $mgrInfo) {
+                $teamCodes = $managerTeamMap[$mId] ?? [];
                 if (empty($teamCodes)) continue;
                 $manager = $managers[$mId] ?? null;
                 if (!$manager) continue;
@@ -1778,11 +1856,23 @@ class EmployeeMasterController extends Controller
                 }
             }
 
+            $skippedCount = count($managersWithoutMembers);
+            $msg = "Successfully pushed fresh Goals & Appraisal templates to {$totalGoalsPushed} team member(s) across {$managersProcessed} line manager(s).";
+            if ($skippedCount > 0) {
+                $skippedNames = collect($managersWithoutMembers)->pluck('name')->filter()->take(5)->implode(', ');
+                if ($skippedCount > 5) {
+                    $skippedNames .= ' and ' . ($skippedCount - 5) . ' more';
+                }
+                $msg .= " Note: {$skippedCount} manager(s) currently have no team members assigned and were skipped ({$skippedNames}).";
+            }
+
             return response()->json([
                 'status' => 'success',
-                'message' => "Successfully pushed fresh Goals & Appraisal templates to {$totalGoalsPushed} team member(s) across {$managersProcessed} line manager(s).",
+                'message' => $msg,
                 'total_managers' => $managersProcessed,
                 'total_goals_pushed' => $totalGoalsPushed,
+                'skipped_managers_count' => $skippedCount,
+                'skipped_managers' => $managersWithoutMembers,
             ]);
         } catch (\Throwable $e) {
             Log::error('pushAllFreshGoals error: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());

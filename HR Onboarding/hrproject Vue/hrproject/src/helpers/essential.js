@@ -170,10 +170,9 @@ const imgburl = (apiBase && apiBase.startsWith('http'))
     : window.location.origin + '/pms_backend/api/file/';
 // console.log('Final imgburl:', imgburl);
 
-const showAlert = (title, text, icon = 'success') => {
-    return Swal.fire({
+const showAlert = (title, text, icon = 'success', isHtml = false) => {
+    const config = {
         title: title,
-        text: text,
         icon: icon,
         confirmButtonColor: '#7c3aed',
         confirmButtonText: 'OK',
@@ -181,7 +180,13 @@ const showAlert = (title, text, icon = 'success') => {
         customClass: {
             container: 'swal2-topmost'
         }
-    });
+    };
+    if (isHtml || /<[a-z][\s\S]*>/i.test(text)) {
+        config.html = text;
+    } else {
+        config.text = text;
+    }
+    return Swal.fire(config);
 }
 
 const showConfirm = (title, text, icon = 'warning', confirmButtonText = 'Yes, proceed') => {

@@ -1,0 +1,67 @@
+================================================================================
+PMS HR PORTAL - ONBOARDING MODULE HANDOVER & ACTION PROMPT
+Generated: 2026-09-25
+File: C:\Users\USER\Workspaces\htdocs\PMS\ONBOARDING_HANDOVER_PROMPT.txt
+================================================================================
+
+[COPY & PASTE THE PROMPT BELOW INTO THE OTHER PMS TAB AGENT]
+--------------------------------------------------------------------------------
+Hello! We need to continue work on the Employee Onboarding module of the Melcom HR Portal (PMS). 
+
+Here is the exact state of what has already been completed, followed by the current UI issue you need to resolve:
+
+### 1. WHAT HAS ALREADY BEEN DONE & VERIFIED:
+1. **Central Database (Server 17) Safe Backup & Restore to Server 20**:
+   - Central DB (Server 17: 192.168.0.17:3306, db: hrproject) was backed up using a read-only, non-locking dump (--single-transaction --quick --skip-lock-tables). Zero records were modified, deleted, or altered on Server 17.
+   - Pre-restore backup of Server 20 was saved at PMS/scratch/server20_hrproject_backup_clean.sql and PMS users were saved at PMS/scratch/server20_users_clean.sql.
+   - Server 17 data was restored into Server 20 (192.168.0.20:3306, db: hrproject).
+   - Server 20 users table was preserved so all 40 PMS portal logins, manager accounts, and permissions remain intact.
+   - PMS columns (line_manager_id, full_name, job_title, department, location) and tables (monthly_employees, appraisals, goals) are 100% intact.
+   - Total employee count on Server 20 upgraded from 3,422 to 5,714.
+
+2. **Live Incremental Sync Feature (Server 17 -> Server 20)**:
+   - Backend endpoint: POST and GET `/api/sync-central-employees` implemented in `PMS_BACKEND_LARAVEL/app/Http/Controllers/EmployeeController.php` (and mirrored in `PMS/HR Onboarding/hr/hr`).
+   - Syncs new records where `id > localMaxId` across 19 onboarding tables using `insertOrIgnore` without touching or locking Server 17.
+   - Sync button with spinner and toast alerts is already added beside the "Search Employee" button in `PMS_FRONTEND_VUE/src/views/app/OnbaordingView.vue`.
+   - Live tested: records 5713 and 5714 + 26 child rows were synced live into Server 20.
+
+3. **Preliminary UI Tweaks Made**:
+   - Header gradients changed from purple/blue to sidebar navy: `linear-gradient(135deg, #1A237E 0%, #121858 100%)`.
+   - Dropdown height & padding enlarged (`min-height: 48px`, padding `13px 44px 13px 18px`).
+   - Profile picture input replaced with a modern upload card with avatar circle, camera badge, drag-and-drop, and preview state.
+   - Code committed in git: commit `8f68c9d`.
+
+---
+
+### 2. THE CURRENT PROBLEM AT HAND (WHAT YOU NEED TO FIX):
+When opening the Onboarding page on Server 20 (http://192.168.0.20:5050/#/onboarding), the user pointed out that the Onboarding page still looks like an entirely different, legacy website and DOES NOT MATCH the modern design system of the rest of the HR Portal (PMS) as seen on the SMART Goals page (/pms/goals).
+
+Specifically, the discrepancies:
+1. **Section Headers**:
+   - Onboarding currently has thick, full-width solid navy rectangular bars (`MELCOM EMPLOYEE POSITION DETAILS`, `PERSONAL INFORMATION`) spanning across the form container with all-caps centered text.
+   - In the PMS Portal (e.g., Goals / Appraisal / Dashboard), sections are clean white cards with modern typographic headers (bold navy title `#1E293B`, muted uppercase subtitle `#64748B`, subtle accent icon or border), NOT solid colored horizontal blocks.
+2. **Tab Navigation / Wizard Steps**:
+   - Onboarding currently uses an old floating pill bar with an isolated dark blue oval pill (`Employee Information Form`) and plain text tabs (`Bank / Social Security Fund`, `Irrevocable Continuing Guarantee`, `Checklist`).
+   - This should be restyled to match the modern PMS filter pill tabs (as seen on the PMS Goals page with `ALL`, `ASSIGNED`, `SUBMITTED`, etc.) or a clean modern step wizard.
+3. **Card & Form Container Styling**:
+   - The onboarding form should sit inside modern white cards with `border-radius: 16px`, subtle border (`1px solid #E2E8F0`), soft drop shadow (`box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05)`), and clean form grid layout matching the rest of PMS.
+4. **Top Banner Consistency**:
+   - Harmonize the top "Employee Onboarding" banner typography and action buttons (`Sync Central Data` and `Search Employee`) with the PMS top banner header seen on `/pms/goals`.
+
+---
+
+### 3. ACTION PLAN & DEPLOYMENT INSTRUCTIONS:
+1. Open `C:\Users\USER\Workspaces\htdocs\PMS\PMS_FRONTEND_VUE\src\views\app\OnbaordingView.vue` and `C:\Users\USER\Workspaces\htdocs\PMS\PMS_FRONTEND_VUE\src\assets\main.css`.
+2. Redesign the section headers (`.group > h3`), tab bar (`.taber`, `.steper`), and form container cards to match the PMS design language (reference `PMS_FRONTEND_VUE/src/views/app/pms/GoalsView.vue`).
+3. Compile the frontend:
+   ```bash
+   cd C:\Users\USER\Workspaces\htdocs\PMS\PMS_FRONTEND_VUE
+   npm run build
+   ```
+4. Mirror the updated dist to the staging share:
+   ```powershell
+   robocopy "C:\Users\USER\Workspaces\htdocs\PMS\PMS_FRONTEND_VUE\dist" "\\192.168.0.24\it-software\IT DEV DAVID\PMS\pms_frontend" /MIR
+   ```
+5. Deploy to Server 20 by running `C:\xampp\htdocs\PMS\update_server20.bat` on Server 20 (or pulling from the share).
+--------------------------------------------------------------------------------
+================================================================================

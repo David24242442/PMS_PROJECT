@@ -76,6 +76,13 @@ const confirmPushFreshGoals = async () => {
         if (response.data.status === 'success') {
             showAlert('Success', response.data.message || 'Fresh Goals & Appraisal templates pushed successfully!', 'success');
             showPushFreshModal.value = false;
+            fetchUsers();
+            fetchMasterEmployees();
+        } else if (response.data.status === 'warning') {
+            showAlert('Notice', response.data.message || 'No team members are assigned to this manager.', 'warning');
+            showPushFreshModal.value = false;
+        } else {
+            showAlert('Error', response.data.message || 'Failed to push fresh goals.', 'error');
         }
     } catch (error) {
         console.error('Error pushing fresh goals:', error);
@@ -98,9 +105,45 @@ const confirmPushAllFreshGoals = async () => {
         });
         if (response.data.status === 'success') {
             pushAllResult.value = response.data;
-            showAlert('Success', response.data.message || 'Fresh Goals & Appraisal templates pushed to all team members across all line managers successfully!', 'success');
             showPushAllModal.value = false;
-            fetchInitialData();
+
+            let htmlMsg = `<div class="text-left text-xs space-y-2">
+                <p class="font-bold text-gray-800">${response.data.message}</p>`;
+
+            if (response.data.skipped_managers && response.data.skipped_managers.length > 0) {
+                htmlMsg += `<div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs text-left">
+                    <p class="font-bold mb-1.5 flex items-center gap-1.5 text-amber-800">
+                        <i class="pi pi-exclamation-triangle"></i> Skipped Managers (${response.data.skipped_managers.length} without assigned members):
+                    </p>
+                    <ul class="list-disc list-inside max-h-36 overflow-y-auto space-y-1 text-[11px]">
+                        ${response.data.skipped_managers.map(m => `<li><strong>${m.name}</strong> ${m.department ? '(' + m.department + ')' : ''}</li>`).join('')}
+                    </ul>
+                </div>`;
+            }
+            htmlMsg += `</div>`;
+
+            showAlert('Goals & Appraisal Pushed', htmlMsg, 'success');
+            fetchUsers();
+            fetchMasterEmployees();
+        } else if (response.data.status === 'warning') {
+            showPushAllModal.value = false;
+            let htmlMsg = `<div class="text-left text-xs space-y-2">
+                <p class="font-bold text-gray-800">${response.data.message}</p>`;
+
+            if (response.data.skipped_managers && response.data.skipped_managers.length > 0) {
+                htmlMsg += `<div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs text-left">
+                    <p class="font-bold mb-1.5 text-amber-800 flex items-center gap-1.5">
+                        <i class="pi pi-exclamation-triangle"></i> Line Managers without members:
+                    </p>
+                    <ul class="list-disc list-inside max-h-36 overflow-y-auto space-y-1 text-[11px]">
+                        ${response.data.skipped_managers.map(m => `<li><strong>${m.name}</strong> ${m.department ? '(' + m.department + ')' : ''}</li>`).join('')}
+                    </ul>
+                </div>`;
+            }
+            htmlMsg += `</div>`;
+            showAlert('Notice', htmlMsg, 'warning');
+        } else {
+            showAlert('Error', response.data.message || 'Failed to push fresh goals company-wide.', 'error');
         }
     } catch (error) {
         console.error('Error pushing all fresh goals:', error);
