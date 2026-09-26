@@ -1402,8 +1402,26 @@ onMounted(() => {
 }
 
 .header-actions .btn {
-    padding: 5px 11px;
-    font-size: 0.78rem;
+    padding: 7px 14px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.header-actions .btn-secondary {
+    background: #ffffff;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.header-actions .btn-secondary:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #0f172a;
 }
 
 /* Stats Grid */
@@ -2091,13 +2109,16 @@ onMounted(() => {
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.12);
-    color: white;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: #ffffff;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #0f172a;
 }
 
 .btn-outline {
