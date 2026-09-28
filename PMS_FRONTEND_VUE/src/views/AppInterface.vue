@@ -9,10 +9,10 @@
     const userstore = useUsersStore()
     let { loguser } = userstore
 
-    const isNavExpanded = ref(false);
+    const isNavPinned = ref(localStorage.getItem('hr-nav-pinned') === 'true');
 
-    const handleHoverChange = (expanded) => {
-        isNavExpanded.value = expanded;
+    const handlePinChange = (pinned) => {
+        isNavPinned.value = pinned;
     };
 </script>
 
@@ -20,10 +20,10 @@
 
     <div id='mainDiv'>
         <LoadingOverlay />
-        <Nav @hover-change="handleHoverChange"></Nav>
+        <Nav @pin-change="handlePinChange"></Nav>
         <div
             id="mainview"
-            :class="{ 'expanded-view': isNavExpanded }"
+            :class="{ 'pinned-view': isNavPinned }"
         >
             <div style="padding:24px">
                 <RouterView></RouterView>
@@ -71,12 +71,12 @@
         top: 0;
         bottom: 0;
         overflow-y: auto;
-        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         left: 80px;
         width: calc(100% - 80px);
+        transition: left 0.25s cubic-bezier(0.25, 1, 0.5, 1), width 0.25s cubic-bezier(0.25, 1, 0.5, 1);
     }
 
-    #mainview.expanded-view {
+    #mainview.pinned-view {
         left: 260px;
         width: calc(100% - 260px);
     }

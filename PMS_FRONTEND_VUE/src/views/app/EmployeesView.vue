@@ -21,18 +21,6 @@
     let loaded = ref(false)
     let loading = ref(true)
 
-    // ── Status Filter Tab ──
-    const activeStatusTab = ref('')
-    const onStatusTabClick = (statusId) => {
-        activeStatusTab.value = statusId
-        columnFilters.status = statusId
-    }
-
-    // Keep activeStatusTab in sync if columnFilters.status is changed directly
-    watch(() => columnFilters.status, (newVal) => {
-        activeStatusTab.value = newVal || ''
-    })
-
     // ── Sorting ──
     const sortBy = ref('newest')
 
@@ -255,6 +243,18 @@
         mobileno: '',
         status: '',
         creator: ''
+    })
+
+    // ── Status Filter Tab ──
+    const activeStatusTab = ref('')
+    const onStatusTabClick = (statusId) => {
+        activeStatusTab.value = statusId
+        columnFilters.status = statusId
+    }
+
+    // Keep activeStatusTab in sync if columnFilters.status is changed directly
+    watch(() => columnFilters.status, (newVal) => {
+        activeStatusTab.value = newVal || ''
     })
 
     const hasColumnFilters = computed(() => {

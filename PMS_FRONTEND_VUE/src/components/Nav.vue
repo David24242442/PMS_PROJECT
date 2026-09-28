@@ -16,9 +16,10 @@
 
     const hasPendingAppraisals = ref(false);
 
-    // State for Hover-based Sidebar Expand/Collapse
+    // State for Pinned Sidebar & Hover Expand/Collapse
+    const isPinned = ref(localStorage.getItem('hr-nav-pinned') === 'true');
     const isHovered = ref(false);
-    const isExpanded = computed(() => isHovered.value);
+    const isExpanded = computed(() => isPinned.value || isHovered.value);
 
     // Read saved open menu preferences from localStorage
     const getSavedMenus = () => {
@@ -54,7 +55,13 @@
         applyTheme(isDarkMode.value);
     };
 
-    const emit = defineEmits(['hover-change']);
+    const emit = defineEmits(['pin-change', 'hover-change']);
+
+    const togglePin = () => {
+        isPinned.value = !isPinned.value;
+        localStorage.setItem('hr-nav-pinned', isPinned.value.toString());
+        emit('pin-change', isPinned.value);
+    };
 
     // Auto-sync open menu with active route
     const syncMenuWithRoute = (path) => {
@@ -77,15 +84,24 @@
         localStorage.setItem('hr-nav-open-menus', JSON.stringify(val));
     }, { deep: true });
 
+    // Hover intent timers: avoids frantic jitter on fast cursor movements
+    let hoverTimer = null;
     const onMouseEnter = () => {
-        isHovered.value = true;
-        emit('hover-change', true);
+        if (isPinned.value) return;
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+            isHovered.value = true;
+            emit('hover-change', true);
+        }, 50);
     };
 
     const onMouseLeave = () => {
-        isHovered.value = false;
-        // Do NOT reset openMenus! Opened tabs/sections persist open when mouse leaves.
-        emit('hover-change', false);
+        if (isPinned.value) return;
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+            isHovered.value = false;
+            emit('hover-change', false);
+        }, 140);
     };
 
     const toggleMenu = (menu) => {
@@ -107,11 +123,13 @@
     };
 
     onMounted(async () => {
-        // Clear legacy pin setting so sidebar is purely hover-driven
-        localStorage.removeItem('hr-sidebar-pinned');
-
         // Apply saved theme preference
         applyTheme(isDarkMode.value);
+
+        // Sync initial pin state with layout
+        if (isPinned.value) {
+            emit('pin-change', true);
+        }
 
         // Check for pending appraisals for navigation status
         if (loguser?.permissions?.includes('/pms/appraisal') || loguser?.position_id === 4) {
@@ -154,7 +172,16 @@
 </script>
 
 <template>
-    <aside class="sidebar-container" :class="{ 'collapsed': !isExpanded, 'expanded-hover': isExpanded }" @mouseenter="onMouseEnter" @mouseleave="onMouseLeave">
+    <aside 
+        class="sidebar-container" 
+        :class="{ 
+            'collapsed': !isExpanded, 
+            'expanded-hover': isHovered && !isPinned, 
+            'is-pinned': isPinned 
+        }" 
+        @mouseenter="onMouseEnter" 
+        @mouseleave="onMouseLeave"
+    >
         
         <!-- Sidebar Header / Logo -->
         <div class="sidebar-top">
@@ -162,6 +189,14 @@
                 <span class="logo-text" v-show="isExpanded"> HR <span class="pms-styled">PORTAL</span></span>
                 <span class="logo-text-collapsed" v-show="!isExpanded">HR</span>
             </div>
+            <button 
+                v-show="isExpanded" 
+                @click.stop="togglePin" 
+                class="pin-toggle-btn" 
+                :title="isPinned ? 'Unpin sidebar (auto-collapse)' : 'Pin sidebar permanently'"
+            >
+                <i class="pi pi-thumbtack text-xs" :class="isPinned ? 'text-amber-400 rotate-45' : 'text-white/40 hover:text-white'"></i>
+            </button>
         </div>
 
         <!-- Sidebar Navigation -->
@@ -318,7 +353,7 @@
     }
 
     .sidebar-container {
-        width: 260px;
+        width: 80px;
         height: 100vh;
         background: linear-gradient(180deg, #1A237E 0%, #121858 100%); /* Indigo 900 to Deep Navy */
         display: flex;
@@ -326,10 +361,11 @@
         position: fixed;
         top: 0;
         left: 0;
-        z-index: 1000;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 1050;
+        transition: width 0.25s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.25s ease;
         color: white; 
         border-right: 1px solid rgba(255, 255, 255, 0.1);
+        overflow-x: hidden;
     }
 
     /* Active Indicator Pill */
@@ -405,12 +441,14 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 12px 24px;
+        padding: 12px 20px;
         color: rgba(255, 255, 255, 0.95) !important;
         text-decoration: none;
-        transition: all 0.2s ease;
+        transition: background 0.18s ease, color 0.18s ease;
         cursor: pointer;
         position: relative;
+        white-space: nowrap;
+        overflow: hidden;
     }
 
     .menu-item:hover {
@@ -469,11 +507,13 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 10px 24px 10px 60px;
+        padding: 10px 20px 10px 48px;
         color: rgba(255, 255, 255, 0.8) !important;
         text-decoration: none;
         font-size: 0.85rem;
-        transition: all 0.2s ease;
+        transition: background 0.18s ease, color 0.18s ease;
+        white-space: nowrap;
+        overflow: hidden;
     }
 
     .sub-menu a:hover {
@@ -571,25 +611,65 @@
         width: 80px;
     }
 
-    /* Hover Expanded State */
-    .sidebar-container.expanded-hover {
+    /* Hover Expanded State & Pinned State */
+    .sidebar-container.expanded-hover,
+    .sidebar-container.is-pinned {
         width: 260px;
-        box-shadow: 10px 0 35px rgba(0, 0, 0, 0.45);
+    }
+
+    .sidebar-container.expanded-hover:not(.is-pinned) {
+        box-shadow: 12px 0 36px rgba(10, 15, 45, 0.45);
+    }
+
+    .pin-toggle-btn {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .pin-toggle-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
     }
 
     .collapsed .sidebar-top {
         justify-content: center;
-        padding-top: 16px;
+        padding: 0;
     }
 
     .collapsed .menu-item {
         justify-content: center;
-        width: 44px;
-        height: 44px;
+        width: 48px;
+        height: 48px;
+        padding: 0 !important;
+        margin: 4px auto;
+        border-radius: 12px;
     }
-    
+
+    .collapsed .menu-item .pi {
+        margin: 0;
+        font-size: 1.25rem;
+        min-width: unset;
+    }
+
+    .collapsed .sub-menu {
+        display: none !important;
+        max-height: 0 !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+    }
+
     .collapsed .sidebar-footer {
-        padding: 16px 10px;
+        padding: 16px 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
     }
 
     /* Theme Toggle Button */
