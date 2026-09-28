@@ -5,9 +5,37 @@ namespace App\Helpers;
 use App\Models\UserSessionLog;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Request;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
 
 class ActivityLogger
 {
+    /**
+     * Auto-ensure user_sessions_logs table exists in database.
+     */
+    public static function ensureTableExists()
+    {
+        try {
+            if (!Schema::hasTable('user_sessions_logs')) {
+                Schema::create('user_sessions_logs', function (Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('user_id')->nullable()->index();
+                    $table->string('user_name')->nullable();
+                    $table->string('employee_code')->nullable()->index();
+                    $table->string('action', 50)->index();
+                    $table->string('module', 50)->index();
+                    $table->text('description');
+                    $table->string('ip_address', 50)->nullable();
+                    $table->text('user_agent')->nullable();
+                    $table->longText('details')->nullable();
+                    $table->timestamps();
+                });
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('ActivityLogger ensureTableExists error: ' . $e->getMessage());
+        }
+    }
+
     /**
      * Record an activity or session event across the system.
      *
@@ -21,10 +49,7 @@ class ActivityLogger
     public static function log($action, $module, $description, $details = null, $user = null)
     {
         try {
-            // Ensure table exists safely
-            if (!\Illuminate\Support\Facades\Schema::hasTable('user_sessions_logs')) {
-                return null;
-            }
+            self::ensureTableExists();
 
             if (!$user) {
                 $user = Auth::user();

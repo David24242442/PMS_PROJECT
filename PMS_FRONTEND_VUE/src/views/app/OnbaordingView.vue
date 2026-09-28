@@ -1,7 +1,7 @@
 <script setup>
     import Vue3Signature from "vue3-signature"
-    import { ref, reactive, computed, onMounted , watch} from 'vue'
-    import {onBeforeRouteLeave } from 'vue-router'
+    import { ref, reactive, computed, onMounted, watch } from 'vue'
+    import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
     import { log, calculateAge, toastt, numberToWords, aToday, afDate, aDate, imgburl} from '@/helpers/essential'   
     import { mstatus,  bankaccounttype, relations, depts, regions, branchs, qualtypes, banks, familyrelation, countries, conttypes, idtypes, findidtypes, findcompany, genders, companies, findregion, findconttypes, findrecordstatus} from '@/data/masterdata'
     import axios from '@/helpers/pms_axios';
@@ -1820,11 +1820,32 @@
     /*  */
 
     /* Tabs and Steps code Start */
+        const route = useRoute()
+        const router = useRouter()
+
         let maintab = ref(1)
+
+        // Sync tab with URL query parameter (?tab=online or ?tab=5)
+        watch(() => route.query.tab, (val) => {
+            if (val === 'online' || val === '5') {
+                maintab.value = 5
+                fetchOnlineSubmissions(1)
+            } else if (val && !isNaN(val)) {
+                maintab.value = parseInt(val)
+            } else if (!val && maintab.value === 5) {
+                maintab.value = 1
+            }
+        }, { immediate: true })
+
         const changetab = (index) => {
             maintab.value = index
             if (index === 5) {
                 fetchOnlineSubmissions(1)
+                router.replace({ query: { ...route.query, tab: 'online' } }).catch(() => {})
+            } else {
+                const query = { ...route.query }
+                delete query.tab
+                router.replace({ query }).catch(() => {})
             }
         }
         let perinfostep = ref(1)

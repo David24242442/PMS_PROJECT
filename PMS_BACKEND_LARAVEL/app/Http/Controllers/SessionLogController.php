@@ -17,18 +17,27 @@ class SessionLogController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!\Illuminate\Support\Facades\Schema::hasTable('user_sessions_logs')) {
-                return response()->json([
-                    'status' => 'success',
-                    'data' => [],
-                    'stats' => [
-                        'total_logs' => 0,
-                        'today_logins' => 0,
-                        'today_activities' => 0,
-                        'unique_users_today' => 0,
-                        'data_changes_today' => 0
-                    ]
-                ]);
+            // Auto-create table if not exists
+            ActivityLogger::ensureTableExists();
+
+            $authUser = $request->user() ?: Auth::user();
+            $today = Carbon::today();
+
+            // If current user is authenticated, ensure their active session is logged for today
+            if ($authUser) {
+                $hasLoggedToday = UserSessionLog::where('user_id', $authUser->id)
+                    ->whereDate('created_at', $today)
+                    ->exists();
+
+                if (!$hasLoggedToday) {
+                    $empCode = $authUser->employee_code ?: ($authUser->emp_id ?? 'USR-' . $authUser->id);
+                    ActivityLogger::log('LOGIN', 'AUTH', "User {$authUser->name} ({$empCode}) active session verified on PMS.", [
+                        'username' => $authUser->username,
+                        'employee_code' => $empCode,
+                        'department' => $authUser->department,
+                        'role' => $authUser->admin ? 'Admin' : ($authUser->is_manager ? 'Manager' : 'Employee')
+                    ], $authUser);
+                }
             }
 
             $query = UserSessionLog::query()->orderBy('id', 'desc');
@@ -70,8 +79,7 @@ class SessionLogController extends Controller
 
             $logs = $query->paginate($perPage);
 
-            // Compute today's summary metrics
-            $today = Carbon::today();
+            // Compute summary metrics
             $stats = [
                 'total_logs' => UserSessionLog::count(),
                 'today_logins' => UserSessionLog::whereDate('created_at', $today)->where('action', 'LOGIN')->count(),
@@ -102,7 +110,8 @@ class SessionLogController extends Controller
     public function clear(Request $request)
     {
         try {
-            $user = Auth::user();
+            ActivityLogger::ensureTableExists();
+            $user = $request->user() ?: Auth::user();
             $type = $request->input('type', 'all'); // 'all', 'date_range', 'older_than'
             $deletedCount = 0;
 
@@ -169,12 +178,14 @@ class SessionLogController extends Controller
      */
     public function store(Request $request)
     {
-        $action = $request->input('action', 'VIEW');
-        $module = $request->input('module', 'APP');
-        $description = $request->input('description', 'User performed an action.');
+        ActivityLogger::ensureTableExists();
+        $user = $request->user() ?: Auth::user();
+        $action = $request->input('action', 'LOGIN');
+        $module = $request->input('module', 'AUTH');
+        $description = $request->input('description', 'User active session recorded.');
         $details = $request->input('details');
 
-        $log = ActivityLogger::log($action, $module, $description, $details);
+        $log = ActivityLogger::log($action, $module, $description, $details, $user);
 
         return response()->json([
             'status' => 'success',

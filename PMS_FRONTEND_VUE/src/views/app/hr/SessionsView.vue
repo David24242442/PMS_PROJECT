@@ -216,45 +216,94 @@ const openDetails = (log) => {
   showDetailsModal.value = true
 }
 
-onMounted(() => {
+const ensureCurrentSessionLogged = async () => {
+  try {
+    if (loguser && (loguser.name || loguser.username)) {
+      const empId = loguser.employee_code || loguser.username || ('USR-' + (loguser.id || '1'))
+      await axios.post('activity-logs', {
+        action: 'LOGIN',
+        module: 'AUTH',
+        description: `User ${loguser.name || loguser.username} (${empId}) active session verified on PMS.`,
+        details: {
+          username: loguser.username,
+          employee_code: loguser.employee_code,
+          department: loguser.department,
+          source: 'HR Portal Sessions View'
+        }
+      })
+    }
+  } catch (e) {
+    console.warn('Session beacon error:', e.message)
+  }
+}
+
+const recordAndRefresh = async () => {
+  if (loguser && (loguser.name || loguser.username)) {
+    await ensureCurrentSessionLogged()
+  }
+  await fetchLogs(currentPage.value)
+}
+
+onMounted(async () => {
   // Set default clear cutoff date to 30 days ago
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
   clearOlderThan.value = thirtyDaysAgo.toISOString().split('T')[0]
 
-  fetchLogs(1)
+  // Proactively record session if current user is logged in
+  if (loguser && (loguser.name || loguser.username)) {
+    await ensureCurrentSessionLogged()
+  }
+
+  await fetchLogs(1)
 })
 </script>
 
 <template>
   <div class="pms-sessions-container pb-12">
-    <!-- Top Header Banner -->
-    <div class="bg-gradient-to-r from-[#1A237E] to-[#283593] text-white p-6 sm:p-8 rounded-3xl shadow-lg mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <!-- Top Header Banner with High-Contrast Royal Navy Theme -->
+    <div 
+      class="pms-sessions-header-card p-6 sm:p-8 rounded-3xl shadow-xl mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6"
+      style="background: linear-gradient(135deg, #1A237E 0%, #0D47A1 50%, #1565C0 100%) !important; color: #ffffff !important;"
+    >
       <div class="flex items-center gap-4">
-        <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-cyan-300 text-2xl shadow-inner">
+        <div 
+          class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-inner shrink-0"
+          style="background: rgba(255, 255, 255, 0.18) !important; border: 1px solid rgba(255, 255, 255, 0.3) !important; color: #80D8FF !important;"
+        >
           <i class="pi pi-history"></i>
         </div>
         <div>
-          <div class="flex items-center gap-2 mb-1">
-            <span class="text-[11px] font-black uppercase tracking-widest text-cyan-300 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span 
+              class="text-[11px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full"
+              style="background: rgba(255, 255, 255, 0.2) !important; color: #80D8FF !important; border: 1px solid rgba(255, 255, 255, 0.3) !important;"
+            >
               HR Administration &amp; Security
             </span>
           </div>
-          <h1 class="text-2xl sm:text-3xl font-black tracking-tight text-white m-0">
+          <h1 
+            class="text-2xl sm:text-3xl font-black tracking-tight m-0"
+            style="color: #ffffff !important; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;"
+          >
             User Sessions &amp; Activity Logs
           </h1>
-          <p class="text-indigo-200 text-sm mt-1 mb-0 font-medium">
+          <p 
+            class="text-sm mt-1.5 mb-0 font-medium"
+            style="color: #E0E7FF !important;"
+          >
             Audit trail tracking user logins, employee creations, edits, approvals, and system-wide activities.
           </p>
         </div>
       </div>
 
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 shrink-0">
         <button
           type="button"
-          @click="fetchLogs(currentPage)"
+          @click="recordAndRefresh"
           :disabled="loading"
-          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm border border-white/20 transition-all cursor-pointer"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
+          style="background: rgba(255, 255, 255, 0.2) !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.35) !important;"
         >
           <i class="pi pi-refresh" :class="{ 'animate-spin': loading }"></i>
           <span>Refresh</span>
@@ -263,7 +312,7 @@ onMounted(() => {
         <button
           type="button"
           @click="showClearModal = true"
-          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-md transition-all cursor-pointer"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-md transition-all cursor-pointer hover:scale-[1.02]"
         >
           <i class="pi pi-trash"></i>
           <span>Delete / Clear Logs</span>
@@ -718,6 +767,16 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.pms-sessions-header-card {
+  background: linear-gradient(135deg, #1A237E 0%, #0D47A1 50%, #1565C0 100%) !important;
+  color: #ffffff !important;
+}
+.pms-sessions-header-card h1 {
+  color: #ffffff !important;
+}
+.pms-sessions-header-card p {
+  color: #E0E7FF !important;
+}
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out forwards;
 }

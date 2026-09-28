@@ -29,15 +29,60 @@ use App\Models\Upload;
 use App\Models\User;
 use App\Helpers\ActivityLogger;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
 
 class OnlineOnboardingController extends Controller
 {
+    /**
+     * Auto-ensure online_onboardings table and created_by column exist in database.
+     */
+    public static function ensureTableExists()
+    {
+        try {
+            if (!Schema::hasTable('online_onboardings')) {
+                Schema::create('online_onboardings', function (Blueprint $table) {
+                    $table->id();
+                    $table->string('reference_number')->unique();
+                    $table->string('candidate_name');
+                    $table->string('ghcardno')->nullable()->index();
+                    $table->string('mobileno')->nullable();
+                    $table->string('email')->nullable();
+                    $table->string('position')->nullable();
+                    $table->string('department')->nullable();
+                    $table->string('branch')->nullable();
+                    $table->string('company')->nullable();
+                    $table->longText('submission_data')->nullable();
+                    $table->string('status')->default('pending')->index();
+                    $table->text('rejection_reason')->nullable();
+                    $table->string('created_by')->nullable();
+                    $table->unsignedBigInteger('approved_by_user_id')->nullable();
+                    $table->dateTime('approved_at')->nullable();
+                    $table->unsignedBigInteger('synced_employee_id')->nullable()->index();
+                    $table->string('ip_address')->nullable();
+                    $table->timestamps();
+                });
+            }
+            if (Schema::hasTable('employees')) {
+                Schema::table('employees', function (Blueprint $table) {
+                    if (!Schema::hasColumn('employees', 'created_by')) {
+                        $table->string('created_by')->nullable()->after('user_id');
+                    }
+                });
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('OnlineOnboarding ensureTableExists error: ' . $e->getMessage());
+        }
+    }
+
     /**
      * Submit an employee self-onboarding application from the public online portal.
      * Stored as a Pending Online Submission ready for HR review & sync.
      */
     public function submit(Request $request)
     {
+        self::ensureTableExists();
+
         // 1. Validate required candidate fields
         $rules = [
             'emp.firstname' => 'required|string|max:100',
@@ -190,13 +235,7 @@ class OnlineOnboardingController extends Controller
     public function index(Request $request)
     {
         try {
-            if (!\Illuminate\Support\Facades\Schema::hasTable('online_onboardings')) {
-                return response()->json([
-                    'status' => 'success',
-                    'data' => [],
-                    'stats' => ['total' => 0, 'pending' => 0, 'approved' => 0, 'rejected' => 0]
-                ]);
-            }
+            self::ensureTableExists();
 
             $query = OnlineOnboarding::query()->orderBy('id', 'desc');
 

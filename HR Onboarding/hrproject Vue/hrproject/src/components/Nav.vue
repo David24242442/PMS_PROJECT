@@ -119,6 +119,29 @@
                 console.warn('Failed to get goals for nav - not authenticated or no access', e.message);
             }
         }
+
+        // Fetch pending online submissions count
+        fetchPendingOnline();
+    });
+
+    const pendingOnlineCount = ref(0);
+    const fetchPendingOnline = async () => {
+        try {
+            const res = await axios.get('online-onboardings', { params: { per_page: 1 } });
+            if (res.data && res.data.stats) {
+                pendingOnlineCount.value = res.data.stats.pending || 0;
+            }
+        } catch (e) {
+            // silent
+        }
+    };
+
+    const isOnboardingMainActive = computed(() => {
+        return route.path === '/onboarding' && route.query.tab !== 'online' && route.query.tab !== '5';
+    });
+
+    const isOnlineTabActive = computed(() => {
+        return route.path === '/onboarding' && (route.query.tab === 'online' || route.query.tab === '5');
     });
 
 </script>
@@ -153,13 +176,29 @@
                     <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
                 </div>
                 <div class="sub-menu" v-show="isExpanded">
-                    <router-link v-if="loguser?.permissions?.includes('/onboarding')" to="/onboarding">
+                    <router-link 
+                        v-if="loguser?.permissions?.includes('/onboarding')" 
+                        to="/onboarding"
+                        :class="{ 'router-link-active': isOnboardingMainActive }"
+                    >
                         <span class="pi pi-list"></span>
                         Onboarding
                     </router-link>
                     <router-link v-if="loguser?.permissions?.includes('/employees')" to="/employees">
                         <span class="pi pi-users"></span>
                         Employees
+                    </router-link>
+                    <router-link 
+                        v-if="loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees') || loguser?.admin || loguser?.position_id === 4" 
+                        to="/onboarding?tab=online"
+                        :class="{ 'router-link-active': isOnlineTabActive }"
+                        class="flex items-center justify-between"
+                    >
+                        <div class="flex items-center gap-2">
+                            <span class="pi pi-globe"></span>
+                            <span>Online Onboarding</span>
+                        </div>
+                        <span v-if="pendingOnlineCount > 0" class="sub-menu-badge">{{ pendingOnlineCount }}</span>
                     </router-link>
                 </div>
             </div>
@@ -444,6 +483,18 @@
         color: #818cf8 !important; /* Indigo 400 */
         font-weight: 600;
         background: rgba(99, 102, 241, 0.1);
+    }
+
+    .sub-menu-badge {
+        margin-left: auto;
+        padding: 2px 7px;
+        border-radius: 9999px;
+        font-size: 10px;
+        font-weight: 800;
+        background: #ef4444;
+        color: #ffffff !important;
+        line-height: 1;
+        box-shadow: 0 1px 3px rgba(239, 68, 68, 0.4);
     }
 
     .sidebar-footer {
