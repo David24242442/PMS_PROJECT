@@ -100,7 +100,7 @@ class EmployeeController extends Controller
                 if($data['op'] == 'cont'){
                     $val = "%$val%";
                 }
-
+                
                 if($data['cond'] == "a"){
                     if($data['attr'] == 'creator'){
                         $employees->whereHas('creator', function ($query) use ($val, $op) {
@@ -114,7 +114,7 @@ class EmployeeController extends Controller
                     }else{
                         $employees->where($data['attr'], $op, $val);
                     }
-
+                    
                 }else{
                     if($data['attr'] == 'creator'){
                         $employees->orWhereHas('creator', function ($query) use ($val, $op) {
@@ -128,13 +128,13 @@ class EmployeeController extends Controller
                     }else{
                         $employees->orWhere($data['attr'], $op, $val);
                     }
-
+                    
                 }
             }
 
-
+            
         }
-
+        
         if($request->createdfrom){
             $employees = $employees->where('created_at', '>=', $request->createdfrom);
         }
@@ -989,6 +989,16 @@ class EmployeeController extends Controller
             }
         }
         
+        try {
+            $candFullName = trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''));
+            \App\Helpers\ActivityLogger::log('CREATE', 'ONBOARDING', "Internal employee onboarding created for {$candFullName} (ID: " . ($emp->employeeid ?: $emp->emp_code) . ").", [
+                'employee_id' => $emp->id,
+                'employee_code' => $emp->employeeid ?: $emp->emp_code,
+                'name' => $candFullName,
+                'position' => $emp->joiningposition
+            ]);
+        } catch (\Throwable $e) {}
+
         return $emp->load(['educations.files', 'workexps', 'refs', 'childrens', 'wives', 'soccontact', 'econs.files', 'lasthistory.creator:id,name',/* 'guarantos.files', */ 'presentjob', 'profilepicture', 'ghcard', 'signature', 'guarsignature','appletters','appointmentletters','probationconfs','cv','petratrust', 'nhis','birthcert','pclearanceform','ssnit', 'unioninfo','workpermit', 'driverlicense.files', 'nominee.files']);
 
     }
@@ -1005,6 +1015,15 @@ class EmployeeController extends Controller
             'recordstatus' => 0,
             'details' => 'Employee status is updated'
         ]);
+
+        try {
+            $candFullName = trim(($emp->firstname ?? '') . ' ' . ($emp->surname ?? ''));
+            \App\Helpers\ActivityLogger::log('UPDATE', 'ONBOARDING', "Employee status changed to '{$request->status}' for {$candFullName} (" . ($emp->employeeid ?: $emp->emp_code) . ").", [
+                'employee_id' => $emp->id,
+                'employee_code' => $emp->employeeid ?: $emp->emp_code,
+                'new_status' => $request->status
+            ]);
+        } catch (\Throwable $e) {}
 
         return 'ok';
 
@@ -1463,8 +1482,8 @@ class EmployeeController extends Controller
               ->orWhere('employeeid', $data)
               ->orWhere('emp_code', $data);
         })->first();
-        return $emp;
 
+        return $emp;
     }
 
     /**

@@ -93,6 +93,13 @@
     };
 
     const logout = () => {
+        try {
+            axios.post('activity-logs', {
+                action: 'LOGOUT',
+                module: 'AUTH',
+                description: `User ${loguser?.name || 'User'} (${loguser?.employee_code || loguser?.username || ''}) logged out of PMS portal.`
+            }).catch(() => {});
+        } catch(e) {}
         setloguser(null)
         localStorage.removeItem('hrproject_user');
         localStorage.removeItem('hrproject_user_token');
@@ -168,7 +175,7 @@
             </router-link>
 
             <!-- Onboarding Group -->
-            <div v-if="isManager && (loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees'))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.onboarding && isExpanded }">
+            <div v-if="isManager && (loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees') || loguser?.permissions?.includes('/onboarding/online'))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.onboarding && isExpanded }">
                 <div class="menu-item" @click="toggleMenu('onboarding')" :title="!isExpanded ? 'Onboarding' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-briefcase"></span>
@@ -185,7 +192,7 @@
                         Employees
                     </router-link>
                     <router-link 
-                        v-if="loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees') || loguser?.admin || loguser?.position_id === 4" 
+                        v-if="loguser?.permissions?.includes('/onboarding/online') || loguser?.admin || loguser?.position_id === 4" 
                         to="/onboarding/online"
                         class="flex items-center justify-between"
                     >
@@ -231,7 +238,7 @@
             </div>
 
             <!-- Admin Group - Manager / Admin Only -->
-            <div v-if="isManager && (loguser?.admin || loguser?.position_id === 4 || ['/users', '/pms/employee-master', '/hr/manage-employees'].some(p => loguser?.permissions?.includes(p)))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.admin && isExpanded }">
+            <div v-if="isManager && (loguser?.admin || loguser?.position_id === 4 || ['/users', '/pms/employee-master', '/hr/manage-employees', '/hr/sessions'].some(p => loguser?.permissions?.includes(p)))" class="menu-item-wrapper dropdown" :class="{ 'showMenu': openMenus.admin && isExpanded }">
                 <div class="menu-item" @click="toggleMenu('admin')" :title="!isExpanded ? 'HR Admin' : ''">
                     <div class="active-indicator"></div>
                     <span class="pi pi-users"></span>
@@ -251,7 +258,7 @@
                         <span class="pi pi-id-card"></span>
                         Manage Employees
                     </router-link>
-                    <router-link v-if="loguser?.admin || loguser?.position_id === 4 || loguser?.permissions?.includes('/hr/manage-employees') || loguser?.permissions?.includes('/hr/sessions') || loguser?.is_manager" to="/hr/sessions">
+                    <router-link v-if="loguser?.admin || loguser?.position_id === 4 || loguser?.permissions?.includes('/hr/sessions')" to="/hr/sessions">
                         <span class="pi pi-history"></span>
                         Sessions
                     </router-link>

@@ -31,6 +31,11 @@ Route::post('/login', [APIUserController::class, 'login']);
 Route::post('/public/onboard', [OnlineOnboardingController::class, 'submit']);
 Route::get('/public/onboarding-meta', [OnlineOnboardingController::class, 'metadata']);
 
+// Portal Session Heartbeat & Activity Logging (Public/Token-agnostic fallback)
+Route::post('/activity-logs/ping', [SessionLogController::class, 'ping']);
+Route::get('/activity-logs/ping', [SessionLogController::class, 'ping']);
+Route::post('/activity-logs', [SessionLogController::class, 'store']);
+
 // Emergency route to fix DB
 Route::get('/fix-db', function() {
     if (!Schema::hasColumn('users', 'department')) {
@@ -377,6 +382,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Sessions & Activity Logs Routes
     Route::get('/activity-logs', [SessionLogController::class, 'index']);
     Route::post('/activity-logs', [SessionLogController::class, 'store']);
+    Route::post('/activity-logs/ping', [SessionLogController::class, 'ping']);
+    Route::get('/activity-logs/ping', [SessionLogController::class, 'ping']);
     Route::post('/activity-logs/clear', [SessionLogController::class, 'clear']);
     Route::delete('/activity-logs/clear', [SessionLogController::class, 'clear']);
 

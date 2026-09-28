@@ -51,13 +51,40 @@ class ActivityLogger
         try {
             self::ensureTableExists();
 
+            // 1. Check passed user object
             if (!$user) {
-                $user = Auth::user();
+                $user = Auth::user() ?: Request::user();
             }
 
-            $userId = $user ? $user->id : null;
-            $userName = $user ? ($user->name ?: ($user->username ?: 'User #' . $userId)) : 'System / Guest';
-            $empCode = $user ? ($user->employee_code ?: ($user->emp_id ?? null)) : null;
+            // 2. Check Bearer token if user is still not resolved
+            if (!$user) {
+                try {
+                    $bearer = Request::bearerToken();
+                    if ($bearer && class_exists('\Laravel\Sanctum\PersonalAccessToken')) {
+                        $tokenModel = \Laravel\Sanctum\PersonalAccessToken::findToken($bearer);
+                        if ($tokenModel && $tokenModel->tokenable) {
+                            $user = $tokenModel->tokenable;
+                        }
+                    }
+                } catch (\Throwable $te) {}
+            }
+
+            // 3. Check request inputs if still not resolved
+            if (!$user) {
+                $reqUserId = Request::input('user_id') ?: Request::input('auth_user_id');
+                $reqEmpCode = Request::input('employee_code') ?: Request::input('emp_code') ?: Request::input('username');
+                if ($reqUserId) {
+                    $user = \App\Models\User::find($reqUserId);
+                } elseif ($reqEmpCode) {
+                    $user = \App\Models\User::where('employee_code', $reqEmpCode)
+                        ->orWhere('username', $reqEmpCode)
+                        ->first();
+                }
+            }
+
+            $userId = $user ? $user->id : (Request::input('user_id') ?: null);
+            $userName = $user ? ($user->name ?: ($user->username ?: 'User #' . $userId)) : (Request::input('user_name') ?: Request::input('candidate_name') ?: 'Portal User');
+            $empCode = $user ? ($user->employee_code ?: ($user->emp_id ?? null)) : (Request::input('employee_code') ?: Request::input('emp_code') ?: null);
 
             $ip = Request::ip();
             $userAgent = Request::header('User-Agent');

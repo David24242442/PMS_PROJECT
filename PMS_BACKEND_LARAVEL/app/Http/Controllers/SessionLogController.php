@@ -21,6 +21,16 @@ class SessionLogController extends Controller
             ActivityLogger::ensureTableExists();
 
             $authUser = $request->user() ?: Auth::user();
+            if (!$authUser && $request->bearerToken() && class_exists('\Laravel\Sanctum\PersonalAccessToken')) {
+                $tokenModel = \Laravel\Sanctum\PersonalAccessToken::findToken($request->bearerToken());
+                if ($tokenModel && $tokenModel->tokenable) {
+                    $authUser = $tokenModel->tokenable;
+                }
+            }
+            if (!$authUser && $request->filled('user_id')) {
+                $authUser = \App\Models\User::find($request->input('user_id'));
+            }
+
             $today = Carbon::today();
 
             // If current user is authenticated, ensure their active session is logged for today
@@ -191,5 +201,65 @@ class SessionLogController extends Controller
             'status' => 'success',
             'data' => $log
         ]);
+    }
+
+    /**
+     * Record a portal access ping when any user visits or navigates the portal.
+     */
+    public function ping(Request $request)
+    {
+        ActivityLogger::ensureTableExists();
+
+        $authUser = $request->user() ?: Auth::user();
+        if (!$authUser && $request->bearerToken() && class_exists('\Laravel\Sanctum\PersonalAccessToken')) {
+            $tokenModel = \Laravel\Sanctum\PersonalAccessToken::findToken($request->bearerToken());
+            if ($tokenModel && $tokenModel->tokenable) {
+                $authUser = $tokenModel->tokenable;
+            }
+        }
+        if (!$authUser && $request->filled('user_id')) {
+            $authUser = \App\Models\User::find($request->input('user_id'));
+        }
+        if (!$authUser && $request->filled('employee_code')) {
+            $authUser = \App\Models\User::where('employee_code', $request->input('employee_code'))
+                ->orWhere('username', $request->input('employee_code'))
+                ->first();
+        }
+
+        $userId = $authUser ? $authUser->id : $request->input('user_id');
+        $userName = $authUser ? $authUser->name : ($request->input('user_name') ?: 'Portal User');
+        $empCode = $authUser ? ($authUser->employee_code ?: $authUser->username) : $request->input('employee_code');
+        $page = $request->input('page', '/');
+        $pageTitle = $request->input('page_title', 'Portal');
+
+        // Throttle check: Don't create duplicate access log if same user accessed portal within the last 15 minutes
+        $fifteenMinutesAgo = Carbon::now()->subMinutes(15);
+        $recentLog = UserSessionLog::where(function($q) use ($userId, $empCode, $userName) {
+                if ($userId) $q->where('user_id', $userId);
+                elseif ($empCode) $q->where('employee_code', $empCode);
+                else $q->where('user_name', $userName);
+            })
+            ->where('created_at', '>=', $fifteenMinutesAgo)
+            ->whereIn('action', ['LOGIN', 'ACCESS'])
+            ->first();
+
+        if (!$recentLog) {
+            $log = ActivityLogger::log(
+                'ACCESS',
+                'AUTH',
+                "User {$userName}" . ($empCode ? " ({$empCode})" : "") . " accessed portal: {$pageTitle} ({$page}).",
+                [
+                    'page' => $page,
+                    'page_title' => $pageTitle,
+                    'user_agent' => $request->header('User-Agent'),
+                    'ip' => $request->ip()
+                ],
+                $authUser
+            );
+
+            return response()->json(['status' => 'logged', 'data' => $log]);
+        }
+
+        return response()->json(['status' => 'throttled', 'message' => 'Active session already recorded recently.']);
     }
 }

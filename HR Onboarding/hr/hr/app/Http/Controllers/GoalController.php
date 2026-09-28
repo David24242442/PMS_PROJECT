@@ -316,6 +316,15 @@ class GoalController extends Controller
         $goal = \App\Models\Goal::create($data);
         $goal->display_status = $this->computeDisplayStatus($goal);
 
+        try {
+            \App\Helpers\ActivityLogger::log('CREATE', 'PMS_GOALS', "Goal created for {$goal->candidate_name} (" . ($goal->employee_code ?: 'N/A') . ").", [
+                'goal_id' => $goal->id,
+                'candidate_name' => $goal->candidate_name,
+                'employee_code' => $goal->employee_code,
+                'year' => $goal->year
+            ]);
+        } catch (\Throwable $e) {}
+
         return response()->json([
             'status' => 'success',
             'message' => 'Goal created successfully',
@@ -366,6 +375,15 @@ class GoalController extends Controller
             $goal->update($data);
             $goal->display_status = $this->computeDisplayStatus($goal);
 
+            try {
+                \App\Helpers\ActivityLogger::log('UPDATE', 'PMS_GOALS', "Goal #{$id} updated for {$goal->candidate_name} (" . ($goal->employee_code ?: 'N/A') . ").", [
+                    'goal_id' => $goal->id,
+                    'candidate_name' => $goal->candidate_name,
+                    'employee_code' => $goal->employee_code,
+                    'status' => $goal->status
+                ]);
+            } catch (\Throwable $e) {}
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Goal updated successfully',
@@ -386,7 +404,17 @@ class GoalController extends Controller
     public function destroy($id)
     {
         $goal = \App\Models\Goal::findOrFail($id);
+        $candName = $goal->candidate_name;
+        $empCode = $goal->employee_code;
         $goal->delete();
+
+        try {
+            \App\Helpers\ActivityLogger::log('DELETE', 'PMS_GOALS', "Goal #{$id} for {$candName} ({$empCode}) was deleted.", [
+                'goal_id' => $id,
+                'candidate_name' => $candName,
+                'employee_code' => $empCode
+            ]);
+        } catch (\Throwable $e) {}
 
         return response()->json([
             'status' => 'success',
@@ -968,6 +996,14 @@ class GoalController extends Controller
                     \Log::error("GoalController@assign item failed for {$candName}: " . $itemEx->getMessage());
                 }
             }
+
+            try {
+                \App\Helpers\ActivityLogger::log('CREATE', 'PMS_GOALS', "Assigned PMS goals & appraisal to {$assignedCount} employee(s) for FY {$year}.", [
+                    'assigned_count' => $assignedCount,
+                    'year' => $year,
+                    'assign_type' => $assignType
+                ], $user);
+            } catch (\Throwable $e) {}
 
             return response()->json([
                 'status' => 'success',

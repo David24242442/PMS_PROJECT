@@ -115,6 +115,7 @@
             pages: [
                 { label: 'Dashboard', path: '/dashboard' },
                 { label: 'Onboarding', path: '/onboarding' },
+                { label: 'Online Onboarding', path: '/onboarding/online' },
                 { label: 'Employees', path: '/employees' }
             ]
         },
@@ -137,7 +138,8 @@
                 { label: 'Manage Users', path: '/users' },
                 { label: 'Line Manager Console', path: '/pms/employee-master' },
                 { label: 'Manage Employees', path: '/hr/manage-employees' },
-                { label: 'Appraisal Submissions', path: '/hr/submissions' }
+                { label: 'Appraisal Submissions', path: '/hr/submissions' },
+                { label: 'Sessions', path: '/hr/sessions' }
             ]
         }
     ]
@@ -439,12 +441,24 @@
         }
 
         // Ensure permissions array exists during edit
+        let parsedPerms = []
+        if (Array.isArray(u.permissions)) {
+            parsedPerms = [...u.permissions]
+        } else if (typeof u.permissions === 'string') {
+            try {
+                const jsonP = JSON.parse(u.permissions)
+                parsedPerms = Array.isArray(jsonP) ? jsonP : []
+            } catch (e) {
+                parsedPerms = []
+            }
+        }
+
         Object.assign(user, { 
             ...u, 
             is_manager: isMgr,
             position_id: posId || 1,
             password: '', // Kept empty; user types only if changing
-            permissions: Array.isArray(u.permissions) ? [...u.permissions] : [] 
+            permissions: parsedPerms 
         })
         creatinguser.value = true
     }

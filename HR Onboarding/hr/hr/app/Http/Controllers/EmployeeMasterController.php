@@ -1515,6 +1515,15 @@ class EmployeeMasterController extends Controller
                 }
             }
 
+            try {
+                \App\Helpers\ActivityLogger::log('CREATE', 'EMPLOYEE_MASTER', "Pushed fresh blank Goals & Appraisal templates to {$pushedCount} team member(s) under {$manager->name}.", [
+                    'manager_id' => $manager->id,
+                    'manager_name' => $manager->name,
+                    'pushed_count' => $pushedCount,
+                    'year' => $year
+                ], $manager);
+            } catch (\Throwable $e) {}
+
             return response()->json([
                 'status' => 'success',
                 'message' => "Successfully pushed fresh blank Goals & Appraisal templates to {$pushedCount} team member(s) under {$manager->name}.",
@@ -1865,6 +1874,14 @@ class EmployeeMasterController extends Controller
                 }
                 $msg .= " Note: {$skippedCount} manager(s) currently have no team members assigned and were skipped ({$skippedNames}).";
             }
+
+            try {
+                \App\Helpers\ActivityLogger::log('CREATE', 'EMPLOYEE_MASTER', "Admin pushed fresh Goals & Appraisal templates to {$totalGoalsPushed} team member(s) across {$managersProcessed} line manager(s).", [
+                    'total_goals_pushed' => $totalGoalsPushed,
+                    'managers_processed' => $managersProcessed,
+                    'year' => $year
+                ]);
+            } catch (\Throwable $e) {}
 
             return response()->json([
                 'status' => 'success',

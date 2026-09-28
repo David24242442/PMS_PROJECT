@@ -3,6 +3,7 @@ import LoginView from '../views/LoginView.vue'
 import AppInterface from '../views/AppInterface.vue'
 import NProgress from 'nprogress'
 import { useUsersStore } from '@/stores/user'
+import axios from '@/helpers/pms_axios'
 
 
 const router = createRouter({
@@ -216,14 +217,18 @@ router.beforeEach((to, from, next) => {
 
     // Restricted Administrative / HR routes
     const adminRoutes = [
-      '/dashboard', '/onboarding', '/employees', 
-      '/users', '/pms/employee-master', '/hr/submissions'
+      '/dashboard', '/onboarding', '/onboarding/online', '/employees', 
+      '/users', '/pms/employee-master', '/hr/submissions', '/hr/manage-employees', '/hr/sessions'
     ];
 
     if (adminRoutes.includes(to.path) || to.path.startsWith('/employee/')) {
        let checkPath = to.path;
        if (to.path.startsWith('/employee/')) checkPath = '/employees';
-       if (to.path.startsWith('/onboarding/')) checkPath = '/onboarding';
+       if (to.path === '/onboarding/online') {
+          checkPath = '/onboarding/online';
+       } else if (to.path.startsWith('/onboarding/')) {
+          checkPath = '/onboarding';
+       }
 
        if (!permissions.includes(checkPath)) {
           next('/pms/goals');
@@ -239,12 +244,39 @@ router.beforeEach((to, from, next) => {
   }
 })
 
+// Portal Access Heartbeat & Activity Tracking
+const pingPortalAccess = (to) => {
+  try {
+    const rawUser = localStorage.getItem('hrproject_user');
+    if (!rawUser) return;
+    const u = JSON.parse(rawUser);
+    if (!u || !u.id) return;
+
+    // Check throttle in sessionStorage
+    const lastPing = parseInt(sessionStorage.getItem('last_portal_ping_time') || '0', 10);
+    const now = Date.now();
+    // Throttle client-side pings to once per 60 seconds
+    if (now - lastPing < 60000) return;
+
+    sessionStorage.setItem('last_portal_ping_time', now.toString());
+
+    axios.post('activity-logs/ping', {
+      user_id: u.id,
+      user_name: u.name || u.username,
+      employee_code: u.employee_code || u.username,
+      page: to.path,
+      page_title: to.meta?.fullname || to.name || 'Portal'
+    }).catch(() => {});
+  } catch (e) {}
+};
+
 router.beforeEach((To,From, next) => {
   NProgress.start()       
   next()    
 }) 
-router.afterEach(() => {  
-  NProgress.done()    
+router.afterEach((to) => {  
+  NProgress.done();
+  pingPortalAccess(to);
 }) 
 
 // Global Chunk Error Auto-Recovery: Recover smoothly when new builds are deployed
