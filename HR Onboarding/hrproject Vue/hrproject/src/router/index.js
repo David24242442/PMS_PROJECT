@@ -50,6 +50,12 @@ const router = createRouter({
           component: () => import('@/views/app/OnbaordingView.vue')
         },
         {
+          path: '/onboarding/online',
+          name: 'online-onboarding-submissions',
+          meta: { fullname: 'Online Onboarding Submissions', roles: [2, 3, 4] },
+          component: () => import('@/views/app/hr/OnlineSubmissionsView.vue')
+        },
+        {
           path: '/employees',
           name: 'employees',
           meta: { fullname: 'Employees', roles: [2, 4] },
@@ -217,6 +223,7 @@ router.beforeEach((to, from, next) => {
     if (adminRoutes.includes(to.path) || to.path.startsWith('/employee/')) {
        let checkPath = to.path;
        if (to.path.startsWith('/employee/')) checkPath = '/employees';
+       if (to.path.startsWith('/onboarding/')) checkPath = '/onboarding';
 
        if (!permissions.includes(checkPath)) {
           next('/pms/goals');

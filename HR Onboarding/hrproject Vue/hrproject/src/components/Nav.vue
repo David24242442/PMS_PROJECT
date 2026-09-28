@@ -176,11 +176,7 @@
                     <span class="pi pi-chevron-down arrow" v-show="isExpanded"></span>
                 </div>
                 <div class="sub-menu" v-show="isExpanded">
-                    <router-link 
-                        v-if="loguser?.permissions?.includes('/onboarding')" 
-                        to="/onboarding"
-                        :class="{ 'router-link-active': isOnboardingMainActive }"
-                    >
+                    <router-link v-if="loguser?.permissions?.includes('/onboarding')" to="/onboarding" exact>
                         <span class="pi pi-list"></span>
                         Onboarding
                     </router-link>
@@ -190,8 +186,7 @@
                     </router-link>
                     <router-link 
                         v-if="loguser?.permissions?.includes('/onboarding') || loguser?.permissions?.includes('/employees') || loguser?.admin || loguser?.position_id === 4" 
-                        to="/onboarding?tab=online"
-                        :class="{ 'router-link-active': isOnlineTabActive }"
+                        to="/onboarding/online"
                         class="flex items-center justify-between"
                     >
                         <div class="flex items-center gap-2">
