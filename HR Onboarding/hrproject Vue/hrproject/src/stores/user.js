@@ -26,8 +26,24 @@ export const useUsersStore = defineStore('user', () => {
 
 
     
+    let loadingSafetyTimer = null
     const isLoading = ref(false)
-    const setIsLoading = (val) => isLoading.value = val
+    const setIsLoading = (val) => {
+        isLoading.value = !!val
+        if (loadingSafetyTimer) {
+            clearTimeout(loadingSafetyTimer)
+            loadingSafetyTimer = null
+        }
+        if (val) {
+            // Safety fallback: Never allow the loading overlay to freeze the interface for > 10 seconds
+            loadingSafetyTimer = setTimeout(() => {
+                if (isLoading.value) {
+                    console.warn('[PMS Safety Guard] Loading overlay auto-dismissed after 10s timeout.')
+                    isLoading.value = false
+                }
+            }, 10000)
+        }
+    }
 
     return { loguser,  authtoken,  isLoading, setloguser, getloguser, settoken, getauthtoken, setIsLoading, /* getuserperms, hasperm */}
 

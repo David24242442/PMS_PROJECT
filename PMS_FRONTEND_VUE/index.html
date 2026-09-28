@@ -6,13 +6,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
     <title>Melcom HR Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
-      // Suppress benign third-party browser extension errors (e.g. autofill / password managers / web vitals)
+      // Suppress benign third-party browser extension errors and auto-recover from stale chunks
       (function() {
+        // Auto-recover if browser tries to load deleted chunk from an old deployment
+        window.addEventListener('error', function(e) {
+          var msg = String((e && (e.message || (e.error && e.error.message))) || '');
+          if (/dynamically imported module|Unable to preload CSS|loading module from|disallowed MIME type/i.test(msg)) {
+            var reloadKey = 'pms_chunk_reload_page';
+            var last = sessionStorage.getItem(reloadKey);
+            if (!last || (Date.now() - parseInt(last, 10)) > 15000) {
+              sessionStorage.setItem(reloadKey, Date.now().toString());
+              console.warn('[PMS Cache Recovery] Reloading to fetch latest application build...');
+              window.location.reload();
+              return true;
+            }
+          }
+        }, true);
+
         function shouldSuppress(msg) {
           if (!msg) return false;
           var s = String(msg);

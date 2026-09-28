@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import AppInterface from '../views/AppInterface.vue'
 import NProgress from 'nprogress'
+import { useUsersStore } from '@/stores/user'
 
 
 const router = createRouter({
@@ -232,5 +233,35 @@ router.beforeEach((To,From, next) => {
 router.afterEach(() => {  
   NProgress.done()    
 }) 
+
+// Global Chunk Error Auto-Recovery: Recover smoothly when new builds are deployed
+router.onError((error, to) => {
+  NProgress.done()
+  try {
+    const userstore = useUsersStore()
+    userstore.setIsLoading(false)
+  } catch (e) {}
+
+  const errorMsg = error?.message || error?.toString() || ''
+  const isChunkError = 
+    errorMsg.includes('dynamically imported module') ||
+    errorMsg.includes('Failed to fetch dynamically imported module') ||
+    errorMsg.includes('Unable to preload CSS') ||
+    errorMsg.includes('Failed to load module script') ||
+    errorMsg.includes('disallowed MIME type') ||
+    errorMsg.includes('MIME type')
+
+  if (isChunkError && to?.fullPath) {
+    const reloadKey = 'pms_chunk_reload_' + to.fullPath
+    const lastReload = sessionStorage.getItem(reloadKey)
+    if (!lastReload || (Date.now() - parseInt(lastReload, 10)) > 15000) {
+      sessionStorage.setItem(reloadKey, Date.now().toString())
+      console.warn('[PMS Router] Stale bundle chunk detected. Auto-reloading route for latest build:', to.fullPath)
+      window.location.href = to.fullPath
+      return
+    }
+  }
+  console.error('[PMS Router Error]', error)
+})
 
 export default router
