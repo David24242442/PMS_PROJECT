@@ -55,7 +55,12 @@
         applyTheme(isDarkMode.value);
     };
 
-    const emit = defineEmits(['pin-change', 'hover-change']);
+    const emit = defineEmits(['pin-change', 'hover-change', 'nav-change']);
+
+    // Emit nav-change to coordinate layout with AppInterface
+    watch(isExpanded, (val) => {
+        emit('nav-change', val);
+    }, { immediate: true });
 
     const togglePin = () => {
         isPinned.value = !isPinned.value;
@@ -362,7 +367,8 @@
         top: 0;
         left: 0;
         z-index: 1050;
-        transition: width 0.25s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.25s ease;
+        transition: width 0.22s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.22s ease;
+        will-change: width;
         color: white; 
         border-right: 1px solid rgba(255, 255, 255, 0.1);
         overflow-x: hidden;

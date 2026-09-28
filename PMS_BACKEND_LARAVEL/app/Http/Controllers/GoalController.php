@@ -14,8 +14,73 @@ class GoalController extends Controller
     private function ensureSchema()
     {
         try {
-            if (\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+            if (!\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+                \Illuminate\Support\Facades\Schema::create('goals', function ($table) {
+                    $table->id();
+                    $table->unsignedBigInteger('user_id')->nullable();
+                    $table->unsignedBigInteger('created_by')->nullable();
+                    $table->text('title')->nullable();
+                    $table->json('description')->nullable();
+                    $table->json('purposes')->nullable();
+                    $table->json('challenges')->nullable();
+                    $table->string('category')->default('General');
+                    $table->decimal('weight', 5, 2)->default(0);
+                    $table->integer('target')->default(100);
+                    $table->integer('actual')->default(0);
+                    $table->integer('rating')->nullable();
+                    $table->string('status')->default('draft');
+                    $table->date('due_date')->nullable();
+                    $table->date('completion_date')->nullable();
+                    $table->integer('year')->nullable()->default(date('Y'));
+                    $table->string('manager_name')->nullable();
+                    $table->string('employee_code')->nullable();
+                    $table->string('candidate_name')->nullable();
+                    $table->string('department')->nullable();
+                    $table->string('location')->nullable();
+                    $table->string('job_title')->nullable();
+                    $table->json('smart_criteria')->nullable();
+                    $table->json('quarterly_tracking')->nullable();
+                    $table->longText('appraisal_data')->nullable();
+                    $table->timestamp('submitted_at')->nullable();
+                    $table->text('hr_comments')->nullable();
+                    $table->decimal('overall_rating', 3, 2)->nullable();
+                    $table->timestamps();
+                });
+            } else {
                 \Illuminate\Support\Facades\Schema::table('goals', function ($table) {
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'user_id')) {
+                        $table->unsignedBigInteger('user_id')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'year')) {
+                        $table->integer('year')->nullable()->default(date('Y'));
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'status')) {
+                        $table->string('status')->default('draft');
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'title')) {
+                        $table->text('title')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'category')) {
+                        $table->string('category')->default('General');
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'weight')) {
+                        $table->decimal('weight', 5, 2)->default(0);
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'target')) {
+                        $table->integer('target')->default(100);
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'actual')) {
+                        $table->integer('actual')->default(0);
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'rating')) {
+                        $table->integer('rating')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'due_date')) {
+                        $table->date('due_date')->nullable();
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'completion_date')) {
+                        $table->date('completion_date')->nullable();
+                    }
                     if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'created_by')) {
                         $table->unsignedBigInteger('created_by')->nullable();
                     }
@@ -139,10 +204,20 @@ class GoalController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);
             }
 
+            if (!\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+                return response()->json([
+                    'status' => 'success',
+                    'data' => []
+                ]);
+            }
+
             $isAdmin = $user && $user->admin;
 
             // Admin sees all goals; regular users see their own + their team's
-            $query = \App\Models\Goal::where('year', $year);
+            $query = \App\Models\Goal::query();
+            if (\Illuminate\Support\Facades\Schema::hasColumn('goals', 'year') && !empty($year)) {
+                $query->where('year', $year);
+            }
 
             if (!$isAdmin) {
                 $userName = $user ? trim($user->name) : '';
@@ -165,13 +240,18 @@ class GoalController extends Controller
                     }
                 } catch (\Throwable $e) {}
 
+                $hasUserId = \Illuminate\Support\Facades\Schema::hasColumn('goals', 'user_id');
                 $hasCreatedBy = \Illuminate\Support\Facades\Schema::hasColumn('goals', 'created_by');
                 $hasManagerName = \Illuminate\Support\Facades\Schema::hasColumn('goals', 'manager_name');
                 $hasEmployeeCode = \Illuminate\Support\Facades\Schema::hasColumn('goals', 'employee_code');
 
-                $query->where(function ($q) use ($userId, $userName, $userUsername, $userEmpCode, $teamUserIds, $teamEmpCodes, $hasCreatedBy, $hasManagerName, $hasEmployeeCode) {
+                $query->where(function ($q) use ($userId, $userName, $userUsername, $userEmpCode, $teamUserIds, $teamEmpCodes, $hasUserId, $hasCreatedBy, $hasManagerName, $hasEmployeeCode) {
                     // 1. Employee's own assigned goal
-                    $q->where('user_id', $userId);
+                    if ($hasUserId) {
+                        $q->where('user_id', $userId);
+                    } else {
+                        $q->whereRaw('1=1');
+                    }
 
                     if (!empty($userEmpCode) && $hasEmployeeCode) {
                         $q->orWhere('employee_code', $userEmpCode);
@@ -195,7 +275,7 @@ class GoalController extends Controller
                     }
 
                     // 4. Subordinate goals in reporting line
-                    if (!empty($teamUserIds)) {
+                    if (!empty($teamUserIds) && $hasUserId) {
                         $q->orWhereIn('user_id', $teamUserIds);
                     }
                     if (!empty($teamEmpCodes) && $hasEmployeeCode) {
@@ -204,7 +284,13 @@ class GoalController extends Controller
                 });
             }
 
-            $goals = $query->orderBy('created_at', 'desc')->get();
+            if (\Illuminate\Support\Facades\Schema::hasColumn('goals', 'created_at')) {
+                $query->orderBy('created_at', 'desc');
+            } else {
+                $query->orderBy('id', 'desc');
+            }
+
+            $goals = $query->get();
 
             // Fetch completed reviews for this year to determine review status
             $completedReviewEmpCodes = [];
@@ -299,6 +385,7 @@ class GoalController extends Controller
      */
     public function store(Request $request)
     {
+        $this->ensureSchema();
         // Debug: log what we receive
         \Log::info('GoalController@store - incoming data keys: ' . implode(', ', array_keys($request->all())));
         
@@ -469,23 +556,41 @@ class GoalController extends Controller
     public function allAppraisals(Request $request)
     {
         try {
+            $this->ensureSchema();
             $year = $request->get('year', date('Y'));
             $user = $request->user();
             $isAdmin = $user && $user->admin;
 
-            $query = \App\Models\Goal::with('user')
-                ->where('year', $year)
-                ->whereNotNull('appraisal_data')
-                ->where('status', '!=', 'draft');
+            if (!\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+                return response()->json([
+                    'status' => 'success',
+                    'data' => []
+                ]);
+            }
+
+            $query = \App\Models\Goal::with('user');
+            if (\Illuminate\Support\Facades\Schema::hasColumn('goals', 'year') && !empty($year)) {
+                $query->where('year', $year);
+            }
+            if (\Illuminate\Support\Facades\Schema::hasColumn('goals', 'appraisal_data')) {
+                $query->whereNotNull('appraisal_data');
+            }
+            if (\Illuminate\Support\Facades\Schema::hasColumn('goals', 'status')) {
+                $query->where('status', '!=', 'draft');
+            }
 
             // Non-admin users only see their own submissions
-            if (!$isAdmin && $user) {
+            if (!$isAdmin && $user && \Illuminate\Support\Facades\Schema::hasColumn('goals', 'user_id')) {
                 $query->where('user_id', $user->id);
             }
 
-            $goals = $query->orderBy('submitted_at', 'desc')
-                ->orderBy('updated_at', 'desc')
-                ->get();
+            if (\Illuminate\Support\Facades\Schema::hasColumn('goals', 'submitted_at')) {
+                $query->orderBy('submitted_at', 'desc');
+            }
+            if (\Illuminate\Support\Facades\Schema::hasColumn('goals', 'updated_at')) {
+                $query->orderBy('updated_at', 'desc');
+            }
+            $goals = $query->get();
 
             $goals->each(function ($goal) {
                 if ((empty($goal->job_title) || in_array($goal->job_title, ['Employee', 'N/A', ''])) && !empty($goal->employee_code)) {
@@ -507,7 +612,8 @@ class GoalController extends Controller
             \Log::error('Error in allAppraisals: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Database error. Please ensure migrations are run.'
+                'message' => 'Database error: ' . $e->getMessage(),
+                'data' => []
             ], 500);
         }
     }
@@ -537,12 +643,24 @@ class GoalController extends Controller
      */
     public function appraisals(Request $request)
     {
+        $this->ensureSchema();
         $year = $request->get('year', date('Y'));
         $user = $request->user();
         $userId = $request->get('user_id', $user ? $user->id : null);
         $goalId = $request->get('goal_id');
 
         \Log::info("GoalController@appraisals - year: $year, userId: $userId, goalId: $goalId");
+
+        if (!\Illuminate\Support\Facades\Schema::hasTable('goals')) {
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'goal' => null,
+                    'appraisal_data' => null,
+                    'all_goals' => []
+                ]
+            ]);
+        }
 
         // If a specific goal_id is provided, prioritize it
         if ($goalId) {
@@ -604,6 +722,7 @@ class GoalController extends Controller
      */
     public function assign(Request $request)
     {
+        $this->ensureSchema();
         try {
             $user = $request->user();
             if (!$user) {
