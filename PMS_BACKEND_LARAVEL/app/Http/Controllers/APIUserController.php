@@ -283,6 +283,11 @@ class APIUserController extends Controller
 
         $u = User::create($userDetails);
 
+        \App\Helpers\ActivityLogger::log('CREATE', 'USERS', "Created user account for {$u->name} ({$u->username}) with role " . ($u->admin ? 'Admin' : ($u->is_manager ? 'Manager' : 'Employee')) . ".", [
+            'created_user_id' => $u->id,
+            'username' => $u->username
+        ]);
+
         return $u;
     }
 
@@ -337,6 +342,11 @@ class APIUserController extends Controller
             
             $u->update($pass);
         }
+
+        \App\Helpers\ActivityLogger::log('UPDATE', 'USERS', "Updated user details for {$u->name} ({$u->username}).", [
+            'updated_user_id' => $u->id,
+            'username' => $u->username
+        ]);
 
         return $u;
 
@@ -630,6 +640,14 @@ class APIUserController extends Controller
         Auth::login($user);
         $token = $user->createToken('api_token')->plainTextToken;
 
+        // Log login session
+        \App\Helpers\ActivityLogger::log('LOGIN', 'AUTH', "User {$user->name} (" . ($user->employee_code ?: $user->username) . ") logged into PMS.", [
+            'username' => $user->username,
+            'employee_code' => $user->employee_code,
+            'department' => $user->department,
+            'role' => $user->admin ? 'Admin' : ($user->is_manager ? 'Manager' : 'Employee')
+        ], $user);
+
         return response()->json([
             'result' => true,
             'user' => $user,
@@ -684,7 +702,13 @@ class APIUserController extends Controller
             }
 
             $userName = $user->name ?: $user->username;
+            $userCode = $user->employee_code ?: $user->username;
             $user->delete();
+
+            \App\Helpers\ActivityLogger::log('DELETE', 'USERS', "User account {$userName} ({$userCode}) was deleted by " . ($currentUser ? $currentUser->name : 'Admin') . ".", [
+                'deleted_user_id' => $userId,
+                'deleted_username' => $userName
+            ], $currentUser);
 
             return response()->json([
                 'status' => 'success',

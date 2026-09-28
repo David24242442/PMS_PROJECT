@@ -8,6 +8,7 @@ use App\Http\Controllers\APIUserController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\OnlineOnboardingController;
+use App\Http\Controllers\SessionLogController;
 
 /*
 |--------------------------------------------------------------------------
@@ -367,6 +368,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sync-central-employees', [EmployeeController::class, 'syncFromCentral']);
     Route::get('/sync-central-employees', [EmployeeController::class, 'syncFromCentral']);
 
+    // Online Onboarding Management Routes
+    Route::get('/online-onboardings', [OnlineOnboardingController::class, 'index']);
+    Route::get('/online-onboardings/{id}', [OnlineOnboardingController::class, 'show']);
+    Route::post('/online-onboardings/{id}/approve-and-sync', [OnlineOnboardingController::class, 'approveAndSync']);
+    Route::post('/online-onboardings/{id}/reject', [OnlineOnboardingController::class, 'reject']);
+
+    // Sessions & Activity Logs Routes
+    Route::get('/activity-logs', [SessionLogController::class, 'index']);
+    Route::post('/activity-logs', [SessionLogController::class, 'store']);
+    Route::post('/activity-logs/clear', [SessionLogController::class, 'clear']);
+    Route::delete('/activity-logs/clear', [SessionLogController::class, 'clear']);
+
     // PMS Routes
     Route::prefix('pms')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\PMSDashboardController::class, 'index']);
@@ -426,6 +439,61 @@ Route::get('/pms/monthly-employees/clean-reingest', [\App\Http\Controllers\Month
 Route::post('/pms/monthly-employees/clean-reingest', [\App\Http\Controllers\MonthlyEmployeeController::class, 'cleanReingest']);
 Route::get('/pms/clear-test-data', [\App\Http\Controllers\GoalController::class, 'clearTestData']);
 Route::post('/pms/clear-test-data', [\App\Http\Controllers\GoalController::class, 'clearTestData']);
+
+// Setup tables for Online Onboardings and Sessions Logs
+Route::get('/setup-online-sessions-tables', function() {
+    try {
+        if (!Schema::hasTable('online_onboardings')) {
+            Schema::create('online_onboardings', function (Blueprint $table) {
+                $table->id();
+                $table->string('reference_number')->unique();
+                $table->string('candidate_name');
+                $table->string('ghcardno')->nullable()->index();
+                $table->string('mobileno')->nullable();
+                $table->string('email')->nullable();
+                $table->string('position')->nullable();
+                $table->string('department')->nullable();
+                $table->string('branch')->nullable();
+                $table->string('company')->nullable();
+                $table->longText('submission_data')->nullable();
+                $table->string('status')->default('pending')->index();
+                $table->text('rejection_reason')->nullable();
+                $table->string('created_by')->nullable();
+                $table->unsignedBigInteger('approved_by_user_id')->nullable();
+                $table->dateTime('approved_at')->nullable();
+                $table->unsignedBigInteger('synced_employee_id')->nullable()->index();
+                $table->string('ip_address')->nullable();
+                $table->timestamps();
+            });
+        }
+        if (!Schema::hasTable('user_sessions_logs')) {
+            Schema::create('user_sessions_logs', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('user_id')->nullable()->index();
+                $table->string('user_name')->nullable();
+                $table->string('employee_code')->nullable()->index();
+                $table->string('action', 50)->index();
+                $table->string('module', 50)->index();
+                $table->text('description');
+                $table->string('ip_address', 50)->nullable();
+                $table->text('user_agent')->nullable();
+                $table->longText('details')->nullable();
+                $table->timestamps();
+            });
+        }
+        if (Schema::hasTable('employees')) {
+            Schema::table('employees', function (Blueprint $table) {
+                if (!Schema::hasColumn('employees', 'created_by')) {
+                    $table->string('created_by')->nullable()->after('user_id');
+                }
+            });
+        }
+        return response()->json(['status' => 'success', 'message' => 'Online Onboardings and Sessions Logs tables are ready!']);
+    } catch (\Throwable $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    }
+});
+
 
 
 

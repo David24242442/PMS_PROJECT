@@ -63,7 +63,7 @@
             openMenus.value.pms = true;
         } else if (path.startsWith('/onboarding') || path.startsWith('/employees') || path.startsWith('/employee')) {
             openMenus.value.onboarding = true;
-        } else if (path.startsWith('/users') || path.startsWith('/hr/manage-employees')) {
+        } else if (path.startsWith('/users') || path.startsWith('/hr/manage-employees') || path.startsWith('/hr/sessions')) {
             openMenus.value.admin = true;
         }
     };
@@ -216,6 +216,10 @@
                     <router-link v-if="loguser?.admin || loguser?.position_id === 4 || loguser?.permissions?.includes('/hr/manage-employees')" to="/hr/manage-employees">
                         <span class="pi pi-id-card"></span>
                         Manage Employees
+                    </router-link>
+                    <router-link v-if="loguser?.admin || loguser?.position_id === 4 || loguser?.permissions?.includes('/hr/manage-employees') || loguser?.permissions?.includes('/hr/sessions') || loguser?.is_manager" to="/hr/sessions">
+                        <span class="pi pi-history"></span>
+                        Sessions
                     </router-link>
                 </div>
             </div>

@@ -40,7 +40,7 @@
               type="button"
               @click="promptClearDraft"
               title="Reset and start clean form"
-              class="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold transition flex items-center gap-1"
+              class="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
             >
               <i class="pi pi-refresh text-xs"></i>
               <span class="hidden sm:inline">Reset</span>
@@ -77,7 +77,7 @@
             <button
               type="button"
               @click="copyReference(successData.reference_number)"
-              class="text-xs text-[#1A237E] hover:underline font-bold flex items-center gap-1"
+              class="text-xs text-[#1A237E] hover:underline font-bold flex items-center gap-1 cursor-pointer"
             >
               <i class="pi pi-copy text-xs"></i>
               <span>{{ copyStatusText }}</span>
@@ -111,7 +111,7 @@
           <button
             type="button"
             @click="printSummary"
-            class="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#1A237E] text-white font-bold text-sm hover:bg-[#121858] transition flex items-center justify-center gap-2 shadow-md"
+            class="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#1A237E] text-white font-bold text-sm hover:bg-[#121858] transition flex items-center justify-center gap-2 shadow-md cursor-pointer"
           >
             <i class="pi pi-print"></i>
             Print / Save Confirmation (PDF)
@@ -119,7 +119,7 @@
           <button
             type="button"
             @click="startNewApplication"
-            class="w-full sm:w-auto px-6 py-3 rounded-xl border border-slate-300 text-slate-700 font-bold text-sm hover:bg-slate-100 transition"
+            class="w-full sm:w-auto px-6 py-3 rounded-xl border border-slate-300 text-slate-700 font-bold text-sm hover:bg-slate-100 transition cursor-pointer"
           >
             Submit Another Application
           </button>
@@ -127,7 +127,7 @@
       </div>
 
       <!-- ======================================================== -->
-      <!-- MAIN ONBOARDING FORM UI (Exact Replica of Main Tabs)     -->
+      <!-- MAIN ONBOARDING FORM UI (100% Word-for-Word Parity)     -->
       <!-- ======================================================== -->
       <form v-else @submit.prevent="handleFormAction" novalidate>
         
@@ -197,7 +197,7 @@
                   :key="p"
                   type="button"
                   @click="perinfostep = p"
-                  class="w-7 h-7 rounded-lg text-xs font-black transition flex items-center justify-center border"
+                  class="w-7 h-7 rounded-lg text-xs font-black transition flex items-center justify-center border cursor-pointer"
                   :class="perinfostep === p ? 'bg-[#1A237E] text-white border-[#1A237E] shadow-sm' : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'"
                 >
                   {{ p }}
@@ -268,6 +268,7 @@
                       v-model="emp.joiningdate"
                       class="form-input"
                       required
+                      min="1986-01-01"
                     />
                   </div>
                 </div>
@@ -283,10 +284,10 @@
 
               <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-5">
                 
-                <!-- Profile Picture Upload Zone (Matching Main Onboarding) -->
+                <!-- Profile Picture Upload Zone -->
                 <div>
                   <label class="form-label mb-2">Profile Picture *:</label>
-                  <div class="profile-upload-zone" @click="triggerProfileUpload">
+                  <div class="profile-upload-zone cursor-pointer" @click="triggerProfileUpload">
                     <div class="flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
                       <div class="w-16 h-16 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
                         <img v-if="emp.profilepicture" :src="emp.profilepicture" alt="Profile Preview" class="w-full h-full object-cover" />
@@ -313,7 +314,7 @@
                 </div>
 
                 <!-- Personal Identity Fields Grid -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label class="form-label">First Name *:</label>
                     <input
@@ -327,7 +328,18 @@
                   </div>
 
                   <div>
-                    <label class="form-label">Surname *:</label>
+                    <label class="form-label">Middle Name:</label>
+                    <input
+                      type="text"
+                      v-model="emp.middlename"
+                      placeholder="e.g. KOFI"
+                      @input="emp.middlename = (emp.middlename || '').toUpperCase()"
+                      class="form-input uppercase"
+                    />
+                  </div>
+
+                  <div>
+                    <label class="form-label">SurName *:</label>
                     <input
                       type="text"
                       v-model="emp.surname"
@@ -337,18 +349,161 @@
                       required
                     />
                   </div>
+                </div>
 
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label class="form-label">Other Names:</label>
-                    <input
-                      type="text"
-                      v-model="emp.othername"
-                      placeholder="e.g. KOFI"
-                      @input="emp.othername = (emp.othername || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
+                    <label class="form-label">Citizenship *: </label>
+                    <select v-model="emp.citizenship" class="form-select" required>
+                      <option v-for="c in countryList" :key="c.code" :value="c.code">{{ c.name }}</option>
+                    </select>
                   </div>
 
+                  <div v-if="emp.citizenship != 'GH'">
+                    <label class="form-label">ID Type *:</label>
+                    <select v-model="emp.idtype" class="form-select" required>
+                      <option v-for="t in idTypeList" :key="t.id" :value="t.id">{{ t.name }}</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Ghana Card / National ID Section -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" v-if="emp.citizenship == 'GH'">
+                  <div>
+                    <label class="form-label">Ghana Card No *:</label>
+                    <input
+                      type="text"
+                      v-model="emp.ghcardno"
+                      placeholder="GHA-000000000-0"
+                      @input="formatGhCard"
+                      class="form-input uppercase font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Ghana Card Picture *:</label>
+                    <div class="flex items-center gap-2">
+                      <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold shadow-xs">
+                        <i class="pi pi-camera"></i>
+                        <span>{{ emp.ghcardfile ? 'Change Ghana Card' : 'Upload Ghana Card' }}</span>
+                        <input type="file" accept="image/*" @change="e => handleFileField(e, 'ghcardfile')" class="hidden" />
+                      </label>
+                      <span v-if="emp.ghcardfile" class="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                        <i class="pi pi-check"></i> Attached
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" v-else>
+                  <div>
+                    <label class="form-label">Passport / ID No *:</label>
+                    <input
+                      type="text"
+                      v-model="emp.ghcardno"
+                      placeholder="Passport / ID Number"
+                      @input="emp.ghcardno = (emp.ghcardno || '').toUpperCase()"
+                      class="form-input uppercase font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Passport / ID Picture *:</label>
+                    <div class="flex items-center gap-2">
+                      <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold shadow-xs">
+                        <i class="pi pi-camera"></i>
+                        <span>{{ emp.ghcardfile ? 'Change ID' : 'Upload ID' }}</span>
+                        <input type="file" accept="image/*" @change="e => handleFileField(e, 'ghcardfile')" class="hidden" />
+                      </label>
+                      <span v-if="emp.ghcardfile" class="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                        <i class="pi pi-check"></i> Attached
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Addresses -->
+                <div>
+                  <label class="form-label">Residential Address/Landmark *:</label>
+                  <input
+                    type="text"
+                    v-model="emp.raddress"
+                    placeholder="e.g. Hse No. 12, Spintex Road, near Shell, Accra"
+                    @input="emp.raddress = (emp.raddress || '').toUpperCase()"
+                    class="form-input uppercase"
+                    required
+                  />
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label class="form-label">Residential Ghana Digital Address *:</label>
+                    <input
+                      type="text"
+                      v-model="emp.daddress"
+                      placeholder="e.g. GA-183-9024"
+                      @input="emp.daddress = (emp.daddress || '').toUpperCase()"
+                      class="form-input uppercase font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Permanent Home Town/Region *:</label>
+                    <input
+                      type="text"
+                      v-model="emp.hometown"
+                      placeholder="e.g. KUMASI / ASHANTI REGION"
+                      @input="emp.hometown = (emp.hometown || '').toUpperCase()"
+                      class="form-input uppercase"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label class="form-label">Permanent Ghana Digital Address *:</label>
+                    <input
+                      type="text"
+                      v-model="emp.hdaddress"
+                      placeholder="e.g. AK-022-1234"
+                      @input="emp.hdaddress = (emp.hdaddress || '').toUpperCase()"
+                      class="form-input uppercase font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Mobile Number *:</label>
+                    <input
+                      type="tel"
+                      v-model="emp.mobileno"
+                      placeholder="e.g. 0244123456"
+                      class="form-input"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label class="form-label">Alternate Phone:</label>
+                    <input
+                      type="tel"
+                      v-model="emp.altnumber"
+                      placeholder="e.g. 0550123456"
+                      class="form-input"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Email Address *:</label>
+                    <input
+                      type="email"
+                      v-model="emp.email"
+                      placeholder="e.g. kwame@example.com"
+                      class="form-input"
+                      required
+                    />
+                  </div>
                   <div>
                     <label class="form-label">Gender *:</label>
                     <select v-model="emp.gender" class="form-select" required>
@@ -356,7 +511,19 @@
                       <option value="F">FEMALE</option>
                     </select>
                   </div>
+                </div>
 
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label class="form-label">Social Security Number:</label>
+                    <input
+                      type="text"
+                      v-model="emp.socialsecurityno"
+                      placeholder="e.g. C012345678912"
+                      @input="emp.socialsecurityno = (emp.socialsecurityno || '').toUpperCase()"
+                      class="form-input uppercase font-mono"
+                    />
+                  </div>
                   <div>
                     <div class="flex items-center justify-between mb-1">
                       <label class="form-label mb-0">Date of Birth *:</label>
@@ -372,428 +539,695 @@
                       required
                     />
                   </div>
-
-                  <div>
-                    <label class="form-label">Ghana Card No. *:</label>
-                    <input
-                      type="text"
-                      v-model="emp.ghcardno"
-                      placeholder="e.g. GHA-123456789-0"
-                      @input="formatGhCard"
-                      class="form-input uppercase font-mono"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label class="form-label">Ghana Card Expiry Date:</label>
-                    <input
-                      type="date"
-                      v-model="emp.ghcardexpiry"
-                      class="form-input"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="form-label">Mobile Phone Number *:</label>
-                    <input
-                      type="tel"
-                      v-model="emp.mobileno"
-                      placeholder="e.g. 0244123456"
-                      class="form-input"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label class="form-label">WhatsApp Number:</label>
-                    <input
-                      type="tel"
-                      v-model="emp.whatsappno"
-                      placeholder="e.g. 0550123456"
-                      class="form-input"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="form-label">Email Address:</label>
-                    <input
-                      type="email"
-                      v-model="emp.email"
-                      placeholder="e.g. kwame@example.com"
-                      class="form-input"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="form-label">Region of Residence *:</label>
-                    <select v-model="emp.region_id" class="form-select" required>
-                      <option v-for="r in regionList" :key="r.id" :value="r.id">{{ r.name }}</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label class="form-label">Hometown:</label>
-                    <input
-                      type="text"
-                      v-model="emp.hometown"
-                      placeholder="e.g. KUMASI"
-                      @input="emp.hometown = (emp.hometown || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="form-label">GhanaPost GPS Digital Address:</label>
-                    <input
-                      type="text"
-                      v-model="emp.gpsaddress"
-                      placeholder="e.g. GA-183-9024"
-                      @input="emp.gpsaddress = (emp.gpsaddress || '').toUpperCase()"
-                      class="form-input uppercase font-mono"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="form-label">SSNIT Number (Optional):</label>
-                    <input
-                      type="text"
-                      v-model="emp.socialsecurityno"
-                      placeholder="e.g. C012345678912"
-                      @input="emp.socialsecurityno = (emp.socialsecurityno || '').toUpperCase()"
-                      class="form-input uppercase font-mono"
-                    />
-                  </div>
-
-                  <div class="sm:col-span-2">
-                    <label class="form-label">Residential Address (Current Living) *:</label>
-                    <input
-                      type="text"
-                      v-model="emp.resaddress"
-                      placeholder="e.g. Hse No. 12, Spintex Road, near Shell, Accra"
-                      @input="emp.resaddress = (emp.resaddress || '').toUpperCase()"
-                      class="form-input uppercase"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label class="form-label">Father's Full Name:</label>
-                    <input
-                      type="text"
-                      v-model="emp.fathersname"
-                      placeholder="e.g. JOHN MENSAH SR."
-                      @input="emp.fathersname = (emp.fathersname || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
-                  </div>
-
-                  <div>
-                    <label class="form-label">Mother's Full Name:</label>
-                    <input
-                      type="text"
-                      v-model="emp.mothersname"
-                      placeholder="e.g. MARY MENSAH"
-                      @input="emp.mothersname = (emp.mothersname || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ─── PAGE 2: Family, Spouse, Children, Nominee & Emergency ─── -->
-          <div v-show="perinfostep == 2" class="space-y-6 animate-fade-in">
-            
-            <!-- Section: FAMILY & SPOUSE DETAILS -->
-            <div class="section-card">
-              <div class="section-header">
-                <span class="accent-bar"></span>
-                <span>FAMILY &amp; SPOUSE DETAILS</span>
-              </div>
-              <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label class="form-label">Marital Status *:</label>
                     <select v-model="emp.maritalstatus" class="form-select" required>
                       <option v-for="m in maritalList" :key="m.id" :value="m.id">{{ m.name }}</option>
                     </select>
                   </div>
+                </div>
 
-                  <div v-if="emp.maritalstatus == 2">
-                    <label class="form-label">Spouse Full Name:</label>
-                    <input
-                      type="text"
-                      v-model="spouse.name"
-                      placeholder="e.g. GRACE MENSAH"
-                      @input="spouse.name = (spouse.name || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
+                <!-- Spouses information (v-if Marital Status == Married) -->
+                <div v-if="emp.maritalstatus == 2" class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <h4 class="text-xs font-black uppercase text-[#1A237E] m-0">Spouses information</h4>
+                    <button
+                      type="button"
+                      @click="addSpouse"
+                      class="px-2.5 py-1 rounded-lg bg-[#1A237E] text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <i class="pi pi-plus text-[10px]"></i>
+                      <span>Add Spouse</span>
+                    </button>
                   </div>
 
-                  <div v-if="emp.maritalstatus == 2">
-                    <label class="form-label">Spouse Phone Number:</label>
-                    <input
-                      type="tel"
-                      v-model="spouse.phoneno"
-                      placeholder="e.g. 0244987654"
-                      class="form-input"
-                    />
+                  <div v-if="wives.length === 0" class="text-xs text-slate-500 italic">
+                    Tap "Add Spouse" to record spouse full name and occupation.
                   </div>
 
-                  <div v-if="emp.maritalstatus == 2">
-                    <label class="form-label">Spouse Occupation:</label>
-                    <input
-                      type="text"
-                      v-model="spouse.occupation"
-                      placeholder="e.g. TEACHER, NURSE"
-                      @input="spouse.occupation = (spouse.occupation || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Section: CHILDREN DETAILS -->
-            <div class="section-card">
-              <div class="section-header justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="accent-bar"></span>
-                  <span>CHILDREN DETAILS</span>
-                </div>
-                <button
-                  type="button"
-                  @click="addChild"
-                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1"
-                >
-                  <i class="pi pi-plus text-[10px]"></i>
-                  <span>Add Child</span>
-                </button>
-              </div>
-
-              <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
-                <div v-if="childrens.length === 0" class="p-5 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-500 font-medium">
-                  No dependent children added. If you have children, tap <strong>"Add Child"</strong> above.
-                </div>
-                <div v-else class="space-y-3">
-                  <div
-                    v-for="(child, idx) in childrens"
-                    :key="idx"
-                    class="p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end"
-                  >
+                  <div v-for="(wife, index) in wives" :key="index" class="p-3 bg-white rounded-lg border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                     <div>
-                      <label class="form-label">Child {{ idx + 1 }} Name:</label>
+                      <label class="form-label">Spouse {{ index + 1 }}'s Name *:</label>
                       <input
                         type="text"
-                        v-model="child.name"
-                        placeholder="e.g. KOFI MENSAH"
-                        @input="child.name = (child.name || '').toUpperCase()"
+                        v-model="wife.name"
+                        placeholder="e.g. GRACE MENSAH"
+                        @input="wife.name = (wife.name || '').toUpperCase()"
                         class="form-input uppercase"
+                        required
                       />
-                    </div>
-                    <div>
-                      <label class="form-label">Gender:</label>
-                      <select v-model="child.gender" class="form-select">
-                        <option value="M">MALE</option>
-                        <option value="F">FEMALE</option>
-                      </select>
                     </div>
                     <div class="flex items-center gap-2">
                       <div class="flex-1">
-                        <label class="form-label">Date of Birth:</label>
-                        <input type="date" v-model="child.dob" class="form-input" />
+                        <label class="form-label">Occupation *:</label>
+                        <input
+                          type="text"
+                          v-model="wife.occupation"
+                          placeholder="e.g. TEACHER, NURSE"
+                          @input="wife.occupation = (wife.occupation || '').toUpperCase()"
+                          class="form-input uppercase"
+                          required
+                        />
                       </div>
                       <button
                         type="button"
-                        @click="removeChild(idx)"
-                        class="h-11 w-11 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition flex items-center justify-center shrink-0"
+                        @click="removeSpouse(index)"
+                        class="h-10 w-10 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition flex items-center justify-center shrink-0 cursor-pointer"
                       >
                         <i class="pi pi-trash text-xs"></i>
                       </button>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <!-- Section: NOMINEE INFORMATION (NEXT OF KIN) -->
-            <div class="section-card">
-              <div class="section-header">
-                <span class="accent-bar"></span>
-                <span>NOMINEE INFORMATION (NEXT OF KIN)</span>
-              </div>
-              <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
+                <!-- Parents -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label class="form-label">Nominee Full Name *:</label>
+                    <label class="form-label">Father's Name *:</label>
                     <input
                       type="text"
-                      v-model="nominee.name"
+                      v-model="emp.fathersname"
+                      placeholder="e.g. JOHN MENSAH SR."
+                      @input="emp.fathersname = (emp.fathersname || '').toUpperCase()"
+                      class="form-input uppercase"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Mother's Name *:</label>
+                    <input
+                      type="text"
+                      v-model="emp.mothersname"
                       placeholder="e.g. MARY MENSAH"
-                      @input="nominee.name = (nominee.name || '').toUpperCase()"
+                      @input="emp.mothersname = (emp.mothersname || '').toUpperCase()"
                       class="form-input uppercase"
                       required
                     />
                   </div>
+                </div>
 
-                  <div>
-                    <label class="form-label">Relationship to You *:</label>
-                    <select v-model="nominee.relationship" class="form-select" required>
-                      <option value="MOTHER">MOTHER</option>
-                      <option value="FATHER">FATHER</option>
-                      <option value="SPOUSE">SPOUSE</option>
-                      <option value="BROTHER">BROTHER</option>
-                      <option value="SISTER">SISTER</option>
-                      <option value="SON">SON</option>
-                      <option value="DAUGHTER">DAUGHTER</option>
-                      <option value="OTHER">OTHER</option>
-                    </select>
+                <!-- Do you know anyone in Melcom? -->
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span class="text-xs font-black text-slate-800">Do you know anyone in Melcom? *</span>
+                    <div class="flex items-center gap-4">
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="emp.relativeinorg" :value="0" class="text-[#1A237E]" />
+                        <span>No</span>
+                      </label>
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="emp.relativeinorg" :value="1" class="text-[#1A237E]" />
+                        <span>Yes</span>
+                      </label>
+                    </div>
                   </div>
 
-                  <div>
-                    <label class="form-label">Phone Number *:</label>
-                    <input
-                      type="tel"
-                      v-model="nominee.phoneno"
-                      placeholder="e.g. 0244112233"
-                      class="form-input"
-                      required
-                    />
+                  <div v-if="emp.relativeinorg == 1" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                    <div>
+                      <label class="form-label">Name *:</label>
+                      <input
+                        type="text"
+                        v-model="emp.relative_name"
+                        placeholder="e.g. PETER ADDO"
+                        @input="emp.relative_name = (emp.relative_name || '').toUpperCase()"
+                        class="form-input uppercase"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">Type of relation *:</label>
+                      <select v-model="emp.relative_relation" class="form-select" required>
+                        <option value="" disabled>-- Select Relation --</option>
+                        <option v-for="r in relationList" :key="r.id" :value="r.id">{{ r.name }}</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Do you have children? -->
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span class="text-xs font-black text-slate-800">Do you have children? *</span>
+                    <div class="flex items-center gap-4">
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="haschildren" :value="false" class="text-[#1A237E]" />
+                        <span>No</span>
+                      </label>
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="haschildren" :value="true" class="text-[#1A237E]" />
+                        <span>Yes</span>
+                      </label>
+                    </div>
                   </div>
 
-                  <div>
-                    <label class="form-label">Residential Address:</label>
-                    <input
-                      type="text"
-                      v-model="nominee.address"
-                      placeholder="e.g. Hse No. 44, Dome Pillar 2, Accra"
-                      @input="nominee.address = (nominee.address || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
+                  <div v-if="haschildren" class="space-y-3 pt-2 border-t border-slate-200">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-bold text-slate-600">List dependent children:</span>
+                      <button
+                        type="button"
+                        @click="addChild"
+                        class="px-2.5 py-1 rounded-lg bg-[#1A237E] text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <i class="pi pi-plus text-[10px]"></i>
+                        <span>Add child</span>
+                      </button>
+                    </div>
+
+                    <div v-for="(child, index) in childrens" :key="index" class="p-3 bg-white rounded-lg border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                      <div>
+                        <label class="form-label">Child {{ index + 1 }}'s Name *:</label>
+                        <input
+                          type="text"
+                          v-model="child.name"
+                          placeholder="e.g. KOFI MENSAH"
+                          @input="child.name = (child.name || '').toUpperCase()"
+                          class="form-input uppercase"
+                          required
+                        />
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <div class="flex-1">
+                          <label class="form-label">Age *:</label>
+                          <input
+                            type="number"
+                            v-model.number="child.age"
+                            placeholder="Age in years"
+                            class="form-input"
+                            min="0"
+                            max="50"
+                            required
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          @click="removeChild(index)"
+                          class="h-10 w-10 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition flex items-center justify-center shrink-0 cursor-pointer"
+                        >
+                          <i class="pi pi-trash text-xs"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Work Permit Details (v-if contracttype == 'expat') -->
+                <div v-if="emp.contracttype == 'expat'" class="p-4 rounded-xl bg-amber-50/70 border border-amber-200 space-y-3">
+                  <h4 class="text-xs font-black uppercase text-amber-900 m-0">Work Permit Details</h4>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label class="form-label">Number Of Renewal *:</label>
+                      <input type="number" v-model.number="wpermit.renewalno" class="form-input" required />
+                    </div>
+                    <div>
+                      <label class="form-label">Passport Expiry Date *:</label>
+                      <input type="date" v-model="wpermit.passedate" class="form-input" required />
+                    </div>
+                    <div>
+                      <label class="form-label">Work Permit Date *:</label>
+                      <input type="date" v-model="wpermit.idate" class="form-input" required />
+                    </div>
+                    <div>
+                      <label class="form-label">Work Permit Expiry Date *:</label>
+                      <input type="date" v-model="wpermit.edate" class="form-input" required />
+                    </div>
+                    <div class="sm:col-span-2">
+                      <label class="form-label">Work Permit Number *:</label>
+                      <input
+                        type="text"
+                        v-model="wpermit.number"
+                        placeholder="e.g. WP-123456-GH"
+                        @input="wpermit.number = (wpermit.number || '').toUpperCase()"
+                        class="form-input uppercase"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Driver's Licence Details (v-if joiningposition == 'DRIVER') -->
+                <div v-if="emp.joiningposition == 'DRIVER'" class="p-4 rounded-xl bg-blue-50/70 border border-blue-200 space-y-3">
+                  <h4 class="text-xs font-black uppercase text-[#1A237E] m-0">Driver's Licence Details</h4>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label class="form-label">Name on the license *:</label>
+                      <input
+                        type="text"
+                        v-model="dlicense.name"
+                        placeholder="e.g. KWAME MENSAH"
+                        @input="dlicense.name = (dlicense.name || '').toUpperCase()"
+                        class="form-input uppercase"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">license# *:</label>
+                      <input
+                        type="text"
+                        v-model="dlicense.licenseno"
+                        placeholder="e.g. B-12345678"
+                        @input="dlicense.licenseno = (dlicense.licenseno || '').toUpperCase()"
+                        class="form-input uppercase"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">Issuing Date *:</label>
+                      <input type="date" v-model="dlicense.idate" class="form-input" required />
+                    </div>
+                    <div>
+                      <label class="form-label">Expiry Date *:</label>
+                      <input type="date" v-model="dlicense.edate" class="form-input" required />
+                    </div>
+                    <div>
+                      <label class="form-label">Ref# *:</label>
+                      <input
+                        type="text"
+                        v-model="dlicense.ref"
+                        placeholder="e.g. RF-987"
+                        @input="dlicense.ref = (dlicense.ref || '').toUpperCase()"
+                        class="form-input uppercase"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">Renewal Date *:</label>
+                      <input type="date" v-model="dlicense.rdate" class="form-input" required />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Job at Melcom (Have you ever worked with Melcom?) -->
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span class="text-xs font-black text-slate-800">Have you ever worked with Melcom? *</span>
+                    <div class="flex items-center gap-4">
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="iscurwork" :value="false" class="text-[#1A237E]" />
+                        <span>No</span>
+                      </label>
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="iscurwork" :value="true" class="text-[#1A237E]" />
+                        <span>Yes</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div v-if="iscurwork" class="pt-2 border-t border-slate-200 space-y-3">
+                    <h5 class="text-xs font-bold text-[#1A237E] uppercase m-0">Details of Job at Melcom</h5>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label class="form-label">Title *:</label>
+                        <input
+                          type="text"
+                          v-model="curwork.title"
+                          placeholder="e.g. CASHIER"
+                          @input="curwork.title = (curwork.title || '').toUpperCase()"
+                          class="form-input uppercase"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label class="form-label">Employee ID *:</label>
+                        <input
+                          type="text"
+                          v-model="curwork.employeeid"
+                          placeholder="e.g. MEL12345"
+                          @input="curwork.employeeid = (curwork.employeeid || '').toUpperCase()"
+                          class="form-input uppercase font-mono"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label class="form-label">Date of Joining *:</label>
+                        <input type="date" v-model="curwork.doj" class="form-input" required min="1986-01-01" />
+                      </div>
+                      <div>
+                        <label class="form-label">Department *:</label>
+                        <select v-model="curwork.dept_id" class="form-select" required>
+                          <option value="" disabled>-- Select Department --</option>
+                          <option v-for="dept in deptList" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="form-label">Branch *:</label>
+                        <select v-model="curwork.branch_id" class="form-select" required>
+                          <option value="" disabled>-- Select Branch --</option>
+                          <option v-for="branch in branchList" :key="branch.id" :value="branch.id">{{ branch.name }}</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="form-label">Region *:</label>
+                        <select v-model="curwork.region_id" class="form-select" required>
+                          <option value="" disabled>-- Select Region --</option>
+                          <option v-for="reg in regionList" :key="reg.id" :value="reg.id">{{ reg.name }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Union membership information -->
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span class="text-xs font-black text-slate-800">Are you Union Member? *</span>
+                    <div class="flex items-center gap-4">
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="isunion" :value="false" class="text-[#1A237E]" />
+                        <span>No</span>
+                      </label>
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="isunion" :value="true" class="text-[#1A237E]" />
+                        <span>Yes</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div v-if="isunion" class="pt-2 border-t border-slate-200 space-y-3">
+                    <h5 class="text-xs font-bold text-[#1A237E] uppercase m-0">Details of Membership</h5>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label class="form-label">Union name *:</label>
+                        <input
+                          type="text"
+                          v-model="unioninfo.union_name"
+                          placeholder="e.g. ICU GHANA"
+                          @input="unioninfo.union_name = (unioninfo.union_name || '').toUpperCase()"
+                          class="form-input uppercase"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label class="form-label">Union Registration date *:</label>
+                        <input type="date" v-model="unioninfo.union_regdate" class="form-input" required />
+                      </div>
+                      <div>
+                        <label class="form-label">Union Registration Number *:</label>
+                        <input
+                          type="text"
+                          v-model="unioninfo.union_number"
+                          placeholder="e.g. UN-98765"
+                          @input="unioninfo.union_number = (unioninfo.union_number || '').toUpperCase()"
+                          class="form-input uppercase"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ANY OTHER INFORMATION -->
+                <div>
+                  <label class="form-label">ANY OTHER INFORMATION:</label>
+                  <textarea
+                    v-model="emp.anyotherinfo"
+                    rows="3"
+                    placeholder="Enter any additional details or background notes..."
+                    @input="emp.anyotherinfo = (emp.anyotherinfo || '').toUpperCase()"
+                    class="form-textarea uppercase"
+                  ></textarea>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          <!-- ─── PAGE 2: Emergency Contact & Social Contact ─── -->
+          <div v-show="perinfostep == 2" class="space-y-6 animate-fade-in">
+            
+            <!-- Section: Emergency Contact Information [Relatives Only] -->
+            <div class="section-card">
+              <div class="section-header justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="accent-bar"></span>
+                  <span>Emergency Contact Information [Relatives Only]</span>
+                </div>
+                <button
+                  type="button"
+                  @click="addEcont"
+                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <i class="pi pi-plus text-[10px]"></i>
+                  <span>Add</span>
+                </button>
+              </div>
+
+              <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-4">
+                <div v-for="(econt, index) in econts" :key="index" class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <span class="text-xs font-black uppercase text-[#1A237E]">CONTACT NO {{ index + 1 }}</span>
+                    <button
+                      v-if="econts.length > 1"
+                      type="button"
+                      @click="removeEcont(index)"
+                      class="text-xs text-red-600 font-bold hover:underline cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label class="form-label">Full Name *:</label>
+                      <input
+                        type="text"
+                        v-model="econt.fullname"
+                        placeholder="e.g. KWAME MENSAH"
+                        @input="econt.fullname = (econt.fullname || '').toUpperCase()"
+                        class="form-input uppercase"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">Relationship to you *:</label>
+                      <select v-model="econt.relation" class="form-select" required>
+                        <option value="" disabled>-- Select Relationship --</option>
+                        <option v-for="rel in familyRelList" :key="rel.id" :value="rel.id">{{ rel.name }}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="form-label">Work Address preferable:</label>
+                      <input
+                        type="text"
+                        v-model="econt.workaddress"
+                        placeholder="e.g. KORLE BU HOSPITAL"
+                        @input="econt.workaddress = (econt.workaddress || '').toUpperCase()"
+                        class="form-input uppercase"
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">Ghana Card No :</label>
+                      <input
+                        type="text"
+                        v-model="econt.ghcardno"
+                        placeholder="GHA-000000000-0"
+                        @input="econt.ghcardno = (econt.ghcardno || '').toUpperCase()"
+                        class="form-input uppercase font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">Mobile Number *:</label>
+                      <input
+                        type="tel"
+                        v-model="econt.mobileno"
+                        placeholder="e.g. 0244112233"
+                        class="form-input"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">Alternate Phone:</label>
+                      <input
+                        type="tel"
+                        v-model="econt.altnumber"
+                        placeholder="e.g. 0550112233"
+                        class="form-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="pt-2 flex items-center justify-between border-t border-slate-200">
+                    <span class="text-xs font-bold text-slate-700">Next of kin? *</span>
+                    <div class="flex items-center gap-4">
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="econt.isnextofkin" :value="0" class="text-[#1A237E]" />
+                        <span>No</span>
+                      </label>
+                      <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                        <input type="radio" v-model="econt.isnextofkin" :value="1" class="text-[#1A237E]" />
+                        <span>Yes</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- Section: EMERGENCY CONTACT INFORMATION [RELATIVES ONLY] -->
+            <!-- Section: Social Contact Information -->
             <div class="section-card">
               <div class="section-header">
                 <span class="accent-bar"></span>
-                <span>EMERGENCY CONTACT INFORMATION [RELATIVES ONLY]</span>
+                <span>Social Contact Information</span>
               </div>
-              <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-4">
-                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                  <span class="text-xs font-black uppercase text-[#1A237E] mb-3 block">Primary Relative Contact (Required)</span>
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label class="form-label">Relative Name *:</label>
-                      <input
-                        type="text"
-                        v-model="econts[0].name"
-                        placeholder="e.g. KWAME MENSAH"
-                        @input="econts[0].name = (econts[0].name || '').toUpperCase()"
-                        class="form-input uppercase"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label class="form-label">Relationship *:</label>
-                      <input
-                        type="text"
-                        v-model="econts[0].relationship"
-                        placeholder="e.g. BROTHER, MOTHER"
-                        @input="econts[0].relationship = (econts[0].relationship || '').toUpperCase()"
-                        class="form-input uppercase"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label class="form-label">Mobile Phone *:</label>
-                      <input
-                        type="tel"
-                        v-model="econts[0].phoneno"
-                        placeholder="e.g. 0244001122"
-                        class="form-input"
-                        required
-                      />
-                    </div>
+
+              <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label class="form-label">Church / Mosque Membership &amp; Location:</label>
+                    <input
+                      type="text"
+                      v-model="soccont.churchmemberloc"
+                      placeholder="e.g. METHODIST CHURCH, SPINTEX"
+                      @input="soccont.churchmemberloc = (soccont.churchmemberloc || '').toUpperCase()"
+                      class="form-input uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Pastor Religious Leader:</label>
+                    <input
+                      type="text"
+                      v-model="soccont.pastor"
+                      placeholder="e.g. REV. DANIEL MENSAH"
+                      @input="soccont.pastor = (soccont.pastor || '').toUpperCase()"
+                      class="form-input uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Duration of Membership (Years):</label>
+                    <input
+                      type="number"
+                      v-model.number="soccont.memduration"
+                      placeholder="e.g. 5"
+                      class="form-input"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Mobile Number:</label>
+                    <input
+                      type="tel"
+                      v-model="soccont.mobileno"
+                      placeholder="e.g. 0244778899"
+                      class="form-input"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Ghana Card No:</label>
+                    <input
+                      type="text"
+                      v-model="soccont.ghcardno"
+                      placeholder="GHA-000000000-0"
+                      @input="soccont.ghcardno = (soccont.ghcardno || '').toUpperCase()"
+                      class="form-input uppercase font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Closest Friend/Confidant:</label>
+                    <input
+                      type="text"
+                      v-model="soccont.closestfriend"
+                      placeholder="e.g. KOFI ANANE"
+                      @input="soccont.closestfriend = (soccont.closestfriend || '').toUpperCase()"
+                      class="form-input uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Contacts Phone:</label>
+                    <input
+                      type="tel"
+                      v-model="soccont.contactsphone"
+                      placeholder="e.g. 0244332211"
+                      class="form-input"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Email Address:</label>
+                    <input
+                      type="email"
+                      v-model="soccont.email"
+                      placeholder="e.g. friend@example.com"
+                      class="form-input"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Digital Address:</label>
+                    <input
+                      type="text"
+                      v-model="soccont.digitaladdress"
+                      placeholder="e.g. GA-123-4567"
+                      @input="soccont.digitaladdress = (soccont.digitaladdress || '').toUpperCase()"
+                      class="form-input uppercase font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label class="form-label">Work Address preferable:</label>
+                    <input
+                      type="text"
+                      v-model="soccont.workaddress"
+                      placeholder="e.g. ACCRA HIGH STREET"
+                      @input="soccont.workaddress = (soccont.workaddress || '').toUpperCase()"
+                      class="form-input uppercase"
+                    />
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- ─── PAGE 3: Education, Work Experience & References ─── -->
+          <!-- ─── PAGE 3: Education, Work Experience, References, Nominee ─── -->
           <div v-show="perinfostep == 3" class="space-y-6 animate-fade-in">
             
-            <!-- Section: EDUCATIONAL BACKGROUND -->
+            <!-- Section: Educational Background -->
             <div class="section-card">
               <div class="section-header justify-between">
                 <div class="flex items-center gap-2">
                   <span class="accent-bar"></span>
-                  <span>EDUCATIONAL BACKGROUND</span>
+                  <span>Educational Background</span>
                 </div>
                 <button
                   type="button"
-                  @click="addEducation"
-                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1"
+                  @click="addEdu"
+                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
                 >
                   <i class="pi pi-plus text-[10px]"></i>
-                  <span>Add School</span>
+                  <span>Add</span>
                 </button>
               </div>
 
               <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-4">
-                <div
-                  v-for="(edu, idx) in edus"
-                  :key="idx"
-                  class="p-4 rounded-xl bg-slate-50 border border-slate-200"
-                >
-                  <div class="flex items-center justify-between mb-3">
-                    <span class="text-xs font-black uppercase text-[#1A237E]">Education Entry #{{ idx + 1 }}</span>
+                <div v-for="(edu, index) in edus" :key="index" class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <span class="text-xs font-black uppercase text-[#1A237E]">Education Entry #{{ index + 1 }}</span>
                     <button
                       v-if="edus.length > 1"
                       type="button"
-                      @click="removeEducation(idx)"
-                      class="text-xs text-red-600 font-bold hover:underline"
+                      @click="removeEdu(index)"
+                      class="text-xs text-red-600 font-bold hover:underline cursor-pointer"
                     >
                       Remove
                     </button>
                   </div>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div class="sm:col-span-2">
-                      <label class="form-label">School / Institution Name *:</label>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label class="form-label">Qualification Type *:</label>
+                      <select v-model="edu.educqualtype" class="form-select" required>
+                        <option v-for="q in qualList" :key="q.id" :value="q.id">{{ q.name }}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="form-label">Specialization / School *:</label>
                       <input
                         type="text"
-                        v-model="edu.schoolname"
-                        placeholder="e.g. ACCRA ACADEMY / ACCRA TECHNICAL UNIVERSITY"
-                        @input="edu.schoolname = (edu.schoolname || '').toUpperCase()"
+                        v-model="edu.educqual"
+                        placeholder="e.g. GENERAL ARTS - ACCRA ACADEMY"
+                        @input="edu.educqual = (edu.educqual || '').toUpperCase()"
                         class="form-input uppercase"
                         required
                       />
                     </div>
                     <div>
-                      <label class="form-label">Qualification *:</label>
-                      <select v-model="edu.qualification" class="form-select" required>
-                        <option value="WASSCE / SSCE">WASSCE / SSCE</option>
-                        <option value="BECE">BECE</option>
-                        <option value="HND">HND (DIPLOMA)</option>
-                        <option value="BACHELOR DEGREE">BACHELOR'S DEGREE</option>
-                        <option value="MASTERS DEGREE">MASTER'S DEGREE</option>
-                        <option value="OTHER">OTHER</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label class="form-label">Course / Programme:</label>
-                      <input
-                        type="text"
-                        v-model="edu.coursetitle"
-                        placeholder="e.g. GENERAL ARTS, ACCOUNTING"
-                        @input="edu.coursetitle = (edu.coursetitle || '').toUpperCase()"
-                        class="form-input uppercase"
-                      />
+                      <label class="form-label">Date Of Completion:</label>
+                      <input type="date" v-model="edu.to" class="form-input" />
                     </div>
                   </div>
                 </div>
@@ -810,56 +1244,63 @@
                 <button
                   type="button"
                   @click="addWorkExp"
-                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1"
+                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
                 >
                   <i class="pi pi-plus text-[10px]"></i>
-                  <span>Add Experience</span>
+                  <span>Add</span>
                 </button>
               </div>
 
               <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
-                <div v-if="workexps.length === 0" class="p-5 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-500 font-medium">
-                  No prior work experience listed. If you have past employment, tap <strong>"Add Experience"</strong> above.
+                <div v-if="workexps.length === 0" class="p-4 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-500">
+                  No prior work experience added. Tap "Add" if you have past employers.
                 </div>
                 <div v-else class="space-y-4">
-                  <div
-                    v-for="(w, idx) in workexps"
-                    :key="idx"
-                    class="p-4 rounded-xl bg-slate-50 border border-slate-200"
-                  >
-                    <div class="flex items-center justify-between mb-3">
-                      <span class="text-xs font-black uppercase text-[#1A237E]">Experience #{{ idx + 1 }}</span>
-                      <button type="button" @click="removeWorkExp(idx)" class="text-xs text-red-600 font-bold hover:underline">
+                  <div v-for="(wexp, ind) in workexps" :key="ind" class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <span class="text-xs font-black uppercase text-[#1A237E]">Experience #{{ ind + 1 }}</span>
+                      <button type="button" @click="removeWorkExp(ind)" class="text-xs text-red-600 font-bold hover:underline cursor-pointer">
                         Remove
                       </button>
                     </div>
+
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label class="form-label">Employer / Company Name:</label>
+                        <label class="form-label">Name of Organization *:</label>
                         <input
                           type="text"
-                          v-model="w.companyname"
-                          placeholder="e.g. ABC LOGISTICS"
-                          @input="w.companyname = (w.companyname || '').toUpperCase()"
+                          v-model="wexp.orgname"
+                          placeholder="e.g. ABC RETAIL LTD"
+                          @input="wexp.orgname = (wexp.orgname || '').toUpperCase()"
                           class="form-input uppercase"
+                          required
                         />
                       </div>
                       <div>
-                        <label class="form-label">Position / Job Title:</label>
+                        <label class="form-label">Position held *:</label>
                         <input
                           type="text"
-                          v-model="w.jobtitle"
+                          v-model="wexp.postheld"
                           placeholder="e.g. SALES ASSISTANT"
-                          @input="w.jobtitle = (w.jobtitle || '').toUpperCase()"
+                          @input="wexp.postheld = (wexp.postheld || '').toUpperCase()"
                           class="form-input uppercase"
+                          required
                         />
+                      </div>
+                      <div>
+                        <label class="form-label">From *:</label>
+                        <input type="date" v-model="wexp.from" class="form-input" required />
+                      </div>
+                      <div>
+                        <label class="form-label">To:</label>
+                        <input type="date" v-model="wexp.to" class="form-input" />
                       </div>
                       <div>
                         <label class="form-label">Reason for Leaving:</label>
                         <input
                           type="text"
-                          v-model="w.reasonforleaving"
-                          placeholder="e.g. Career growth"
+                          v-model="wexp.reasonforleaving"
+                          placeholder="e.g. Career advancement"
                           class="form-input"
                         />
                       </div>
@@ -867,7 +1308,7 @@
                         <label class="form-label">Salary (Optional):</label>
                         <input
                           type="text"
-                          v-model="w.salary"
+                          v-model="wexp.salary"
                           placeholder="e.g. GHS 1,500"
                           class="form-input"
                         />
@@ -887,170 +1328,214 @@
                 </div>
                 <button
                   type="button"
-                  @click="addReference"
-                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1"
+                  @click="addRef"
+                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
                 >
                   <i class="pi pi-plus text-[10px]"></i>
-                  <span>Add Reference</span>
+                  <span>Add</span>
                 </button>
               </div>
 
               <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-4">
-                <div
-                  v-for="(ref, idx) in refs"
-                  :key="idx"
-                  class="p-4 rounded-xl bg-slate-50 border border-slate-200"
-                >
-                  <div class="flex items-center justify-between mb-3">
-                    <span class="text-xs font-black uppercase text-[#1A237E]">Referee #{{ idx + 1 }}</span>
-                    <button v-if="refs.length > 1" type="button" @click="removeReference(idx)" class="text-xs text-red-600 font-bold hover:underline">
+                <div v-for="(refItem, ind) in refs" :key="ind" class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <span class="text-xs font-black uppercase text-[#1A237E]">REFERENCE {{ ind + 1 }}</span>
+                    <button v-if="refs.length > 1" type="button" @click="removeRef(ind)" class="text-xs text-red-600 font-bold hover:underline cursor-pointer">
                       Remove
                     </button>
                   </div>
+
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label class="form-label">Referee Full Name *:</label>
+                      <label class="form-label">Name *:</label>
                       <input
                         type="text"
-                        v-model="ref.name"
+                        v-model="refItem.name"
                         placeholder="e.g. REV. DANIEL APPIAH"
-                        @input="ref.name = (ref.name || '').toUpperCase()"
+                        @input="refItem.name = (refItem.name || '').toUpperCase()"
                         class="form-input uppercase"
                         required
                       />
                     </div>
                     <div>
-                      <label class="form-label">Organization / Church:</label>
+                      <label class="form-label">Company Name *:</label>
                       <input
                         type="text"
-                        v-model="ref.organization"
-                        placeholder="e.g. METHODIST CHURCH"
-                        @input="ref.organization = (ref.organization || '').toUpperCase()"
+                        v-model="refItem.companyname"
+                        placeholder="e.g. METHODIST CHURCH / GHANA EDUCATION SERVICE"
+                        @input="refItem.companyname = (refItem.companyname || '').toUpperCase()"
                         class="form-input uppercase"
+                        required
                       />
                     </div>
                     <div>
-                      <label class="form-label">Position / Role:</label>
+                      <label class="form-label">Designation *:</label>
                       <input
                         type="text"
-                        v-model="ref.position"
-                        placeholder="e.g. HEADMASTER, SENIOR PASTOR"
-                        @input="ref.position = (ref.position || '').toUpperCase()"
+                        v-model="refItem.designation"
+                        placeholder="e.g. HEADMASTER / SENIOR PASTOR"
+                        @input="refItem.designation = (refItem.designation || '').toUpperCase()"
                         class="form-input uppercase"
+                        required
                       />
                     </div>
                     <div>
-                      <label class="form-label">Phone Number *:</label>
+                      <label class="form-label">Contact Number *:</label>
                       <input
                         type="tel"
-                        v-model="ref.phoneno"
+                        v-model="refItem.contactno"
                         placeholder="e.g. 0244778899"
                         class="form-input"
                         required
+                      />
+                    </div>
+                    <div class="sm:col-span-2">
+                      <label class="form-label">Email:</label>
+                      <input
+                        type="email"
+                        v-model="refItem.email"
+                        placeholder="e.g. ref@example.com"
+                        class="form-input"
                       />
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- ─── PAGE 4: Guarantor Details ─── -->
-          <div v-show="perinfostep == 4" class="space-y-6 animate-fade-in">
-            
-            <!-- Section: GUARANTOR DETAILS -->
+            <!-- Section: Nominee Information (Next of Kin) -->
             <div class="section-card">
               <div class="section-header">
                 <span class="accent-bar"></span>
-                <span>GUARANTOR DETAILS</span>
+                <span>Nominee Information (Next of Kin)</span>
               </div>
 
               <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
-                <div class="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-[#1A237E] text-xs font-medium mb-5 flex items-start gap-2">
-                  <i class="pi pi-info-circle text-blue-700 text-sm mt-0.5"></i>
-                  <span>Melcom Group requires a credible guarantor (e.g. senior professional, teacher, pastor, business owner).</span>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label class="form-label">Guarantor Full Name *:</label>
+                    <label class="form-label">Name *:</label>
                     <input
                       type="text"
-                      v-model="guarantor.name"
-                      placeholder="e.g. DR. EMMANUEL ADDO"
-                      @input="guarantor.name = (guarantor.name || '').toUpperCase()"
+                      v-model="nominee.name"
+                      placeholder="e.g. MARY MENSAH"
+                      @input="nominee.name = (nominee.name || '').toUpperCase()"
                       class="form-input uppercase"
                       required
                     />
                   </div>
-
                   <div>
-                    <label class="form-label">Relationship to Candidate *:</label>
-                    <input
-                      type="text"
-                      v-model="guarantor.relation"
-                      placeholder="e.g. UNCLE, SENIOR PASTOR"
-                      @input="guarantor.relation = (guarantor.relation || '').toUpperCase()"
-                      class="form-input uppercase"
-                      required
-                    />
+                    <label class="form-label">Relationship to you *:</label>
+                    <select v-model="nominee.relation" class="form-select" required>
+                      <option value="" disabled>-- Select Relationship --</option>
+                      <option v-for="rel in familyRelList" :key="rel.id" :value="rel.id">{{ rel.name }}</option>
+                    </select>
                   </div>
-
                   <div>
-                    <label class="form-label">Guarantor Mobile Phone *:</label>
+                    <label class="form-label">Mobile Number *:</label>
                     <input
                       type="tel"
-                      v-model="guarantor.phoneno"
-                      placeholder="e.g. 0244123890"
+                      v-model="nominee.mobile"
+                      placeholder="e.g. 0244112233"
                       class="form-input"
                       required
                     />
                   </div>
+                </div>
+              </div>
+            </div>
 
-                  <div>
-                    <label class="form-label">Guarantor Occupation:</label>
-                    <input
-                      type="text"
-                      v-model="guarantor.occupation"
-                      placeholder="e.g. MEDICAL DOCTOR, ACCOUNTANT"
-                      @input="guarantor.occupation = (guarantor.occupation || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
+          </div>
+
+          <!-- ─── PAGE 4: Employee's Declaration & Touch Pad ─── -->
+          <div v-show="perinfostep == 4" class="space-y-6 animate-fade-in">
+            <div class="section-card">
+              <div class="section-header">
+                <span class="accent-bar"></span>
+                <span>EMPLOYEE'S DECLARATION</span>
+              </div>
+
+              <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-6">
+                <!-- Legal declaration text matching main onboarding word-for-word -->
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed font-medium">
+                  <p class="m-0">
+                    I <strong>{{ (emp.firstname + ' ' + emp.surname).trim() || 'Candidate' }}</strong> declare that the information provided above is true. In case of false declaration, the appropriate action as per company's policy will be taken.
+                  </p>
+                </div>
+
+                <!-- Signature 1: Employee Signature Pad -->
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-black uppercase text-[#1A237E]">Signature:</span>
+                    <button
+                      type="button"
+                      @click="clearEmployeeSignature"
+                      class="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <i class="pi pi-refresh text-[10px]"></i>
+                      <span>Clear</span>
+                    </button>
                   </div>
 
-                  <div>
-                    <label class="form-label">Employer / Workplace:</label>
-                    <input
-                      type="text"
-                      v-model="guarantor.employer"
-                      placeholder="e.g. KORLE BU HOSPITAL"
-                      @input="guarantor.employer = (guarantor.employer || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
+                  <p class="text-[11px] text-slate-500 m-0">Sign with finger or stylus on smartphone, or mouse on desktop.</p>
+
+                  <div class="relative bg-white rounded-xl border-2 border-slate-300 overflow-hidden touch-none shadow-inner">
+                    <canvas
+                      ref="sig1Canvas"
+                      class="w-full h-40 bg-white cursor-crosshair block"
+                      @mousedown="startDrawSig1"
+                      @mousemove="drawSig1"
+                      @mouseup="stopDrawSig1"
+                      @mouseleave="stopDrawSig1"
+                      @touchstart.prevent="touchStartSig1"
+                      @touchmove.prevent="touchMoveSig1"
+                      @touchend.prevent="touchEndSig1"
+                    ></canvas>
+                    <div class="absolute bottom-2 left-4 right-4 border-b border-dashed border-slate-300 pointer-events-none flex justify-between text-[10px] text-slate-400 font-bold pb-0.5">
+                      <span>Employee Signature Line</span>
+                      <span>Digital Pad</span>
+                    </div>
                   </div>
 
-                  <div>
-                    <label class="form-label">Guarantor Ghana Card No.:</label>
-                    <input
-                      type="text"
-                      v-model="guarantor.ghcardno"
-                      placeholder="e.g. GHA-987654321-0"
-                      @input="guarantor.ghcardno = (guarantor.ghcardno || '').toUpperCase()"
-                      class="form-input uppercase font-mono"
-                    />
-                  </div>
-
-                  <div class="sm:col-span-2">
-                    <label class="form-label">Guarantor Residential Address:</label>
-                    <input
-                      type="text"
-                      v-model="guarantor.address"
-                      placeholder="e.g. Plot 15, East Legon Hills, Accra"
-                      @input="guarantor.address = (guarantor.address || '').toUpperCase()"
-                      class="form-input uppercase"
-                    />
+                  <div class="text-xs text-slate-600 font-semibold pt-1">
+                    Date: <strong>{{ todayString }}</strong>
                   </div>
                 </div>
+
+                <!-- Signature 2: Guarantor Signature Pad -->
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-black uppercase text-[#1A237E]">Guarantor Signature:</span>
+                    <button
+                      type="button"
+                      @click="clearGuarSignature"
+                      class="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <i class="pi pi-refresh text-[10px]"></i>
+                      <span>Clear</span>
+                    </button>
+                  </div>
+
+                  <p class="text-[11px] text-slate-500 m-0">Guarantor signs here or you may append the signed guarantor form.</p>
+
+                  <div class="relative bg-white rounded-xl border-2 border-slate-300 overflow-hidden touch-none shadow-inner">
+                    <canvas
+                      ref="sigGuarCanvas"
+                      class="w-full h-40 bg-white cursor-crosshair block"
+                      @mousedown="startDrawSigGuar"
+                      @mousemove="drawSigGuar"
+                      @mouseup="stopDrawSigGuar"
+                      @mouseleave="stopDrawSigGuar"
+                      @touchstart.prevent="touchStartSigGuar"
+                      @touchmove.prevent="touchMoveSigGuar"
+                      @touchend.prevent="touchEndSigGuar"
+                    ></canvas>
+                    <div class="absolute bottom-2 left-4 right-4 border-b border-dashed border-slate-300 pointer-events-none flex justify-between text-[10px] text-slate-400 font-bold pb-0.5">
+                      <span>Guarantor Signature Line</span>
+                      <span>Digital Pad</span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
@@ -1063,18 +1548,18 @@
           <div class="section-card">
             <div class="section-header">
               <span class="accent-bar"></span>
-              <span>BANK / SOCIAL SECURITY FUND</span>
+              <span>Bank &amp; Social Security Fund Contribution Details</span>
             </div>
 
-            <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
-              <div class="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-[#1A237E] text-xs font-medium mb-5 flex items-start gap-2">
+            <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-5">
+              <div class="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-[#1A237E] text-xs font-medium flex items-start gap-2">
                 <i class="pi pi-info-circle text-blue-700 text-sm mt-0.5"></i>
                 <span>Your monthly salary and allowances will be processed directly into this bank account in your name.</span>
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                 <div>
-                  <label class="form-label">Bank Name *:</label>
+                  <label class="form-label">Name of Bank *:</label>
                   <select v-model="banksocial.bankname" class="form-select" required>
                     <option value="" disabled>-- Select Your Bank --</option>
                     <option v-for="b in bankList" :key="b.id" :value="b.id">{{ b.name }}</option>
@@ -1106,6 +1591,13 @@
                 </div>
 
                 <div>
+                  <label class="form-label">Account Type *:</label>
+                  <select v-model="banksocial.accounttype" class="form-select" required>
+                    <option v-for="bat in bankAccTypes" :key="bat.id" :value="bat.id">{{ bat.name }}</option>
+                  </select>
+                </div>
+
+                <div>
                   <label class="form-label">Account Number *:</label>
                   <input
                     type="text"
@@ -1117,14 +1609,17 @@
                 </div>
 
                 <div>
-                  <label class="form-label">Account Type *:</label>
-                  <select v-model="banksocial.accounttype" class="form-select" required>
-                    <option :value="1">CURRENT ACCOUNT</option>
-                    <option :value="2">SAVINGS ACCOUNT</option>
-                  </select>
+                  <label class="form-label">Social Security Fund Number (SSNIT):</label>
+                  <input
+                    type="text"
+                    v-model="banksocial.socialfundnumber"
+                    placeholder="e.g. C012345678912"
+                    @input="banksocial.socialfundnumber = (banksocial.socialfundnumber || '').toUpperCase()"
+                    class="form-input uppercase font-mono"
+                  />
                 </div>
 
-                <div>
+                <div class="sm:col-span-2">
                   <label class="form-label">Tier 2 Pension Number (Petra Trust):</label>
                   <input
                     type="text"
@@ -1140,202 +1635,615 @@
         </div>
 
         <!-- ======================================================== -->
-        <!-- TAB 3: IRREVOCABLE CONTINUING GUARANTEE                  -->
+        <!-- TAB 3: IRREVOCABLE CONTINUING GUARANTEE (3 Pages)        -->
         <!-- ======================================================== -->
         <div v-show="maintab == 3" class="space-y-6 animate-fade-in">
-          <div class="section-card">
+          
+          <!-- Sub-header with Stepper Page 1 / 3 -->
+          <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg sm:text-xl font-black text-slate-800 tracking-tight m-0">
+                Irrevocable Continuing Guarantee &amp; Witness Sign-Off
+              </h2>
+              <p class="text-xs text-slate-500 font-medium mt-0.5 mb-0">Guarantor information, financial indemnity declaration, and witnesses</p>
+            </div>
+            
+            <div class="flex items-center gap-2 self-start sm:self-center">
+              <span class="text-xs font-black uppercase tracking-wider text-slate-500">PAGE</span>
+              <div class="flex items-center gap-1">
+                <button
+                  v-for="p in 3"
+                  :key="p"
+                  type="button"
+                  @click="irrguarstep = p"
+                  class="w-7 h-7 rounded-lg text-xs font-black transition flex items-center justify-center border cursor-pointer"
+                  :class="irrguarstep === p ? 'bg-[#1A237E] text-white border-[#1A237E] shadow-sm' : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'"
+                >
+                  {{ p }}
+                </button>
+              </div>
+              <span class="text-xs font-bold text-slate-400">/ 3</span>
+            </div>
+          </div>
+
+          <!-- ─── PAGE 1: Information Form ─── -->
+          <div v-show="irrguarstep == 1" class="section-card animate-fade-in">
             <div class="section-header">
               <span class="accent-bar"></span>
-              <span>IRREVOCABLE CONTINUING GUARANTEE</span>
+              <span>Information Form</span>
             </div>
 
             <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-4">
-              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed space-y-2">
-                <p class="font-medium">
-                  In consideration of Melcom Group offering employment to <strong>{{ emp.firstname || 'the Candidate' }} {{ emp.surname }}</strong>, the guarantor acknowledges and agrees to stand as surety for the faithful and diligent execution of all duties and obligations.
-                </p>
-                <div class="flex items-center gap-3 pt-2">
-                  <label class="font-black text-slate-800">Guarantee Indemnity Amount:</label>
-                  <span class="font-extrabold font-mono text-[#1A237E] bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">GHS 5,000.00</span>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="form-label">Name of Guarantor *:</label>
+                  <input
+                    type="text"
+                    v-model="irrguar.guarname"
+                    placeholder="e.g. DR. EMMANUEL ADDO"
+                    @input="irrguar.guarname = (irrguar.guarname || '').toUpperCase()"
+                    class="form-input uppercase"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">SSF No *:</label>
+                  <input
+                    type="text"
+                    v-model="irrguar.ssfno"
+                    placeholder="e.g. C098765432100"
+                    @input="irrguar.ssfno = (irrguar.ssfno || '').toUpperCase()"
+                    class="form-input uppercase font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Annual Income *:</label>
+                  <input
+                    type="number"
+                    v-model.number="irrguar.annualincome"
+                    placeholder="e.g. 60000"
+                    class="form-input font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Value of Landed Property *:</label>
+                  <input
+                    type="number"
+                    v-model.number="irrguar.propertyvalue"
+                    placeholder="e.g. 250000"
+                    class="form-input font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Primary Email:</label>
+                  <input
+                    type="email"
+                    v-model="irrguar.primary_email"
+                    placeholder="e.g. guarantor@example.com"
+                    class="form-input"
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Secondary Email:</label>
+                  <input
+                    type="email"
+                    v-model="irrguar.secondary_email"
+                    placeholder="e.g. alt_guar@example.com"
+                    class="form-input"
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Occupation/Position *:</label>
+                  <input
+                    type="text"
+                    v-model="irrguar.occupation"
+                    placeholder="e.g. MEDICAL DOCTOR, ACCOUNTANT"
+                    @input="irrguar.occupation = (irrguar.occupation || '').toUpperCase()"
+                    class="form-input uppercase"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Tel/Mob. No *:</label>
+                  <input
+                    type="tel"
+                    v-model="irrguar.mobileno"
+                    placeholder="e.g. 0244123890"
+                    class="form-input"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Alternate Tel/Mob. No:</label>
+                  <input
+                    type="tel"
+                    v-model="irrguar.alternate_mobileno"
+                    placeholder="e.g. 0550123890"
+                    class="form-input"
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Region *:</label>
+                  <select v-model="irrguar.region_id" class="form-select" required>
+                    <option value="" disabled>-- Select Region --</option>
+                    <option v-for="r in regionList" :key="r.id" :value="r.id">{{ r.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label">Business Address *:</label>
+                  <input
+                    type="text"
+                    v-model="irrguar.businessaddr"
+                    placeholder="e.g. KORLE BU HOSPITAL, ACCRA"
+                    @input="irrguar.businessaddr = (irrguar.businessaddr || '').toUpperCase()"
+                    class="form-input uppercase"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Residential Address *:</label>
+                  <input
+                    type="text"
+                    v-model="irrguar.residenceaddr"
+                    placeholder="e.g. PLOT 15, EAST LEGON HILLS, ACCRA"
+                    @input="irrguar.residenceaddr = (irrguar.residenceaddr || '').toUpperCase()"
+                    class="form-input uppercase"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Ghana Card Number *:</label>
+                  <input
+                    type="text"
+                    v-model="irrguar.ghcard"
+                    placeholder="GHA-000000000-0"
+                    @input="irrguar.ghcard = (irrguar.ghcard || '').toUpperCase()"
+                    class="form-input uppercase font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Ghana Digital Address *:</label>
+                  <input
+                    type="text"
+                    v-model="irrguar.digitaladdr"
+                    placeholder="e.g. GD-192-8821"
+                    @input="irrguar.digitaladdr = (irrguar.digitaladdr || '').toUpperCase()"
+                    class="form-input uppercase font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Relationship with Applicant *:</label>
+                  <select v-model="irrguar.relation" class="form-select" required>
+                    <option value="" disabled>-- Select Relation --</option>
+                    <option v-for="r in relationList" :key="r.id" :value="r.id">{{ r.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label">Duration of Relationship (Min 3 years) *:</label>
+                  <input
+                    type="number"
+                    v-model.number="irrguar.relationyear"
+                    min="3"
+                    placeholder="Three (3) years minimum"
+                    class="form-input"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Secondary Contact name:</label>
+                  <input
+                    type="text"
+                    v-model="irrguar.secondary_contact_person_name"
+                    placeholder="e.g. SAMUEL ADDO"
+                    @input="irrguar.secondary_contact_person_name = (irrguar.secondary_contact_person_name || '').toUpperCase()"
+                    class="form-input uppercase"
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Secondary Contact Number:</label>
+                  <input
+                    type="tel"
+                    v-model="irrguar.secondary_contact_person_number"
+                    placeholder="e.g. 0244009988"
+                    class="form-input"
+                  />
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <div>
-                  <label class="form-label">Guarantor Name:</label>
-                  <input type="text" :value="guarantor.name" readonly class="form-input bg-slate-50 uppercase text-slate-600" />
-                </div>
-                <div>
-                  <label class="form-label">Guarantor Phone:</label>
-                  <input type="text" :value="guarantor.phoneno" readonly class="form-input bg-slate-50 text-slate-600" />
-                </div>
+              <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
+                The guarantor should also submit with evidence of citizenship and identity any of the following: Driver's License /Passport/Voter's ID card/ Employment ID Card. The guarantor must submit in person to the Head Office of the Company or any other office authorized to receive such forms with Two (2) current Passport picture.
               </div>
             </div>
           </div>
+
+          <!-- ─── PAGE 2: Declaration ─── -->
+          <div v-show="irrguarstep == 2" class="section-card animate-fade-in">
+            <div class="section-header">
+              <span class="accent-bar"></span>
+              <span>Declaration</span>
+            </div>
+
+            <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-4 text-xs text-slate-700 leading-relaxed font-medium">
+              <p>
+                I <strong>{{ irrguar.guarname || 'Guarantor' }}</strong> with telephone number(s) <strong>{{ irrguar.mobileno || '-' }}</strong> <strong v-if="irrguar.alternate_mobileno"> / {{ irrguar.alternate_mobileno }}</strong>, an employee of 
+                <input
+                  type="text"
+                  v-model="irrguar.company"
+                  placeholder="Employer / Company Name"
+                  @input="irrguar.company = (irrguar.company || '').toUpperCase()"
+                  class="form-input uppercase inline-block w-48 mx-1 py-1 px-2 text-xs font-bold"
+                  required
+                />
+                and presently residing at <strong>{{ irrguar.residenceaddr || '-' }}</strong> in the <strong>{{ findRegionName(irrguar.region_id) }}</strong> region of the Republic of Ghana voluntarily presents myself as a guarantor.
+              </p>
+
+              <p>
+                I understand and verily believe same to be true that you have employed <strong>{{ (emp.firstname + ' ' + emp.surname).trim() || 'the Candidate' }}</strong> as a <strong>{{ emp.joiningposition || 'Staff' }}</strong> in your organization and clearly understand my obligations thereof.
+              </p>
+
+              <p>
+                I have known the above named person for <strong>{{ irrguar.relationyear || 3 }}</strong> years and do hereby consent to standing in as a guarantor to secure the organization against any losses that may accrue due to his/her actions, omissions, fraud, dishonesty, malfeasance or other(s) as the case may be to the tune of 
+                <input
+                  type="number"
+                  v-model.number="irrguar.guaramount"
+                  class="form-input inline-block w-28 mx-1 py-1 px-2 text-xs font-mono font-bold"
+                  required
+                />
+                (In words) <strong>{{ numberToWords(irrguar.guaramount || 5000) }}</strong> Ghana Cedis.
+              </p>
+
+              <p>
+                Any claims made under this guarantee must be sent (without limitations via any reachable means) and received by me accompanied by a signed statement indicating that the abovementioned employee has failed in fulfilling his / her obligations which has ensued losses to your organization.
+              </p>
+
+              <p>
+                Such statement and claim shall be conclusive evidence of the amount being claimed under this guarantee and as such I and the above named employee waive all rights against the organization of any suits or actions whatsoever and howsoever.
+              </p>
+            </div>
+          </div>
+
+          <!-- ─── PAGE 3: Signature & Witnesses (MIN 2) ─── -->
+          <div v-show="irrguarstep == 3" class="space-y-6 animate-fade-in">
+            
+            <!-- Guarantor Signature Section -->
+            <div class="section-card">
+              <div class="section-header justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="accent-bar"></span>
+                  <span>Signature of Guarantor</span>
+                </div>
+                <button
+                  type="button"
+                  @click="clearIrrGuarSignature"
+                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <i class="pi pi-refresh text-[10px]"></i>
+                  <span>Clear</span>
+                </button>
+              </div>
+
+              <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-3">
+                <p class="text-xs text-slate-800 font-bold m-0">
+                  Signed on this DAY OF <strong>{{ todayString }}</strong>
+                </p>
+
+                <div class="relative bg-white rounded-xl border-2 border-slate-300 overflow-hidden touch-none shadow-inner">
+                  <canvas
+                    ref="sigIrrCanvas"
+                    class="w-full h-40 bg-white cursor-crosshair block"
+                    @mousedown="startDrawSigIrr"
+                    @mousemove="drawSigIrr"
+                    @mouseup="stopDrawSigIrr"
+                    @mouseleave="stopDrawSigIrr"
+                    @touchstart.prevent="touchStartSigIrr"
+                    @touchmove.prevent="touchMoveSigIrr"
+                    @touchend.prevent="touchEndSigIrr"
+                  ></canvas>
+                  <div class="absolute bottom-2 left-4 right-4 border-b border-dashed border-slate-300 pointer-events-none flex justify-between text-[10px] text-slate-400 font-bold pb-0.5">
+                    <span>Guarantor Continuing Guarantee Signature</span>
+                    <span>Digital Pad</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- WITNESSES (MIN 2) -->
+            <div class="section-card">
+              <div class="section-header justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="accent-bar"></span>
+                  <span>WITNESSES (MIN 2)</span>
+                </div>
+                <button
+                  type="button"
+                  @click="addIrrWitness"
+                  class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <i class="pi pi-plus text-[10px]"></i>
+                  <span>Add Witness</span>
+                </button>
+              </div>
+
+              <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-4">
+                <div v-for="(witness, ind) in irrguarwitnesses" :key="ind" class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <span class="text-xs font-black uppercase text-[#1A237E]">Witness {{ ind + 1 }}</span>
+                    <button
+                      v-if="irrguarwitnesses.length > 2"
+                      type="button"
+                      @click="removeIrrWitness(ind)"
+                      class="text-xs text-red-600 font-bold hover:underline cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label class="form-label">Name *:</label>
+                      <input
+                        type="text"
+                        v-model="witness.name"
+                        placeholder="e.g. KOFI OSEI"
+                        @input="witness.name = (witness.name || '').toUpperCase()"
+                        class="form-input uppercase"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">Residential address *:</label>
+                      <input
+                        type="text"
+                        v-model="witness.address"
+                        placeholder="e.g. HSE NO. 44, ACHIMOTA, ACCRA"
+                        @input="witness.address = (witness.address || '').toUpperCase()"
+                        class="form-input uppercase"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label class="form-label">Phone No *:</label>
+                      <input
+                        type="tel"
+                        v-model="witness.phoneno"
+                        placeholder="e.g. 0244112233"
+                        class="form-input"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
         </div>
 
         <!-- ======================================================== -->
-        <!-- TAB 4: CHECKLIST & COMPLIANCE (Uploads & Declaration)    -->
+        <!-- TAB 4: CHECKLIST & COMPLIANCE (Word-for-Word Parity)     -->
         <!-- ======================================================== -->
         <div v-show="maintab == 4" class="space-y-6 animate-fade-in">
           
-          <!-- Section: REQUIRED DOCUMENT UPLOADS -->
+          <!-- Section: Checklist & Compliance Verification -->
           <div class="section-card">
             <div class="section-header">
               <span class="accent-bar"></span>
-              <span>REQUIRED DOCUMENT UPLOADS</span>
+              <span>Employee Onboarding Checklist &amp; Compliance Verification</span>
             </div>
 
-            <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <!-- Upload Ghana Card Front -->
-                <div class="p-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-center relative hover:border-[#1A237E] transition">
-                  <span class="text-xs font-black uppercase text-slate-800 block mb-2">Ghana Card (Front Side) *</span>
-                  <div v-if="documents.ghcard_front" class="relative mb-2">
-                    <img :src="documents.ghcard_front" alt="Ghana Card Front" class="max-h-36 mx-auto rounded-lg shadow-sm border border-slate-200 object-cover" />
-                    <button type="button" @click="documents.ghcard_front = null" class="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 text-[10px]">
-                      <i class="pi pi-times"></i>
-                    </button>
-                  </div>
-                  <div v-else class="py-3">
-                    <i class="pi pi-id-card text-3xl text-slate-400 mb-2 block"></i>
-                    <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#1A237E] text-white text-xs font-bold shadow-xs">
-                      <i class="pi pi-camera"></i>
-                      <span>Take / Upload Front</span>
-                      <input type="file" accept="image/*" @change="e => handleDocUpload(e, 'ghcard_front')" class="hidden" />
+            <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs space-y-3">
+              <p class="text-xs text-slate-500 font-medium mb-3">Track verification status and required compliance document uploads</p>
+
+              <div class="divide-y divide-slate-200 border border-slate-200 rounded-xl overflow-hidden text-xs">
+                
+                <!-- 1. Profile Form Filled -->
+                <div class="p-3.5 flex items-center justify-between bg-slate-50">
+                  <span class="font-bold text-slate-800">Profile Form Filled</span>
+                  <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-black text-[11px] flex items-center gap-1">
+                    <i class="pi pi-check text-[10px]"></i> Done
+                  </span>
+                </div>
+
+                <!-- 2. 2 Passport size pictures -->
+                <div class="p-3.5 flex items-center justify-between">
+                  <span class="font-bold text-slate-800">2 Passport size pictures</span>
+                  <span v-if="emp.profilepicture" class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-black text-[11px] flex items-center gap-1">
+                    <i class="pi pi-check text-[10px]"></i> Done
+                  </span>
+                  <span v-else class="text-slate-400 italic">Upload in Personal Info</span>
+                </div>
+
+                <!-- 3. Application Letter -->
+                <div class="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span class="font-bold text-slate-800">Application Letter</span>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-xs">
+                      <i class="pi pi-upload text-xs"></i>
+                      <span>{{ documents.appletter ? 'Change File' : 'Upload' }}</span>
+                      <input type="file" accept="image/*,application/pdf" @change="e => handleDocUpload(e, 'appletter')" class="hidden" />
                     </label>
+                    <span v-if="documents.appletter" class="text-emerald-600 font-bold flex items-center gap-1">
+                      <i class="pi pi-check"></i> Done
+                    </span>
                   </div>
                 </div>
 
-                <!-- Upload Ghana Card Back -->
-                <div class="p-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-center relative hover:border-[#1A237E] transition">
-                  <span class="text-xs font-black uppercase text-slate-800 block mb-2">Ghana Card (Back Side)</span>
-                  <div v-if="documents.ghcard_back" class="relative mb-2">
-                    <img :src="documents.ghcard_back" alt="Ghana Card Back" class="max-h-36 mx-auto rounded-lg shadow-sm border border-slate-200 object-cover" />
-                    <button type="button" @click="documents.ghcard_back = null" class="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 text-[10px]">
-                      <i class="pi pi-times"></i>
-                    </button>
-                  </div>
-                  <div v-else class="py-3">
-                    <i class="pi pi-id-card text-3xl text-slate-400 mb-2 block"></i>
-                    <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold shadow-xs">
-                      <i class="pi pi-camera"></i>
-                      <span>Take / Upload Back</span>
-                      <input type="file" accept="image/*" @change="e => handleDocUpload(e, 'ghcard_back')" class="hidden" />
+                <!-- 4. Appointment Letter -->
+                <div class="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50">
+                  <span class="font-bold text-slate-800">Appointment Letter</span>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-xs">
+                      <i class="pi pi-upload text-xs"></i>
+                      <span>{{ documents.appointmentletter ? 'Change File' : 'Upload' }}</span>
+                      <input type="file" accept="image/*,application/pdf" @change="e => handleDocUpload(e, 'appointmentletter')" class="hidden" />
                     </label>
+                    <span v-if="documents.appointmentletter" class="text-emerald-600 font-bold flex items-center gap-1">
+                      <i class="pi pi-check"></i> Done
+                    </span>
                   </div>
                 </div>
 
-                <!-- Upload CV / Resume -->
-                <div class="p-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-center relative hover:border-[#1A237E] transition">
-                  <span class="text-xs font-black uppercase text-slate-800 block mb-2">Curriculum Vitae (CV / Resume)</span>
-                  <div v-if="documents.resume_cv" class="py-3 flex items-center justify-center gap-2">
-                    <i class="pi pi-file-pdf text-2xl text-red-600"></i>
-                    <span class="text-xs font-bold text-slate-800">CV Attached</span>
-                    <button type="button" @click="documents.resume_cv = null" class="text-xs text-red-600 font-bold hover:underline">Remove</button>
-                  </div>
-                  <div v-else class="py-3">
-                    <i class="pi pi-file text-3xl text-slate-400 mb-2 block"></i>
-                    <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold shadow-xs">
-                      <i class="pi pi-upload"></i>
-                      <span>Upload CV Document</span>
-                      <input type="file" accept="application/pdf,image/*" @change="e => handleDocUpload(e, 'resume_cv')" class="hidden" />
+                <!-- 5. Probation Confirmation Detail -->
+                <div class="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span class="font-bold text-slate-800">Probation Confirmation Detail</span>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-xs">
+                      <i class="pi pi-upload text-xs"></i>
+                      <span>{{ documents.probationconf ? 'Change File' : 'Upload' }}</span>
+                      <input type="file" accept="image/*,application/pdf" @change="e => handleDocUpload(e, 'probationconf')" class="hidden" />
                     </label>
+                    <span v-if="documents.probationconf" class="text-emerald-600 font-bold flex items-center gap-1">
+                      <i class="pi pi-check"></i> Done
+                    </span>
                   </div>
                 </div>
 
-                <!-- Upload Certificate -->
-                <div class="p-4 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-center relative hover:border-[#1A237E] transition">
-                  <span class="text-xs font-black uppercase text-slate-800 block mb-2">Educational Certificate</span>
-                  <div v-if="documents.certificate" class="py-3 flex items-center justify-center gap-2">
-                    <i class="pi pi-file-check text-2xl text-emerald-600"></i>
-                    <span class="text-xs font-bold text-slate-800">Certificate Attached</span>
-                    <button type="button" @click="documents.certificate = null" class="text-xs text-red-600 font-bold hover:underline">Remove</button>
-                  </div>
-                  <div v-else class="py-3">
-                    <i class="pi pi-book text-3xl text-slate-400 mb-2 block"></i>
-                    <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold shadow-xs">
-                      <i class="pi pi-upload"></i>
-                      <span>Upload Certificate</span>
-                      <input type="file" accept="application/pdf,image/*" @change="e => handleDocUpload(e, 'certificate')" class="hidden" />
+                <!-- 6. CV -->
+                <div class="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50">
+                  <span class="font-bold text-slate-800">CV</span>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-xs">
+                      <i class="pi pi-upload text-xs"></i>
+                      <span>{{ documents.resume_cv ? 'Change File' : 'Upload' }}</span>
+                      <input type="file" accept="image/*,application/pdf" @change="e => handleDocUpload(e, 'resume_cv')" class="hidden" />
                     </label>
+                    <span v-if="documents.resume_cv" class="text-emerald-600 font-bold flex items-center gap-1">
+                      <i class="pi pi-check"></i> Done
+                    </span>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
 
-          <!-- Section: TOUCH DIGITAL SIGNATURE -->
-          <div class="section-card">
-            <div class="section-header justify-between">
-              <div class="flex items-center gap-2">
-                <span class="accent-bar"></span>
-                <span>TOUCH DIGITAL SIGNATURE</span>
-              </div>
-              <button
-                type="button"
-                @click="clearSignature"
-                class="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition flex items-center gap-1"
-              >
-                <i class="pi pi-refresh text-[10px]"></i>
-                <span>Clear</span>
-              </button>
-            </div>
-
-            <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
-              <p class="text-xs text-slate-500 font-medium mb-3">Sign with your finger (mobile) or mouse cursor inside the box below.</p>
-              
-              <div class="relative bg-white rounded-xl border-2 border-slate-300 overflow-hidden touch-none shadow-inner">
-                <canvas
-                  ref="sigCanvas"
-                  class="w-full h-44 sm:h-52 bg-white cursor-crosshair block"
-                  @mousedown="startDrawing"
-                  @mousemove="draw"
-                  @mouseup="stopDrawing"
-                  @mouseleave="stopDrawing"
-                  @touchstart.prevent="handleTouchStart"
-                  @touchmove.prevent="handleTouchMove"
-                  @touchend.prevent="handleTouchEnd"
-                ></canvas>
-
-                <div class="absolute bottom-4 left-6 right-6 border-b border-dashed border-slate-300 pointer-events-none flex justify-between text-[10px] text-slate-400 font-bold pb-1">
-                  <span>Sign above this line</span>
-                  <span>Finger / Stylus Pad</span>
+                <!-- 7. Petra Trust form filled -->
+                <div class="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span class="font-bold text-slate-800">Petra Trust form filled</span>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-xs">
+                      <i class="pi pi-upload text-xs"></i>
+                      <span>{{ documents.petratrust ? 'Change File' : 'Upload' }}</span>
+                      <input type="file" accept="image/*,application/pdf" @change="e => handleDocUpload(e, 'petratrust')" class="hidden" />
+                    </label>
+                    <span v-if="documents.petratrust" class="text-emerald-600 font-bold flex items-center gap-1">
+                      <i class="pi pi-check"></i> Done
+                    </span>
+                  </div>
                 </div>
 
-                <div v-if="hasSignature" class="absolute top-3 right-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-black px-2.5 py-1 rounded-full flex items-center gap-1 shadow-xs pointer-events-none">
-                  <i class="pi pi-check text-[10px]"></i>
-                  <span>Signature Captured</span>
+                <!-- 8. National Identification Card 2 Coloured Copies (GHANA CARD) -->
+                <div class="p-3.5 flex items-center justify-between bg-slate-50">
+                  <span class="font-bold text-slate-800">National Identification Card 2 Coloured Copies (GHANA CARD)</span>
+                  <span v-if="emp.ghcardfile" class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-black text-[11px] flex items-center gap-1">
+                    <i class="pi pi-check text-[10px]"></i> Done
+                  </span>
+                  <span v-else class="text-slate-400 italic">Uploaded in Page 1</span>
                 </div>
+
+                <!-- 9. Guarantor Forms (Guarantor ID Card, etc.) -->
+                <div class="p-3.5 flex items-center justify-between">
+                  <span class="font-bold text-slate-800">Guarantor Forms (Guarantor ID Card, etc.)</span>
+                  <span v-if="irrguar.guarname" class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-black text-[11px] flex items-center gap-1">
+                    <i class="pi pi-check text-[10px]"></i> Done
+                  </span>
+                  <button v-else type="button" @click="maintab = 3; irrguarstep = 1" class="text-xs text-[#1A237E] font-bold hover:underline cursor-pointer">
+                    Fill Now
+                  </button>
+                </div>
+
+                <!-- 10. Bank / Social Security Fund -->
+                <div class="p-3.5 flex items-center justify-between bg-slate-50">
+                  <span class="font-bold text-slate-800">Bank / Social Security Fund</span>
+                  <span v-if="banksocial.bankname && banksocial.accountnumber" class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-black text-[11px] flex items-center gap-1">
+                    <i class="pi pi-check text-[10px]"></i> Done
+                  </span>
+                  <button v-else type="button" @click="maintab = 2" class="text-xs text-[#1A237E] font-bold hover:underline cursor-pointer">
+                    Fill Now
+                  </button>
+                </div>
+
+                <!-- 11. NHIS Card Copy -->
+                <div class="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span class="font-bold text-slate-800">NHIS Card Copy</span>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-xs">
+                      <i class="pi pi-upload text-xs"></i>
+                      <span>{{ documents.nhis ? 'Change File' : 'Upload' }}</span>
+                      <input type="file" accept="image/*,application/pdf" @change="e => handleDocUpload(e, 'nhis')" class="hidden" />
+                    </label>
+                    <span v-if="documents.nhis" class="text-emerald-600 font-bold flex items-center gap-1">
+                      <i class="pi pi-check"></i> Done
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 12. Birth Certificate Copy -->
+                <div class="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50">
+                  <span class="font-bold text-slate-800">Birth Certificate Copy</span>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-xs">
+                      <i class="pi pi-upload text-xs"></i>
+                      <span>{{ documents.birthcert ? 'Change File' : 'Upload' }}</span>
+                      <input type="file" accept="image/*,application/pdf" @change="e => handleDocUpload(e, 'birthcert')" class="hidden" />
+                    </label>
+                    <span v-if="documents.birthcert" class="text-emerald-600 font-bold flex items-center gap-1">
+                      <i class="pi pi-check"></i> Done
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 13. Police Clearance form for Drivers -->
+                <div class="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span class="font-bold text-slate-800">
+                    Police Clearance form for Drivers (exclusively for drivers, security officers, Shop Managers, Sales Managers/Executives.)
+                  </span>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-xs">
+                      <i class="pi pi-upload text-xs"></i>
+                      <span>{{ documents.pclearanceform ? 'Change File' : 'Upload' }}</span>
+                      <input type="file" accept="image/*,application/pdf" @change="e => handleDocUpload(e, 'pclearanceform')" class="hidden" />
+                    </label>
+                    <span v-if="documents.pclearanceform" class="text-emerald-600 font-bold flex items-center gap-1">
+                      <i class="pi pi-check"></i> Done
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 14. SSNIT Card Copy -->
+                <div class="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50">
+                  <span class="font-bold text-slate-800">SSNIT Card Copy</span>
+                  <div class="flex items-center gap-2">
+                    <label class="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1 shadow-xs">
+                      <i class="pi pi-upload text-xs"></i>
+                      <span>{{ documents.ssnit ? 'Change File' : 'Upload' }}</span>
+                      <input type="file" accept="image/*,application/pdf" @change="e => handleDocUpload(e, 'ssnit')" class="hidden" />
+                    </label>
+                    <span v-if="documents.ssnit" class="text-emerald-600 font-bold flex items-center gap-1">
+                      <i class="pi pi-check"></i> Done
+                    </span>
+                  </div>
+                </div>
+
               </div>
-            </div>
-          </div>
 
-          <!-- Section: EMPLOYEE'S DECLARATION -->
-          <div class="section-card">
-            <div class="section-header">
-              <span class="accent-bar"></span>
-              <span>EMPLOYEE'S DECLARATION</span>
-            </div>
-
-            <div class="p-5 sm:p-6 bg-white rounded-b-2xl border border-t-0 border-slate-200 shadow-xs">
-              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed mb-4">
-                <p class="font-medium">
-                  I hereby solemnly declare that all details, certificates, and information provided in this onboarding application are true and correct. I understand that any false declaration or omission of material facts may result in rejection of offer or immediate termination of employment at Melcom Group.
-                </p>
+              <!-- Final Declaration Checkbox -->
+              <div class="pt-4">
+                <label class="flex items-start gap-3 cursor-pointer select-none p-4 rounded-xl border border-slate-300 hover:bg-slate-50 transition">
+                  <input
+                    type="checkbox"
+                    v-model="agreedDeclaration"
+                    class="mt-0.5 h-5 w-5 rounded text-[#1A237E] focus:ring-[#1A237E] border-slate-300 cursor-pointer"
+                    required
+                  />
+                  <span class="text-xs font-bold text-slate-800 leading-snug">
+                    I {{ (emp.firstname + ' ' + emp.surname).trim() || 'Candidate' }} declare that the information provided above is true. In case of false declaration, the appropriate action as per company's policy will be taken. *
+                  </span>
+                </label>
               </div>
 
-              <label class="flex items-start gap-3 cursor-pointer select-none p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition">
-                <input
-                  type="checkbox"
-                  v-model="agreedDeclaration"
-                  class="mt-0.5 h-5 w-5 rounded text-[#1A237E] focus:ring-[#1A237E] border-slate-300 cursor-pointer"
-                  required
-                />
-                <span class="text-xs font-bold text-slate-800 leading-snug">
-                  I agree to the Melcom Employee Declaration and confirm the accuracy of all submitted details. *
-                </span>
-              </label>
             </div>
           </div>
         </div>
@@ -1348,7 +2256,7 @@
             v-if="canGoBack"
             type="button"
             @click="handleBack"
-            class="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 transition flex items-center gap-2"
+            class="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 transition flex items-center gap-2 cursor-pointer"
           >
             <i class="pi pi-arrow-left text-xs"></i>
             <span>Previous</span>
@@ -1359,7 +2267,7 @@
             <button
               type="button"
               @click="saveDraftToStorage(true)"
-              class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 font-semibold text-xs transition"
+              class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 font-semibold text-xs transition cursor-pointer"
             >
               Save Draft
             </button>
@@ -1368,7 +2276,7 @@
               v-if="!isLastStep"
               type="button"
               @click="handleNext"
-              class="px-7 py-2.5 rounded-xl bg-[#1A237E] hover:bg-[#121858] text-white font-black text-xs transition flex items-center gap-2 shadow-md shadow-indigo-100"
+              class="px-7 py-2.5 rounded-xl bg-[#1A237E] hover:bg-[#121858] text-white font-black text-xs transition flex items-center gap-2 shadow-md shadow-indigo-100 cursor-pointer"
             >
               <span>Continue</span>
               <i class="pi pi-arrow-right text-xs"></i>
@@ -1378,7 +2286,7 @@
               v-else
               type="submit"
               :disabled="submitting"
-              class="px-8 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition flex items-center gap-2 shadow-lg shadow-emerald-200 disabled:opacity-50"
+              class="px-8 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition flex items-center gap-2 shadow-lg shadow-emerald-200 disabled:opacity-50 cursor-pointer"
             >
               <i v-if="submitting" class="pi pi-spin pi-spinner text-xs"></i>
               <i v-else class="pi pi-check text-xs"></i>
@@ -1398,7 +2306,7 @@
           v-if="canGoBack"
           type="button"
           @click="handleBack"
-          class="h-11 px-3.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 active:bg-slate-100"
+          class="h-11 px-3.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 active:bg-slate-100 cursor-pointer"
         >
           <i class="pi pi-arrow-left text-xs"></i>
           <span>Back</span>
@@ -1407,14 +2315,14 @@
           v-else
           type="button"
           @click="saveDraftToStorage(true)"
-          class="h-11 px-3 rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs active:bg-slate-100"
+          class="h-11 px-3 rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs active:bg-slate-100 cursor-pointer"
         >
           Save
         </button>
 
         <div class="text-center px-1">
           <span class="text-[11px] font-black text-[#1A237E] block truncate max-w-[140px]">
-            {{ maintab === 1 ? `Page ${perinfostep} of 4` : currentTabName }}
+            {{ maintab === 1 ? `Page ${perinfostep} of 4` : (maintab === 3 ? `Guarantee ${irrguarstep}/3` : currentTabName) }}
           </span>
         </div>
 
@@ -1422,7 +2330,7 @@
           v-if="!isLastStep"
           type="button"
           @click="handleNext"
-          class="h-11 px-5 rounded-xl bg-[#1A237E] text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-indigo-200 active:bg-[#121858]"
+          class="h-11 px-5 rounded-xl bg-[#1A237E] text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-indigo-200 active:bg-[#121858] cursor-pointer"
         >
           <span>Continue</span>
           <i class="pi pi-arrow-right text-xs"></i>
@@ -1433,7 +2341,7 @@
           type="button"
           @click="handleFormAction"
           :disabled="submitting"
-          class="h-11 px-5 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-200 disabled:opacity-50 active:bg-emerald-700"
+          class="h-11 px-5 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-200 disabled:opacity-50 active:bg-emerald-700 cursor-pointer"
         >
           <i v-if="submitting" class="pi pi-spin pi-spinner text-xs"></i>
           <span>{{ submitting ? 'Submitting...' : 'Submit Form' }}</span>
@@ -1444,9 +2352,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import axios from 'axios'
 import Swal from 'sweetalert2'
+import {
+  calculateAge,
+  numberToWords,
+  aToday
+} from '@/helpers/essential'
 import {
   companies as masterCompanies,
   depts as masterDepts,
@@ -1454,7 +2367,13 @@ import {
   regions as masterRegions,
   banks as masterBanks,
   conttypes as masterConttypes,
-  mstatus as masterMstatus
+  mstatus as masterMstatus,
+  bankaccounttype as masterBankaccounttypes,
+  relations as masterRelations,
+  familyrelation as masterFamilyrelations,
+  countries as masterCountries,
+  qualtypes as masterQualtypes,
+  idtypes as masterIdtypes
 } from '@/data/masterdata'
 
 // Master data lists
@@ -1463,6 +2382,12 @@ const deptList = ref(masterDepts || [])
 const branchList = ref(masterBranches || [])
 const regionList = ref(masterRegions || [])
 const bankList = ref(masterBanks || [])
+const bankAccTypes = ref(masterBankaccounttypes || [{ id: 1, name: 'CURRENT' }, { id: 2, name: 'SAVINGS' }])
+const relationList = ref(masterRelations || [])
+const familyRelList = ref(masterFamilyrelations || [])
+const countryList = ref(masterCountries || [])
+const qualList = ref(masterQualtypes || [])
+const idTypeList = ref(masterIdtypes || [])
 const contractTypes = ref(masterConttypes || [
   { code: 'contract', name: 'Contract' },
   { code: 'permanent', name: 'Permanent' },
@@ -1478,19 +2403,22 @@ const maritalList = ref(masterMstatus || [
   { id: 3, name: 'NOT DISCLOSED' }
 ])
 
-// Main Tabs matching Main Onboarding
+// Today String for Signatures
+const todayString = computed(() => aToday(new Date()))
+
+// Tabs state
 const maintab = ref(1) // 1 = Form, 2 = Bank, 3 = Guarantee, 4 = Checklist
 const perinfostep = ref(1) // 1, 2, 3, 4
+const irrguarstep = ref(1) // 1, 2, 3
 
 const profileInputRef = ref(null)
-
 const triggerProfileUpload = () => {
   if (profileInputRef.value) {
     profileInputRef.value.click()
   }
 }
 
-// Form State
+// 1. Employee details state
 const emp = reactive({
   joining_company_id: 3, // Melcom default
   contracttype: 'contract',
@@ -1499,81 +2427,187 @@ const emp = reactive({
   joiningposition: '',
   joiningdate: new Date().toISOString().slice(0, 10),
   firstname: '',
+  middlename: '',
   surname: '',
-  othername: '',
-  gender: 'M',
-  dob: '',
+  citizenship: 'GH',
+  idtype: null,
   ghcardno: '',
-  ghcardexpiry: '',
-  mobileno: '',
-  whatsappno: '',
-  email: '',
-  socialsecurityno: '',
-  region_id: 7, // Greater Accra default
+  ghcardfile: null,
+  raddress: '',
+  daddress: '',
   hometown: '',
-  gpsaddress: '',
-  resaddress: '',
+  hdaddress: '',
+  mobileno: '',
+  altnumber: '',
+  email: '',
+  gender: 'M',
+  socialsecurityno: '',
+  dob: '',
+  maritalstatus: 5,
   fathersname: '',
   mothersname: '',
-  maritalstatus: 5, // Single
+  relativeinorg: 0,
+  relative_name: '',
+  relative_relation: null,
+  anyotherinfo: '',
   profilepicture: null,
-  signature: null
+  signature: null,
+  guarsignature: null
 })
 
-const spouse = reactive({
-  name: '',
-  phoneno: '',
-  occupation: '',
-  address: ''
-})
-
+// Spouses & Children
+const wives = ref([])
+const haschildren = ref(false)
 const childrens = ref([])
 
-const nominee = reactive({
-  name: '',
-  relationship: 'MOTHER',
-  phoneno: '',
-  address: ''
+// Melcom Prior Employment
+const iscurwork = ref(false)
+const curwork = reactive({
+  title: '',
+  employeeid: '',
+  doj: '',
+  dept_id: null,
+  branch_id: null,
+  region_id: null
 })
 
+// Union
+const isunion = ref(false)
+const unioninfo = reactive({
+  union_name: '',
+  union_regdate: '',
+  union_number: ''
+})
+
+// Work Permit
+const wpermit = reactive({
+  renewalno: null,
+  passedate: '',
+  idate: '',
+  edate: '',
+  number: ''
+})
+
+// Driver's License
+const dlicense = reactive({
+  name: '',
+  licenseno: '',
+  idate: '',
+  edate: '',
+  ref: '',
+  rdate: '',
+  files: []
+})
+
+// Emergency Contacts
 const econts = ref([
-  { name: '', relationship: 'MOTHER', phoneno: '', altphoneno: '', address: '' }
+  {
+    fullname: '',
+    relation: 1,
+    workaddress: '',
+    ghcardno: '',
+    mobileno: '',
+    altnumber: '',
+    isnextofkin: 1
+  }
 ])
 
+// Social Contacts
+const soccont = reactive({
+  churchmemberloc: '',
+  pastor: '',
+  memduration: null,
+  mobileno: '',
+  ghcardno: '',
+  closestfriend: '',
+  contactsphone: '',
+  email: '',
+  digitaladdress: '',
+  workaddress: ''
+})
+
+// Education
 const edus = ref([
-  { schoolname: '', qualification: 'WASSCE / SSCE', coursetitle: '', fromdate: '', todate: '' }
+  {
+    educqualtype: 2, // WASSCE / SSCE default
+    educqual: '',
+    to: ''
+  }
 ])
 
+// Work Experience
 const workexps = ref([])
 
+// References
 const refs = ref([
-  { name: '', position: '', organization: '', phoneno: '', email: '' }
+  {
+    name: '',
+    companyname: '',
+    designation: '',
+    contactno: '',
+    email: ''
+  }
 ])
 
+// Nominee
+const nominee = reactive({
+  name: '',
+  relation: 1,
+  mobile: ''
+})
+
+// 2. Bank Details state
 const banksocial = reactive({
   bankname: '',
   bankbranch: '',
   accountname: '',
+  accounttype: 1, // CURRENT
   accountnumber: '',
-  accounttype: 1, // Current
+  socialfundnumber: '',
   petratrustnumber: ''
 })
 
-const guarantor = reactive({
-  name: '',
-  relation: '',
-  phoneno: '',
+// 3. Irrevocable Continuing Guarantee state
+const irrguar = reactive({
+  guarname: '',
+  ssfno: '',
+  annualincome: null,
+  propertyvalue: null,
+  primary_email: '',
+  secondary_email: '',
   occupation: '',
-  employer: '',
-  ghcardno: '',
-  address: ''
+  mobileno: '',
+  alternate_mobileno: '',
+  region_id: 7, // Greater Accra
+  businessaddr: '',
+  residenceaddr: '',
+  ghcard: '',
+  digitaladdr: '',
+  relation: 1,
+  relationyear: 3,
+  secondary_contact_person_name: '',
+  secondary_contact_person_number: '',
+  company: '',
+  guaramount: 5000,
+  signature: null
 })
 
+const irrguarwitnesses = ref([
+  { name: '', address: '', phoneno: '' },
+  { name: '', address: '', phoneno: '' }
+])
+
+// 4. Checklist Documents state
 const documents = reactive({
-  ghcard_front: null,
-  ghcard_back: null,
   resume_cv: null,
-  certificate: null
+  appletter: null,
+  appointmentletter: null,
+  probationconf: null,
+  petratrust: null,
+  nhis: null,
+  birthcert: null,
+  pclearanceform: null,
+  ssnit: null
 })
 
 const agreedDeclaration = ref(false)
@@ -1589,27 +2623,25 @@ const successData = reactive({
 const draftSavedAt = ref('')
 const copyStatusText = ref('Copy')
 
-// Canvas Signature
-const sigCanvas = ref(null)
-const isDrawing = ref(false)
-const hasSignature = ref(false)
-let canvasCtx = null
+// Signatures Canvas refs
+const sig1Canvas = ref(null)
+const sigGuarCanvas = ref(null)
+const sigIrrCanvas = ref(null)
 
-// Live Age Calculation
+let sig1Ctx = null
+let sigGuarCtx = null
+let sigIrrCtx = null
+
+let isDrawing1 = false
+let isDrawingGuar = false
+let isDrawingIrr = false
+
+// Age calculation
 const computedAge = computed(() => {
   if (!emp.dob) return null
-  const birth = new Date(emp.dob)
-  const now = new Date()
-  if (isNaN(birth.getTime())) return null
-  let age = now.getFullYear() - birth.getFullYear()
-  const m = now.getMonth() - birth.getMonth()
-  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) {
-    age--
-  }
-  return age >= 0 ? age : null
+  return calculateAge(emp.dob)
 })
 
-// DOB Constraints (must be at least 15 years old)
 const maxDobDate = computed(() => {
   const d = new Date()
   d.setFullYear(d.getFullYear() - 15)
@@ -1618,7 +2650,7 @@ const maxDobDate = computed(() => {
 
 // Navigation helpers
 const canGoBack = computed(() => {
-  return maintab.value > 1 || perinfostep.value > 1
+  return maintab.value > 1 || perinfostep.value > 1 || irrguarstep.value > 1
 })
 
 const isLastStep = computed(() => {
@@ -1626,24 +2658,32 @@ const isLastStep = computed(() => {
 })
 
 const currentTabName = computed(() => {
-  if (maintab.value === 1) return 'Employee Form'
+  if (maintab.value === 1) return `Form Page ${perinfostep.value}/4`
   if (maintab.value === 2) return 'Bank Details'
-  if (maintab.value === 3) return 'Guarantee'
+  if (maintab.value === 3) return `Guarantee Page ${irrguarstep.value}/3`
   return 'Compliance & Submit'
 })
 
-// Back & Next handlers
+// Handlers for Navigation
 const handleBack = () => {
   if (maintab.value === 1) {
     if (perinfostep.value > 1) {
       perinfostep.value--
-      window.scrollTo({ top: 0, behavior: 'smooth' })
     }
-  } else {
-    maintab.value--
-    if (maintab.value === 1) perinfostep.value = 4
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+  } else if (maintab.value === 2) {
+    maintab.value = 1
+    perinfostep.value = 4
+  } else if (maintab.value === 3) {
+    if (irrguarstep.value > 1) {
+      irrguarstep.value--
+    } else {
+      maintab.value = 2
+    }
+  } else if (maintab.value === 4) {
+    maintab.value = 3
+    irrguarstep.value = 3
   }
+  window.scrollTo({ top: 0, behavior: 'smooth' })
   saveDraftToStorage()
 }
 
@@ -1657,18 +2697,26 @@ const handleNext = () => {
       }
       window.scrollTo({ top: 0, behavior: 'smooth' })
       saveDraftToStorage()
+      if (perinfostep.value === 4) nextTick(initPage4Canvases)
     }
   } else if (maintab.value === 2) {
     if (validateBank()) {
       maintab.value = 3
+      irrguarstep.value = 1
       window.scrollTo({ top: 0, behavior: 'smooth' })
       saveDraftToStorage()
     }
   } else if (maintab.value === 3) {
-    maintab.value = 4
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-    saveDraftToStorage()
-    nextTick(initCanvas)
+    if (validateGuarantee(irrguarstep.value)) {
+      if (irrguarstep.value < 3) {
+        irrguarstep.value++
+      } else {
+        maintab.value = 4
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      saveDraftToStorage()
+      if (irrguarstep.value === 3) nextTick(initIrrCanvas)
+    }
   }
 }
 
@@ -1689,27 +2737,38 @@ const validatePage = (step) => {
     if (!emp.joining_dept_id) errors.push('Please select your Department.')
     if (!emp.joiningposition || !emp.joiningposition.trim()) errors.push('Please enter your Job Title / Position.')
     if (!emp.firstname || !emp.firstname.trim()) errors.push('Please enter your First Name.')
-    if (!emp.surname || !emp.surname.trim()) errors.push('Please enter your Surname.')
+    if (!emp.surname || !emp.surname.trim()) errors.push('Please enter your SurName.')
     if (!emp.dob) errors.push('Please select your Date of Birth.')
-    if (!emp.ghcardno || emp.ghcardno.length < 10) errors.push('Please enter a valid Ghana Card Number.')
-    if (!emp.mobileno || emp.mobileno.length < 9) errors.push('Please enter a valid Mobile Phone Number.')
-    if (!emp.resaddress || !emp.resaddress.trim()) errors.push('Please enter your Residential Address.')
+    if (!emp.ghcardno || emp.ghcardno.length < 8) errors.push('Please enter a valid Ghana Card / National ID Number.')
+    if (!emp.mobileno || emp.mobileno.length < 8) errors.push('Please enter a valid Mobile Phone Number.')
+    if (!emp.raddress || !emp.raddress.trim()) errors.push('Please enter your Residential Address.')
+    if (!emp.daddress || !emp.daddress.trim()) errors.push('Please enter your Residential Ghana Digital Address.')
+    if (!emp.hometown || !emp.hometown.trim()) errors.push('Please enter your Permanent Home Town/Region.')
+    if (!emp.hdaddress || !emp.hdaddress.trim()) errors.push('Please enter your Permanent Ghana Digital Address.')
+    if (!emp.fathersname || !emp.fathersname.trim()) errors.push("Please enter Father's Name.")
+    if (!emp.mothersname || !emp.mothersname.trim()) errors.push("Please enter Mother's Name.")
   } else if (step === 2) {
-    if (!nominee.name || !nominee.name.trim()) errors.push('Please enter Nominee (Next of Kin) Full Name.')
-    if (!nominee.phoneno || nominee.phoneno.length < 9) errors.push('Please enter Nominee Phone Number.')
-    if (!econts.value[0].name || !econts.value[0].name.trim()) errors.push('Please enter Emergency Contact Name.')
-    if (!econts.value[0].phoneno || econts.value[0].phoneno.length < 9) errors.push('Please enter Emergency Contact Phone.')
+    if (!econts.value[0].fullname || !econts.value[0].fullname.trim()) errors.push('Please enter Emergency Relative Full Name.')
+    if (!econts.value[0].mobileno || econts.value[0].mobileno.length < 8) errors.push('Please enter Emergency Relative Mobile Phone Number.')
   } else if (step === 3) {
-    if (edus.value.length === 0 || !edus.value[0].schoolname || !edus.value[0].schoolname.trim()) {
-      errors.push('Please provide at least one school under Educational Background.')
+    if (edus.value.length === 0 || !edus.value[0].educqual || !edus.value[0].educqual.trim()) {
+      errors.push('Please provide at least one school / qualification under Educational Background.')
     }
     if (refs.value.length === 0 || !refs.value[0].name || !refs.value[0].name.trim()) {
       errors.push('Please provide at least one character / professional reference.')
     }
+    if (!nominee.name || !nominee.name.trim()) {
+      errors.push('Please provide Nominee (Next of Kin) Full Name.')
+    }
+    if (!nominee.mobile || nominee.mobile.length < 8) {
+      errors.push('Please provide Nominee Mobile Number.')
+    }
   } else if (step === 4) {
-    if (!guarantor.name || !guarantor.name.trim()) errors.push('Please provide your Guarantor Full Name.')
-    if (!guarantor.relation || !guarantor.relation.trim()) errors.push('Please enter Relationship to Guarantor.')
-    if (!guarantor.phoneno || guarantor.phoneno.length < 9) errors.push('Please enter Guarantor Phone Number.')
+    saveSig1Data()
+    saveSigGuarData()
+    if (!emp.signature) {
+      errors.push('Please provide your Employee Signature on Page 4.')
+    }
   }
 
   if (errors.length > 0) {
@@ -1742,7 +2801,46 @@ const validateBank = () => {
   return true
 }
 
-// Auto sync Full Name to Account Name
+const validateGuarantee = (step) => {
+  const errors = []
+  if (step === 1) {
+    if (!irrguar.guarname || !irrguar.guarname.trim()) errors.push('Please enter Name of Guarantor.')
+    if (!irrguar.ssfno || !irrguar.ssfno.trim()) errors.push('Please enter Guarantor SSF No.')
+    if (!irrguar.annualincome) errors.push('Please enter Guarantor Annual Income.')
+    if (!irrguar.propertyvalue) errors.push('Please enter Value of Landed Property.')
+    if (!irrguar.occupation || !irrguar.occupation.trim()) errors.push('Please enter Guarantor Occupation/Position.')
+    if (!irrguar.mobileno || irrguar.mobileno.length < 8) errors.push('Please enter Guarantor Tel/Mob. No.')
+    if (!irrguar.businessaddr || !irrguar.businessaddr.trim()) errors.push('Please enter Guarantor Business Address.')
+    if (!irrguar.residenceaddr || !irrguar.residenceaddr.trim()) errors.push('Please enter Guarantor Residential Address.')
+    if (!irrguar.ghcard || !irrguar.ghcard.trim()) errors.push('Please enter Guarantor Ghana Card Number.')
+    if (!irrguar.digitaladdr || !irrguar.digitaladdr.trim()) errors.push('Please enter Guarantor Ghana Digital Address.')
+  } else if (step === 2) {
+    if (!irrguar.company || !irrguar.company.trim()) errors.push('Please enter the Employer / Company name of your Guarantor.')
+    if (!irrguar.guaramount) errors.push('Please enter Guarantee Amount.')
+  } else if (step === 3) {
+    saveSigIrrData()
+    if (!irrguar.signature) errors.push('Please provide Guarantor Signature.')
+    if (!irrguarwitnesses.value[0].name || !irrguarwitnesses.value[0].phoneno) {
+      errors.push('Please provide Witness 1 Name and Phone Number.')
+    }
+    if (!irrguarwitnesses.value[1].name || !irrguarwitnesses.value[1].phoneno) {
+      errors.push('Please provide Witness 2 Name and Phone Number.')
+    }
+  }
+
+  if (errors.length > 0) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'Missing Guarantee Details',
+      html: `<div class="text-left text-sm text-slate-700"><ul>${errors.map(e => `<li class="py-1">• ${e}</li>`).join('')}</ul></div>`,
+      confirmButtonColor: '#1A237E'
+    })
+    return false
+  }
+  return true
+}
+
+// Helpers
 const onNameChange = () => {
   emp.firstname = (emp.firstname || '').toUpperCase()
   emp.surname = (emp.surname || '').toUpperCase()
@@ -1751,23 +2849,15 @@ const onNameChange = () => {
   }
 }
 
-// Ghana Card formatter: GHA-XXXXXXXXX-X
 const formatGhCard = () => {
   let val = (emp.ghcardno || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
-  if (val.startsWith('GHA')) {
-    val = val.substring(3)
-  }
+  if (val.startsWith('GHA')) val = val.substring(3)
   let formatted = 'GHA-'
-  if (val.length > 0) {
-    formatted += val.substring(0, 9)
-  }
-  if (val.length > 9) {
-    formatted += '-' + val.substring(9, 10)
-  }
+  if (val.length > 0) formatted += val.substring(0, 9)
+  if (val.length > 9) formatted += '-' + val.substring(9, 10)
   emp.ghcardno = formatted
 }
 
-// Name lookup helpers
 const getCompanyName = (id) => {
   const c = companyList.value.find(item => item.id === Number(id))
   return c ? c.name : 'Melcom'
@@ -1775,29 +2865,54 @@ const getCompanyName = (id) => {
 
 const getBranchName = (id) => {
   const b = branchList.value.find(item => item.id === Number(id))
-  return b ? b.name : 'Melcom Store'
+  return b ? b.name : 'Branch'
 }
 
-// Dynamic Lists
-const addChild = () => childrens.value.push({ name: '', gender: 'M', dob: '' })
+const findRegionName = (id) => {
+  const r = regionList.value.find(item => item.id === Number(id))
+  return r ? r.name : 'GREATER ACCRA'
+}
+
+// Dynamic List Actions
+const addSpouse = () => wives.value.push({ name: '', occupation: '' })
+const removeSpouse = (i) => wives.value.splice(i, 1)
+
+const addChild = () => childrens.value.push({ name: '', age: null })
 const removeChild = (i) => childrens.value.splice(i, 1)
 
-const addEducation = () => edus.value.push({ schoolname: '', qualification: 'WASSCE / SSCE', coursetitle: '', fromdate: '', todate: '' })
-const removeEducation = (i) => edus.value.splice(i, 1)
+const addEcont = () => econts.value.push({ fullname: '', relation: 1, workaddress: '', ghcardno: '', mobileno: '', altnumber: '', isnextofkin: 0 })
+const removeEcont = (i) => econts.value.splice(i, 1)
 
-const addWorkExp = () => workexps.value.push({ companyname: '', jobtitle: '', reasonforleaving: '', fromdate: '', todate: '', salary: '' })
+const addEdu = () => edus.value.push({ educqualtype: 2, educqual: '', to: '' })
+const removeEdu = (i) => edus.value.splice(i, 1)
+
+const addWorkExp = () => workexps.value.push({ orgname: '', postheld: '', from: '', to: '', reasonforleaving: '', salary: '' })
 const removeWorkExp = (i) => workexps.value.splice(i, 1)
 
-const addReference = () => refs.value.push({ name: '', position: '', organization: '', phoneno: '', email: '' })
-const removeReference = (i) => refs.value.splice(i, 1)
+const addRef = () => refs.value.push({ name: '', companyname: '', designation: '', contactno: '', email: '' })
+const removeRef = (i) => refs.value.splice(i, 1)
 
-// File Handlers
+const addIrrWitness = () => irrguarwitnesses.value.push({ name: '', address: '', phoneno: '' })
+const removeIrrWitness = (i) => irrguarwitnesses.value.splice(i, 1)
+
+// File upload helpers
 const handleProfilePhoto = (e) => {
   const file = e.target.files && e.target.files[0]
   if (!file) return
   const reader = new FileReader()
   reader.onload = (event) => {
     emp.profilepicture = event.target.result
+    saveDraftToStorage()
+  }
+  reader.readAsDataURL(file)
+}
+
+const handleFileField = (e, field) => {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (event) => {
+    emp[field] = event.target.result
     saveDraftToStorage()
   }
   reader.readAsDataURL(file)
@@ -1814,123 +2929,220 @@ const handleDocUpload = (e, field) => {
   reader.readAsDataURL(file)
 }
 
-// Canvas Touch Signature
-const initCanvas = () => {
-  const canvas = sigCanvas.value
-  if (!canvas) return
+// ─── Canvas Signatures ───
+const setupCanvasContext = (canvasRef) => {
+  const canvas = canvasRef.value
+  if (!canvas) return null
   const ratio = Math.max(window.devicePixelRatio || 1, 1)
   const rect = canvas.getBoundingClientRect()
   canvas.width = rect.width * ratio
   canvas.height = rect.height * ratio
-  canvasCtx = canvas.getContext('2d')
-  canvasCtx.scale(ratio, ratio)
-  canvasCtx.strokeStyle = '#0f172a'
-  canvasCtx.lineWidth = 2.5
-  canvasCtx.lineCap = 'round'
-  canvasCtx.lineJoin = 'round'
+  const ctx = canvas.getContext('2d')
+  ctx.scale(ratio, ratio)
+  ctx.strokeStyle = '#0f172a'
+  ctx.lineWidth = 2.5
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  return ctx
+}
 
-  if (emp.signature) {
+const initPage4Canvases = () => {
+  sig1Ctx = setupCanvasContext(sig1Canvas)
+  sigGuarCtx = setupCanvasContext(sigGuarCanvas)
+
+  if (emp.signature && sig1Canvas.value && sig1Ctx) {
     const img = new Image()
-    img.onload = () => {
-      canvasCtx.drawImage(img, 0, 0, rect.width, rect.height)
-      hasSignature.value = true
-    }
+    img.onload = () => sig1Ctx.drawImage(img, 0, 0, sig1Canvas.value.clientWidth, sig1Canvas.value.clientHeight)
     img.src = emp.signature
   }
-}
-
-const getCanvasPos = (evt) => {
-  const canvas = sigCanvas.value
-  const rect = canvas.getBoundingClientRect()
-  return { x: evt.clientX - rect.left, y: evt.clientY - rect.top }
-}
-
-const startDrawing = (e) => {
-  isDrawing.value = true
-  const pos = getCanvasPos(e)
-  canvasCtx.beginPath()
-  canvasCtx.moveTo(pos.x, pos.y)
-}
-
-const draw = (e) => {
-  if (!isDrawing.value) return
-  const pos = getCanvasPos(e)
-  canvasCtx.lineTo(pos.x, pos.y)
-  canvasCtx.stroke()
-  hasSignature.value = true
-}
-
-const stopDrawing = () => {
-  if (!isDrawing.value) return
-  isDrawing.value = false
-  saveSignatureData()
-}
-
-const handleTouchStart = (e) => {
-  if (e.touches && e.touches[0]) {
-    isDrawing.value = true
-    const touch = e.touches[0]
-    const canvas = sigCanvas.value
-    const rect = canvas.getBoundingClientRect()
-    canvasCtx.beginPath()
-    canvasCtx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top)
+  if (emp.guarsignature && sigGuarCanvas.value && sigGuarCtx) {
+    const img = new Image()
+    img.onload = () => sigGuarCtx.drawImage(img, 0, 0, sigGuarCanvas.value.clientWidth, sigGuarCanvas.value.clientHeight)
+    img.src = emp.guarsignature
   }
 }
 
-const handleTouchMove = (e) => {
-  if (!isDrawing.value || !e.touches || !e.touches[0]) return
-  const touch = e.touches[0]
-  const canvas = sigCanvas.value
-  const rect = canvas.getBoundingClientRect()
-  canvasCtx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top)
-  canvasCtx.stroke()
-  hasSignature.value = true
+const initIrrCanvas = () => {
+  sigIrrCtx = setupCanvasContext(sigIrrCanvas)
+  if (irrguar.signature && sigIrrCanvas.value && sigIrrCtx) {
+    const img = new Image()
+    img.onload = () => sigIrrCtx.drawImage(img, 0, 0, sigIrrCanvas.value.clientWidth, sigIrrCanvas.value.clientHeight)
+    img.src = irrguar.signature
+  }
 }
 
-const handleTouchEnd = () => {
-  isDrawing.value = false
-  saveSignatureData()
+// Sig 1 (Employee)
+const startDrawSig1 = (e) => {
+  if (!sig1Ctx || !sig1Canvas.value) return
+  isDrawing1 = true
+  const rect = sig1Canvas.value.getBoundingClientRect()
+  sig1Ctx.beginPath()
+  sig1Ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
+}
+const drawSig1 = (e) => {
+  if (!isDrawing1 || !sig1Ctx || !sig1Canvas.value) return
+  const rect = sig1Canvas.value.getBoundingClientRect()
+  sig1Ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top)
+  sig1Ctx.stroke()
+}
+const stopDrawSig1 = () => {
+  isDrawing1 = false
+  saveSig1Data()
+}
+const touchStartSig1 = (e) => {
+  if (!sig1Ctx || !sig1Canvas.value || !e.touches[0]) return
+  isDrawing1 = true
+  const rect = sig1Canvas.value.getBoundingClientRect()
+  sig1Ctx.beginPath()
+  sig1Ctx.moveTo(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top)
+}
+const touchMoveSig1 = (e) => {
+  if (!isDrawing1 || !sig1Ctx || !sig1Canvas.value || !e.touches[0]) return
+  const rect = sig1Canvas.value.getBoundingClientRect()
+  sig1Ctx.lineTo(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top)
+  sig1Ctx.stroke()
+}
+const touchEndSig1 = () => {
+  isDrawing1 = false
+  saveSig1Data()
+}
+const saveSig1Data = () => {
+  if (sig1Canvas.value) emp.signature = sig1Canvas.value.toDataURL('image/png')
+}
+const clearEmployeeSignature = () => {
+  if (sig1Canvas.value && sig1Ctx) {
+    sig1Ctx.clearRect(0, 0, sig1Canvas.value.width, sig1Canvas.value.height)
+    emp.signature = null
+  }
 }
 
-const saveSignatureData = () => {
-  if (!sigCanvas.value) return
-  emp.signature = sigCanvas.value.toDataURL('image/png')
-  saveDraftToStorage()
+// Sig Guar
+const startDrawSigGuar = (e) => {
+  if (!sigGuarCtx || !sigGuarCanvas.value) return
+  isDrawingGuar = true
+  const rect = sigGuarCanvas.value.getBoundingClientRect()
+  sigGuarCtx.beginPath()
+  sigGuarCtx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
+}
+const drawSigGuar = (e) => {
+  if (!isDrawingGuar || !sigGuarCtx || !sigGuarCanvas.value) return
+  const rect = sigGuarCanvas.value.getBoundingClientRect()
+  sigGuarCtx.lineTo(e.clientX - rect.left, e.clientY - rect.top)
+  sigGuarCtx.stroke()
+}
+const stopDrawSigGuar = () => {
+  isDrawingGuar = false
+  saveSigGuarData()
+}
+const touchStartSigGuar = (e) => {
+  if (!sigGuarCtx || !sigGuarCanvas.value || !e.touches[0]) return
+  isDrawingGuar = true
+  const rect = sigGuarCanvas.value.getBoundingClientRect()
+  sigGuarCtx.beginPath()
+  sigGuarCtx.moveTo(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top)
+}
+const touchMoveSigGuar = (e) => {
+  if (!isDrawingGuar || !sigGuarCtx || !sigGuarCanvas.value || !e.touches[0]) return
+  const rect = sigGuarCanvas.value.getBoundingClientRect()
+  sigGuarCtx.lineTo(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top)
+  sigGuarCtx.stroke()
+}
+const touchEndSigGuar = () => {
+  isDrawingGuar = false
+  saveSigGuarData()
+}
+const saveSigGuarData = () => {
+  if (sigGuarCanvas.value) emp.guarsignature = sigGuarCanvas.value.toDataURL('image/png')
+}
+const clearGuarSignature = () => {
+  if (sigGuarCanvas.value && sigGuarCtx) {
+    sigGuarCtx.clearRect(0, 0, sigGuarCanvas.value.width, sigGuarCanvas.value.height)
+    emp.guarsignature = null
+  }
 }
 
-const clearSignature = () => {
-  if (!sigCanvas.value || !canvasCtx) return
-  const canvas = sigCanvas.value
-  const rect = canvas.getBoundingClientRect()
-  canvasCtx.clearRect(0, 0, rect.width, rect.height)
-  hasSignature.value = false
-  emp.signature = null
-  saveDraftToStorage()
+// Sig Irr Guarantee
+const startDrawSigIrr = (e) => {
+  if (!sigIrrCtx || !sigIrrCanvas.value) return
+  isDrawingIrr = true
+  const rect = sigIrrCanvas.value.getBoundingClientRect()
+  sigIrrCtx.beginPath()
+  sigIrrCtx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
+}
+const drawSigIrr = (e) => {
+  if (!isDrawingIrr || !sigIrrCtx || !sigIrrCanvas.value) return
+  const rect = sigIrrCanvas.value.getBoundingClientRect()
+  sigIrrCtx.lineTo(e.clientX - rect.left, e.clientY - rect.top)
+  sigIrrCtx.stroke()
+}
+const stopDrawSigIrr = () => {
+  isDrawingIrr = false
+  saveSigIrrData()
+}
+const touchStartSigIrr = (e) => {
+  if (!sigIrrCtx || !sigIrrCanvas.value || !e.touches[0]) return
+  isDrawingIrr = true
+  const rect = sigIrrCanvas.value.getBoundingClientRect()
+  sigIrrCtx.beginPath()
+  sigIrrCtx.moveTo(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top)
+}
+const touchMoveSigIrr = (e) => {
+  if (!isDrawingIrr || !sigIrrCtx || !sigIrrCanvas.value || !e.touches[0]) return
+  const rect = sigIrrCanvas.value.getBoundingClientRect()
+  sigIrrCtx.lineTo(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top)
+  sigIrrCtx.stroke()
+}
+const touchEndSigIrr = () => {
+  isDrawingIrr = false
+  saveSigIrrData()
+}
+const saveSigIrrData = () => {
+  if (sigIrrCanvas.value) irrguar.signature = sigIrrCanvas.value.toDataURL('image/png')
+}
+const clearIrrGuarSignature = () => {
+  if (sigIrrCanvas.value && sigIrrCtx) {
+    sigIrrCtx.clearRect(0, 0, sigIrrCanvas.value.width, sigIrrCanvas.value.height)
+    irrguar.signature = null
+  }
 }
 
-// LocalStorage Draft Management
-const STORAGE_KEY = 'melcom_online_onboarding_draft'
+// Draft storage
+const STORAGE_KEY = 'melcom_online_onboarding_draft_v2'
 
 const saveDraftToStorage = (notify = false) => {
   try {
-    const draftPayload = {
+    saveSig1Data()
+    saveSigGuarData()
+    saveSigIrrData()
+
+    const draft = {
       emp,
-      spouse,
+      wives: wives.value,
+      haschildren: haschildren.value,
       childrens: childrens.value,
-      nominee,
+      iscurwork: iscurwork.value,
+      curwork,
+      isunion: isunion.value,
+      unioninfo,
+      wpermit,
+      dlicense,
       econts: econts.value,
+      soccont,
       edus: edus.value,
       workexps: workexps.value,
       refs: refs.value,
+      nominee,
       banksocial,
-      guarantor,
+      irrguar,
+      irrguarwitnesses: irrguarwitnesses.value,
       documents,
       maintab: maintab.value,
       perinfostep: perinfostep.value,
+      irrguarstep: irrguarstep.value,
       savedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(draftPayload))
-    draftSavedAt.value = draftPayload.savedAt
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(draft))
+    draftSavedAt.value = draft.savedAt
 
     if (notify) {
       Swal.fire({
@@ -1953,20 +3165,29 @@ const loadDraftFromStorage = () => {
     if (!raw) return
     const d = JSON.parse(raw)
     if (d.emp) Object.assign(emp, d.emp)
-    if (d.spouse) Object.assign(spouse, d.spouse)
+    if (d.wives) wives.value = d.wives
+    if (d.haschildren !== undefined) haschildren.value = d.haschildren
     if (d.childrens) childrens.value = d.childrens
-    if (d.nominee) Object.assign(nominee, d.nominee)
+    if (d.iscurwork !== undefined) iscurwork.value = d.iscurwork
+    if (d.curwork) Object.assign(curwork, d.curwork)
+    if (d.isunion !== undefined) isunion.value = d.isunion
+    if (d.unioninfo) Object.assign(unioninfo, d.unioninfo)
+    if (d.wpermit) Object.assign(wpermit, d.wpermit)
+    if (d.dlicense) Object.assign(dlicense, d.dlicense)
     if (d.econts) econts.value = d.econts
+    if (d.soccont) Object.assign(soccont, d.soccont)
     if (d.edus) edus.value = d.edus
     if (d.workexps) workexps.value = d.workexps
     if (d.refs) refs.value = d.refs
+    if (d.nominee) Object.assign(nominee, d.nominee)
     if (d.banksocial) Object.assign(banksocial, d.banksocial)
-    if (d.guarantor) Object.assign(guarantor, d.guarantor)
+    if (d.irrguar) Object.assign(irrguar, d.irrguar)
+    if (d.irrguarwitnesses) irrguarwitnesses.value = d.irrguarwitnesses
     if (d.documents) Object.assign(documents, d.documents)
     if (d.maintab) maintab.value = d.maintab
     if (d.perinfostep) perinfostep.value = d.perinfostep
+    if (d.irrguarstep) irrguarstep.value = d.irrguarstep
     if (d.savedAt) draftSavedAt.value = d.savedAt
-    if (emp.signature) hasSignature.value = true
   } catch (e) {
     console.warn('Failed to load draft:', e)
   }
@@ -1989,16 +3210,22 @@ const promptClearDraft = () => {
   })
 }
 
-// Submission
+// Final Submit
 const submitApplication = async () => {
-  // Validate final checklist requirements
-  if (!hasSignature.value && !emp.signature) {
+  saveSig1Data()
+  saveSigGuarData()
+  saveSigIrrData()
+
+  if (!emp.signature) {
     Swal.fire({
       icon: 'warning',
-      title: 'Digital Signature Required',
-      text: 'Please sign with your finger or mouse inside the touch signature box.',
+      title: 'Employee Signature Required',
+      text: 'Please sign on Page 4 of the Employee Information Form before submitting.',
       confirmButtonColor: '#1A237E'
     })
+    maintab.value = 1
+    perinfostep.value = 4
+    nextTick(initPage4Canvases)
     return
   }
 
@@ -2017,24 +3244,39 @@ const submitApplication = async () => {
   const payload = {
     emp: {
       ...emp,
-      signature: emp.signature || (sigCanvas.value ? sigCanvas.value.toDataURL('image/png') : null)
+      signature: emp.signature,
+      guarsignature: emp.guarsignature
     },
-    spouse,
+    wives: wives.value,
+    haschildren: haschildren.value,
     childrens: childrens.value,
-    nominee,
+    iscurwork: iscurwork.value,
+    curwork,
+    isunion: isunion.value,
+    unioninfo,
+    wpermit,
+    dlicense,
     econts: econts.value,
+    soccont,
     edus: edus.value,
     workexps: workexps.value,
     refs: refs.value,
+    nominee,
     banksocial,
-    guarantor,
-    irrguar: {
-      name: guarantor.name,
-      occupation: guarantor.occupation,
-      address: guarantor.address,
-      phoneno: guarantor.phoneno,
-      amount: '5000'
+    guarantor: {
+      name: irrguar.guarname,
+      relation: irrguar.relation,
+      occupation: irrguar.occupation,
+      employer: irrguar.company,
+      phoneno: irrguar.mobileno,
+      address: irrguar.residenceaddr,
+      ghcardno: irrguar.ghcard
     },
+    irrguar: {
+      ...irrguar,
+      signature: irrguar.signature
+    },
+    irrguarwitnesses: irrguarwitnesses.value,
     documents
   }
 
@@ -2058,7 +3300,7 @@ const submitApplication = async () => {
     Swal.fire({
       icon: 'success',
       title: 'Application Submitted!',
-      text: 'Your Melcom onboarding application has been successfully submitted.',
+      text: 'Your Melcom onboarding application has been successfully submitted to Melcom HR.',
       confirmButtonColor: '#1A237E'
     })
   } catch (error) {
@@ -2091,138 +3333,124 @@ const startNewApplication = () => {
   window.location.reload()
 }
 
-// Auto-save debounced watcher
-let autoSaveTimer = null
-watch(
-  [emp, nominee, banksocial, guarantor, spouse, childrens, edus, workexps, refs, documents],
-  () => {
-    if (submittedSuccess.value) return
-    clearTimeout(autoSaveTimer)
-    autoSaveTimer = setTimeout(() => {
-      saveDraftToStorage(false)
-    }, 800)
-  },
-  { deep: true }
-)
+// Watchers for canvases initialization
+watch([maintab, perinfostep], () => {
+  if (maintab.value === 1 && perinfostep.value === 4) {
+    nextTick(initPage4Canvases)
+  }
+})
 
-watch(maintab, (val) => {
-  if (val === 4) {
-    nextTick(initCanvas)
+watch([maintab, irrguarstep], () => {
+  if (maintab.value === 3 && irrguarstep.value === 3) {
+    nextTick(initIrrCanvas)
   }
 })
 
 onMounted(() => {
   loadDraftFromStorage()
-  window.addEventListener('resize', initCanvas)
-  if (maintab.value === 4) {
-    nextTick(initCanvas)
+  if (maintab.value === 1 && perinfostep.value === 4) {
+    nextTick(initPage4Canvases)
   }
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', initCanvas)
 })
 </script>
 
 <style scoped>
-/* ─── Filter Pill Tabs matching Main Onboarding ─── */
-.tab-btn {
-  border-radius: 12px;
-  padding: 9px 15px;
-  font-size: 0.825rem;
-  font-weight: 700;
-  color: #475569;
-  background: transparent;
-  border: 1px solid transparent;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.tab-btn:hover {
-  background: rgba(255, 255, 255, 0.6);
-  color: #1e293b;
-}
-.activetab {
-  background: #1A237E !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(26, 35, 126, 0.28) !important;
-  border-color: #1A237E !important;
-}
-
-/* ─── Section Header styling matching Main Onboarding ─── */
-.section-card {
-  border-radius: 16px;
-  overflow: hidden;
-}
-.section-header {
-  background: #1A237E;
-  color: #ffffff;
-  padding: 13px 18px;
-  font-size: 0.85rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border-radius: 16px 16px 0 0;
-}
-.accent-bar {
-  display: inline-block;
-  width: 4px;
-  height: 16px;
-  background: #38bdf8; /* Cyan accent line matching main onboarding */
-  border-radius: 3px;
-  flex-shrink: 0;
-}
-
-/* ─── Form Inputs & Dropdowns matching Main Onboarding ─── */
 .form-label {
   display: block;
-  font-size: 0.775rem;
+  font-size: 0.75rem;
   font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
   color: #334155;
-  margin-bottom: 5px;
-  letter-spacing: -0.01em;
+  margin-bottom: 0.35rem;
 }
-.form-input,
-.form-select {
+
+.form-input, .form-select, .form-textarea {
   width: 100%;
-  min-height: 46px;
-  padding: 10px 14px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #1e293b;
+  border-radius: 0.75rem;
+  border: 1.5px solid #cbd5e1;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.8125rem;
+  color: #0f172a;
   background-color: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease-in-out;
   outline: none;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
-.form-input:focus,
-.form-select:focus {
+
+.form-input:focus, .form-select:focus, .form-textarea:focus {
   border-color: #1A237E;
   box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.12);
 }
 
-/* ─── Profile Picture Upload Zone matching Main Onboarding ─── */
-.profile-upload-zone {
-  border: 2px dashed #c7d2fe;
-  border-radius: 14px;
-  padding: 20px;
-  background: #f8faff;
-  transition: all 0.25s ease;
-  cursor: pointer;
-}
-.profile-upload-zone:hover {
-  border-color: #1A237E;
-  background: #f0f4ff;
+.section-card {
+  background: white;
+  border-radius: 1rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  overflow: hidden;
 }
 
-/* Hide scrollbar for clean horizontal tabs */
+.section-header {
+  background: #f8fafc;
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.8125rem;
+  font-weight: 900;
+  color: #1e293b;
+  letter-spacing: 0.025em;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.accent-bar {
+  width: 4px;
+  height: 16px;
+  background: #1A237E;
+  border-radius: 9999px;
+  display: inline-block;
+}
+
+.profile-upload-zone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  background-color: #f8fafc;
+  transition: border-color 0.2s;
+}
+
+.profile-upload-zone:hover {
+  border-color: #1A237E;
+}
+
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-radius: 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #475569;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: #0f172a;
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+.activetab {
+  background-color: #1A237E !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 6px -1px rgba(26, 35, 126, 0.25);
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -2232,16 +3460,11 @@ onUnmounted(() => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-in {
-  animation: fadeIn 0.25s ease-out forwards;
-}
 
-@media print {
-  header, button, .tabs, .steper {
-    display: none !important;
-  }
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
 }
 </style>

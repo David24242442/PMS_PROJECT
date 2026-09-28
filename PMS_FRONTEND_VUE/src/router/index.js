@@ -122,6 +122,12 @@ const router = createRouter({
           name: 'hr-manage-employees',
           meta: { fullname: 'Manage Employees', roles: [3, 4] },
           component: () => import('@/views/app/hr/ManageEmployeesView.vue')
+        },
+        {
+          path: '/hr/sessions',
+          name: 'hr-sessions',
+          meta: { fullname: 'User Sessions & Activity Logs', roles: [3, 4] },
+          component: () => import('@/views/app/hr/SessionsView.vue')
         }
       ]
     },
