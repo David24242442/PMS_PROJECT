@@ -96,15 +96,22 @@ body.dark-mode {
 html {
     font-size: 16px;
     scroll-behavior: smooth;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 body {
-    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     background-color: var(--color-background);
     color: var(--text-primary);
     line-height: 1.6;
     min-height: 100vh;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 /* ==========================================================================
@@ -778,6 +785,77 @@ body.dark-mode .p-dropdown-item.p-focus {
 /* Base button reset: eliminate browser user-agent dark/outset borders */
 button:not([class*="border"]):not([class*="btn-outline"]) {
     border: none;
+}
+
+/* ==========================================================================
+   Enterprise HR Typography Specification: Inter + JetBrains Mono
+   ========================================================================== */
+
+/* Headings: Crisp negative tracking for executive HR feel */
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.022em;
+    font-feature-settings: "cv05" 1, "calt" 1;
+}
+
+/* Form Inputs & Disambiguation:
+   cv05: Slashed zero (differentiates 0 from O/o)
+   cv08: Curved lowercase l (differentiates l from uppercase I and digit 1)
+   cv01: Digit 1 hook serif (differentiates 1 from uppercase I and lowercase l)
+   calt: Contextual alternates
+*/
+input, 
+select, 
+textarea, 
+.form-disambiguate, 
+.p-inputtext, 
+.p-select, 
+.p-textarea,
+.p-inputnumber input {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-feature-settings: "cv05" 1, "cv08" 1, "cv01" 1, "calt" 1;
+}
+
+/* Tabular Numerals: Prevents jitter and ensures perfect vertical alignment in financial tables, ratings, and stats */
+.tabular-nums, 
+table td, 
+table th, 
+.p-datatable-table td, 
+.p-datatable-table th, 
+.metric-value, 
+.stat-number,
+.stat-digit,
+.currency-amount {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "cv05" 1;
+}
+
+/* Monospace Identity Tokens & System Badges (Employee ID, Ghana Card, SSNIT, PINs, Passwords, Session IPs) */
+.id-pill, 
+.mono-code, 
+.code-mono-badge, 
+.font-mono, 
+code, 
+kbd, 
+samp, 
+pre {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace !important;
+    font-feature-settings: "zero" 1;
+    letter-spacing: -0.015em;
+}
+
+/* PrimeVue Component Global Font Synchronization */
+.p-component, 
+.p-dialog, 
+.p-toast, 
+.p-tooltip, 
+.p-button, 
+.p-badge, 
+.p-tag, 
+.p-tabview, 
+.p-tabs,
+.p-menu {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 

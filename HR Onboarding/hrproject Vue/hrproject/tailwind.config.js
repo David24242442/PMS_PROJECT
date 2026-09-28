@@ -1,16 +1,17 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: 'class',
-  purge: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsx}'],
-  content: [],
+  content: [
+    "./index.html",
+    "./src/**/*.{vue,js,ts,jsx,tsx}",
+  ],
   theme: {
-    fontFamily: {
-      sans: ['Inter', 'system-ui', 'sans-serif'],
-      heading: ['"Plus Jakarta Sans"', 'sans-serif'],
-      serif: ['Georgia', 'serif'],
-      mono: ['Menlo', 'monospace'],
-    },
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+        heading: ['Inter', '"Plus Jakarta Sans"', 'sans-serif'],
+      },
       colors: {
         mred: {
           "50": "#fdeeec",
