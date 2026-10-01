@@ -260,7 +260,12 @@
                         <td class="cell-value">
                             <span class="rating-highlight-blue">
                                 <template v-if="canViewReviewPage">
-                                    {{ norm.managerOverallScore.toFixed(2) }} / 5.00 ({{ norm.managerOverallPercentage }}%)
+                                    <template v-if="norm.hasAnyManagerRating || norm.managerOverallScore > 0">
+                                        {{ norm.managerOverallScore.toFixed(2) }} / 5.00 ({{ norm.managerOverallPercentage }}%)
+                                    </template>
+                                    <template v-else>
+                                        Pending Assessment
+                                    </template>
                                 </template>
                                 <template v-else>
                                     --
@@ -314,9 +319,9 @@
                             <strong>Comments:</strong> OVERALL PERFORMANCE RATING
                         </td>
                         <td class="cell-center font-black text-blue">{{ totalWeight }}%</td>
-                        <td class="cell-center font-bold">{{ norm.selfAvgScore.toFixed(2) }}</td>
-                        <td class="cell-center font-black text-darkblue">{{ canViewReviewPage ? norm.managerOverallScore.toFixed(2) : '--' }}</td>
-                        <td class="cell-center font-black rating-final-cell">{{ canViewReviewPage ? norm.managerOverallScore.toFixed(2) : '--' }}</td>
+                        <td class="cell-center font-bold">{{ norm.hasAnySelfRating ? norm.selfAvgScore.toFixed(2) : '0.00' }}</td>
+                        <td class="cell-center font-black text-darkblue">{{ canViewReviewPage ? (norm.hasAnyManagerRating || norm.managerOverallScore > 0 ? norm.managerOverallScore.toFixed(2) : '0.00') : '--' }}</td>
+                        <td class="cell-center font-black rating-final-cell">{{ canViewReviewPage ? (norm.hasAnyManagerRating || norm.managerOverallScore > 0 ? norm.managerOverallScore.toFixed(2) : '0.00') : '--' }}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -410,7 +415,7 @@
             <div class="page-footer">
                 <span>Page 02 &bull; Yearly Performance Assessment</span>
                 <span class="font-bold">Record ID: {{ dossierId }}</span>
-                <span>Overall: {{ canViewReviewPage ? (norm.managerOverallScore.toFixed(2) + ' / 5.00 (' + norm.managerOverallPercentage + '%)') : '--' }}</span>
+                <span>Overall: {{ canViewReviewPage ? (norm.hasAnyManagerRating || norm.managerOverallScore > 0 ? (norm.managerOverallScore.toFixed(2) + ' / 5.00 (' + norm.managerOverallPercentage + '%)') : 'Pending Assessment') : '--' }}</span>
             </div>
         </div>
 
@@ -814,8 +819,8 @@ const defaultCompetencies = [
     {
         title: "Performance & Teamwork",
         weight: 20,
-        selfRating: 3,
-        managerRating: 3,
+        selfRating: 0,
+        managerRating: 0,
         descriptions: [
             "a) Overall performance - based on feedback from Line or Operations Managers",
             "b) Teamwork, People issues - how it has been managed, number of queries tracked as compared to last year and compared to your peers."
@@ -824,8 +829,8 @@ const defaultCompetencies = [
     {
         title: "Customer Service / Relationship Building",
         weight: 20,
-        selfRating: 3,
-        managerRating: 3,
+        selfRating: 0,
+        managerRating: 0,
         descriptions: [
             "a) Number of super saver cards sold vs number of invoices made without the use of super saver card on the invoices",
             "b) Google scores – Improvement over last year's Shop Google or overall Melcom Google score."
@@ -834,8 +839,8 @@ const defaultCompetencies = [
     {
         title: "Execution / Sales Results Driven",
         weight: 20,
-        selfRating: 3,
-        managerRating: 3,
+        selfRating: 0,
+        managerRating: 0,
         descriptions: [
             "a) Business Driven Metric (Set by Department with Management input)",
             "b) Loss to company % (Factors and calculations must be provided), where application and relevant"
@@ -844,8 +849,8 @@ const defaultCompetencies = [
     {
         title: "Compliance & Quality Standards",
         weight: 20,
-        selfRating: 3,
-        managerRating: 3,
+        selfRating: 0,
+        managerRating: 0,
         descriptions: [
             "a) Adherence to company policies, SOPs, safety, and regulatory compliance",
             "b) % implementation of Wooqer checklist and shop/department standards"
@@ -854,8 +859,8 @@ const defaultCompetencies = [
     {
         title: "Continuous Improvement in workflows/processes",
         weight: 20,
-        selfRating: 3,
-        managerRating: 3,
+        selfRating: 0,
+        managerRating: 0,
         descriptions: [
             "a) Culture of adaptability and innovation among staff, such as inventory management, employee training",
             "b) Adaptability / Flexibility",
@@ -935,8 +940,8 @@ const norm = computed(() => {
             id: comp.id || (idx + 1),
             title: finalTitle,
             weight: Number(comp.weight !== undefined ? comp.weight : (tpl?.weight !== undefined ? tpl.weight : (def.weight || 20))),
-            selfRating: Number(comp.selfRating !== undefined ? comp.selfRating : (def.selfRating !== undefined ? def.selfRating : 0)),
-            managerRating: Number(comp.managerRating !== undefined ? comp.managerRating : (def.managerRating !== undefined ? def.managerRating : 0)),
+            selfRating: Number(comp.selfRating !== undefined && comp.selfRating !== null ? comp.selfRating : 0),
+            managerRating: Number(comp.managerRating !== undefined && comp.managerRating !== null ? comp.managerRating : 0),
             descriptions: descList,
             descriptionText: comp.descriptionText || descList.join('\n')
         };
@@ -946,16 +951,26 @@ const norm = computed(() => {
     let totalScoreWeighted = 0;
     let totalSelfWeighted = 0;
     let sumWeight = 0;
+    let hasAnyManagerRating = false;
+    let hasAnySelfRating = false;
+
     competencies.forEach(c => {
         const w = Number(c.weight) || 20;
         sumWeight += w;
-        totalScoreWeighted += ((Number(c.managerRating) || 0) * w) / 100;
-        totalSelfWeighted += ((Number(c.selfRating) || 0) * w) / 100;
+        const mR = Number(c.managerRating) || 0;
+        const sR = Number(c.selfRating) || 0;
+        if (mR > 0) hasAnyManagerRating = true;
+        if (sR > 0) hasAnySelfRating = true;
+        totalScoreWeighted += (mR * w) / 100;
+        totalSelfWeighted += (sR * w) / 100;
     });
 
-    const managerOverallScore = totalScoreWeighted > 0 ? totalScoreWeighted : (parseFloat(ad.overall_manager_rating) || 3.0);
-    const managerOverallPercentage = Math.round((managerOverallScore / 5.0) * 100);
-    const selfAvgScore = totalSelfWeighted > 0 ? totalSelfWeighted : 3.0;
+    const explicitOverallMgr = parseFloat(ad.overall_manager_rating || ad.overallPerformanceRating || g.overall_rating);
+    const managerOverallScore = hasAnyManagerRating 
+        ? totalScoreWeighted 
+        : (!isNaN(explicitOverallMgr) && explicitOverallMgr > 0 ? explicitOverallMgr : 0.0);
+    const managerOverallPercentage = managerOverallScore > 0 ? Math.round((managerOverallScore / 5.0) * 100) : 0;
+    const selfAvgScore = hasAnySelfRating ? totalSelfWeighted : 0.0;
 
     // Narrative parsing
     const descriptions = Array.isArray(g.description) ? g.description : (Array.isArray(parseMaybeJSON(g.description, null)) ? parseMaybeJSON(g.description) : (g.description ? [g.description] : []));
@@ -1090,6 +1105,8 @@ const norm = computed(() => {
             time_bound: Boolean(sc.time_bound)
         },
         quarterly: qList,
+        hasAnyManagerRating,
+        hasAnySelfRating,
         competencies,
         managerOverallScore,
         managerOverallPercentage,
@@ -1110,12 +1127,12 @@ const norm = computed(() => {
         summaryD,
         summaryE,
         auth,
-        performanceRating: Number(ad.performanceRating || (canViewReviewPage.value && Math.round(managerOverallScore) > 0 ? Math.round(managerOverallScore) : 0)),
+        performanceRating: Number(ad.performanceRating || (canViewReviewPage.value && hasAnyManagerRating && Math.round(managerOverallScore) > 0 ? Math.round(managerOverallScore) : 0)),
         ratingComments: (() => {
             const raw = (typeof ad.rating_comments === 'string') 
                 ? parseMaybeJSON(ad.rating_comments, {}) 
                 : (ad.rating_comments || {});
-            const selectedR = Number(ad.performanceRating || (canViewReviewPage.value ? Math.round(managerOverallScore) : 0) || 0);
+            const selectedR = Number(ad.performanceRating || (canViewReviewPage.value && hasAnyManagerRating ? Math.round(managerOverallScore) : 0) || 0);
             const fallbackC = (ad.performanceComments || '').trim();
             return {
                 1: ((raw[1] || raw['1'] || (selectedR === 1 ? fallbackC : '')) || '').trim(),
