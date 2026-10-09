@@ -56,6 +56,12 @@
 
         saving.value = true
 
+        if(npassword.value.length < 6){
+            toastt('New password must be at least 6 characters', 'error')
+            saving.value = false
+            return
+        }
+
         if(npassword.value !== cpassword.value){
             toastt('New passwords do not match', 'error')
             saving.value = false
@@ -214,7 +220,7 @@
                         <div class="form-group">
                             <label>New Password</label>
                             <div class="password-field">
-                                <input :type="showingnpass ? 'text' : 'password'" v-model="npassword" required
+                                <input :type="showingnpass ? 'text' : 'password'" v-model="npassword" required minlength="6"
                                     placeholder="Minimum 6 characters" class="security-input" />
                                 <i class="toggle-pass" :class="showingnpass ? 'pi pi-eye-slash' : 'pi pi-eye'"
                                     @click="showingnpass = !showingnpass"></i>

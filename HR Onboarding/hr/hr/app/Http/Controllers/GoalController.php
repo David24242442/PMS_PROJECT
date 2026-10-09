@@ -992,7 +992,6 @@ class GoalController extends Controller
                     } else {
                         try {
                             $updateData = [
-                                'password' => bcrypt('password'), // Ensure login password is password
                                 'username' => $empCode,
                             ];
                             if (in_array('line_manager_id', $userCols) && empty($empUser->line_manager_id)) {

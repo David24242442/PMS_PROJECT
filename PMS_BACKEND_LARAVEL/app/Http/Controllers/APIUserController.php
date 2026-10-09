@@ -353,28 +353,51 @@ class APIUserController extends Controller
     }
 
     public function updatepassword(Request $request){
-        // return $request;
-
-        // return auth()->user();
-        // return bcrypt($request->npassword);
-
-        if (!Hash::check($request->opassword, Auth::user()->password)) {
-            
-            return response()->json(array(
+        $user = Auth::user() ?? $request->user();
+        if (!$user) {
+            return response()->json([
                 'success' => false,
-                'error' => 'The old password is not correct.'
-            ), 202);
+                'error' => 'User not authenticated.'
+            ], 401);
         }
 
-        $authuser = Auth::user();
-        $authuser->update([
+        if (empty($request->opassword)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Current password is required.'
+            ], 202);
+        }
+
+        if (empty($request->npassword) || strlen($request->npassword) < 6) {
+            return response()->json([
+                'success' => false,
+                'error' => 'New password must be at least 6 characters.'
+            ], 202);
+        }
+
+        $oldPasswordCorrect = Hash::check($request->opassword, $user->password);
+        
+        // Also allow case variation if their current password is the initial default 'password'/'Password'
+        if (!$oldPasswordCorrect && in_array(strtolower($request->opassword), ['password']) &&
+            (Hash::check('password', $user->password) || Hash::check('Password', $user->password))) {
+            $oldPasswordCorrect = true;
+        }
+
+        if (!$oldPasswordCorrect) {
+            return response()->json([
+                'success' => false,
+                'error' => 'The old password is not correct.'
+            ], 202);
+        }
+
+        $user->update([
             'password' => bcrypt($request->npassword)
         ]);
 
-        
-
-        return 'ok';
-
+        return response()->json([
+            'success' => true,
+            'message' => 'Your password has been updated'
+        ]);
     }
 
     public function login(Request $request){
@@ -563,19 +586,16 @@ class APIUserController extends Controller
         // 5. Authenticate password
         $authenticated = false;
         if ($user) {
-            $isDefaultPassword = (strtolower($password) === 'password');
-            if (Hash::check($password, $user->password) || 
-                Hash::check('password', $user->password) || 
-                Hash::check('Password', $user->password) || 
-                ($isDefaultPassword && !$user->admin)) {
+            $isTypedDefault = (strtolower($password) === 'password');
+            $isStoredDefault = (Hash::check('password', $user->password) || Hash::check('Password', $user->password));
+
+            if (Hash::check($password, $user->password) || ($isTypedDefault && $isStoredDefault)) {
                 $authenticated = true;
 
-                // Sync username, employee_code, and default password for seamless future logins
+                // Sync username, employee_code, and permissions for seamless future logins (NEVER overwrite password)
                 try {
                     $updates = [];
-                    if (!$user->admin) {
-                        $updates['password'] = bcrypt('password');
-                    }
+                    // Preserves custom user passwords across logins
                     if ($hasEmployeeCode && (empty($user->employee_code) || $user->employee_code !== $loginInput)) {
                         $updates['employee_code'] = $loginInput;
                     }
