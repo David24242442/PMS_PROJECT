@@ -95,13 +95,43 @@ const smartLabels = [
 ];
 
 const getTimeProgress = (goal) => {
-    if (!goal || !goal.completion_date) return 0;
-    const start = new Date(goal.submitted_at || goal.created_at || `${currentYear.value}-01-01`);
-    const end = new Date(goal.completion_date);
-    const today = new Date();
-    if (today >= end) return 100;
-    if (today <= start) return 0;
-    return Math.min(100, Math.max(0, Math.round(((today - start) / (end - start)) * 100)));
+    if (!goal) return 0;
+
+    // 1. Fully completed goals are 100%
+    const completedStatuses = ['completed', 'review_completed', 'appraisal_completed'];
+    if (completedStatuses.includes(goal.status) || completedStatuses.includes(goal.display_status)) {
+        return 100;
+    }
+
+    // 2. Draft goals have not officially started yet
+    if (goal.status === 'draft' || goal.display_status === 'draft') {
+        return 0;
+    }
+
+    // 3. Quantitative achievement if target & actual values are recorded
+    const target = Number(goal.target);
+    const actual = Number(goal.actual);
+    if (!isNaN(target) && target > 0 && !isNaN(actual) && actual > 0) {
+        return Math.min(100, Math.round((actual / target) * 100));
+    }
+
+    // 4. Time-based timeline progress across cycle toward due date / completion date
+    const now = new Date();
+    const fallbackYear = (typeof currentYear !== 'undefined' && currentYear?.value) 
+        ? currentYear.value 
+        : (goal.year || now.getFullYear());
+
+    const start = new Date(goal.start_date || `${fallbackYear}-01-01`);
+    const end = new Date(goal.completion_date || goal.due_date || `${fallbackYear}-12-31`);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+        return 0;
+    }
+
+    if (now >= end) return 100;
+    if (now <= start) return 0;
+
+    return Math.min(100, Math.max(0, Math.round(((now - start) / (end - start)) * 100)));
 };
 
 const getSmartClass = (labelShort, appraisal) => {

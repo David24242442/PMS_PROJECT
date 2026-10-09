@@ -141,13 +141,43 @@ const getRecordId = (goal) => {
 };
 
 const getTimeProgress = (goal) => {
-    if (!goal.completion_date) return 0;
-    const start = new Date(goal.submitted_at || goal.created_at || `${currentYear.value}-01-01`);
-    const end = new Date(goal.completion_date);
-    const today = new Date();
-    if (today >= end) return 100;
-    if (today <= start) return 0;
-    return Math.min(100, Math.max(0, Math.round(((today - start) / (end - start)) * 100)));
+    if (!goal) return 0;
+
+    // 1. Fully completed goals are 100%
+    const completedStatuses = ['completed', 'review_completed', 'appraisal_completed'];
+    if (completedStatuses.includes(goal.status) || completedStatuses.includes(goal.display_status)) {
+        return 100;
+    }
+
+    // 2. Draft goals have not officially started yet
+    if (goal.status === 'draft' || goal.display_status === 'draft') {
+        return 0;
+    }
+
+    // 3. Quantitative achievement if target & actual values are recorded
+    const target = Number(goal.target);
+    const actual = Number(goal.actual);
+    if (!isNaN(target) && target > 0 && !isNaN(actual) && actual > 0) {
+        return Math.min(100, Math.round((actual / target) * 100));
+    }
+
+    // 4. Time-based timeline progress across cycle toward due date / completion date
+    const now = new Date();
+    const fallbackYear = (typeof currentYear !== 'undefined' && currentYear?.value) 
+        ? currentYear.value 
+        : (goal.year || now.getFullYear());
+
+    const start = new Date(goal.start_date || `${fallbackYear}-01-01`);
+    const end = new Date(goal.completion_date || goal.due_date || `${fallbackYear}-12-31`);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+        return 0;
+    }
+
+    if (now >= end) return 100;
+    if (now <= start) return 0;
+
+    return Math.min(100, Math.max(0, Math.round(((now - start) / (end - start)) * 100)));
 };
 
 const formatDate = (dateString) => {
@@ -2015,15 +2045,17 @@ const downloadAttachment = (file) => {
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
-                                    <div class="flex items-center gap-4">
-                                        <div class="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden border border-gray-100 shadow-inner">
-                                            <div class="h-full rounded-full transition-all duration-1000 ease-out relative"
-                                                :class="getTimeProgress(goal) === 100 ? 'bg-gradient-to-r from-teal-400 to-emerald-500' : 'bg-gradient-to-r from-indigo-400 via-indigo-500 to-indigo-600'"
+                                    <div class="flex items-center gap-3">
+                                        <div class="flex-1 min-w-[70px] h-2.5 bg-gray-100 rounded-full overflow-hidden border border-gray-200/60 shadow-inner">
+                                            <div class="h-full rounded-full transition-all duration-700 ease-out"
+                                                :class="getTimeProgress(goal) >= 100 ? 'bg-emerald-500' : getTimeProgress(goal) > 0 ? 'bg-indigo-600' : 'bg-gray-200'"
                                                 :style="{ width: getTimeProgress(goal) + '%' }">
-                                                <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
                                             </div>
                                         </div>
-                                        <span class="text-[11px] font-black text-gray-700 w-12 text-right">{{ getTimeProgress(goal) }}%</span>
+                                        <span class="text-xs tabular-nums min-w-[36px] text-right font-black"
+                                            :class="getTimeProgress(goal) >= 100 ? 'text-emerald-700' : getTimeProgress(goal) > 0 ? 'text-indigo-700' : 'text-gray-400'">
+                                            {{ getTimeProgress(goal) }}%
+                                        </span>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
