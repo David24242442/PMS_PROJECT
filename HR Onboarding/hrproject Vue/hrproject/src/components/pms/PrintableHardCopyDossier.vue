@@ -347,55 +347,55 @@
                 <table class="form-table scale-table" style="border: 1px solid #000000;">
                     <thead>
                         <tr style="background-color: #ffffff !important; border-bottom: 2px solid #000000;">
-                            <th style="width: 32%; text-align: center; color: #000000 !important; font-weight: 900; border-right: 1px solid #000000; padding: 4px 6px;">1-5 Rating (5 Highest)</th>
-                            <th style="width: 20%; text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                            <th style="width: 32%; text-align: center; color: #000000 !important; font-weight: 900; border-right: 1px solid #000000; padding: 2.5px 5px;">1-5 Rating (5 Highest)</th>
+                            <th style="width: 20%; text-align: center; border-right: 1px solid #000000; padding: 2.5px 5px;">
                                 <span style="color: #002060; font-style: italic; text-decoration: underline; font-weight: 900;">Performance Rating</span>
                             </th>
-                            <th style="width: 48%; text-align: center; padding: 4px 6px;">
+                            <th style="width: 48%; text-align: center; padding: 2.5px 5px;">
                                 <span style="color: #002060; font-style: italic; text-decoration: underline; font-weight: 900;">Comments</span>
                             </th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr :class="{ 'active-rating-row': norm.performanceRating === 5 }" style="border-bottom: 1px solid #000000;">
-                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">5-Out Standing / Exceptional</td>
-                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 2.5px 5px;">5-Out Standing / Exceptional</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 2.5px 5px;">
                                 <span v-if="norm.performanceRating === 5" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 5</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 5</span>
                             </td>
-                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[5] || '' }}</td>
+                            <td style="padding: 2.5px 5px; font-size: 8pt;">{{ norm.ratingComments[5] || '' }}</td>
                         </tr>
                         <tr :class="{ 'active-rating-row': norm.performanceRating === 4 }" style="border-bottom: 1px solid #000000;">
-                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">4-Exceeding Expectations</td>
-                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 2.5px 5px;">4-Exceeding Expectations</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 2.5px 5px;">
                                 <span v-if="norm.performanceRating === 4" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 4</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 4</span>
                             </td>
-                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[4] || '' }}</td>
+                            <td style="padding: 2.5px 5px; font-size: 8pt;">{{ norm.ratingComments[4] || '' }}</td>
                         </tr>
                         <tr :class="{ 'active-rating-row': norm.performanceRating === 3 }" style="border-bottom: 1px solid #000000;">
-                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">3-Meeting Expectations</td>
-                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 2.5px 5px;">3-Meeting Expectations</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 2.5px 5px;">
                                 <span v-if="norm.performanceRating === 3" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 3</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 3</span>
                             </td>
-                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[3] || '' }}</td>
+                            <td style="padding: 2.5px 5px; font-size: 8pt;">{{ norm.ratingComments[3] || '' }}</td>
                         </tr>
                         <tr :class="{ 'active-rating-row': norm.performanceRating === 2 }" style="border-bottom: 1px solid #000000;">
-                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">2-Partly Meeting Expectations</td>
-                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 2.5px 5px;">2-Partly Meeting Expectations</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 2.5px 5px;">
                                 <span v-if="norm.performanceRating === 2" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 2</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 2</span>
                             </td>
-                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[2] || '' }}</td>
+                            <td style="padding: 2.5px 5px; font-size: 8pt;">{{ norm.ratingComments[2] || '' }}</td>
                         </tr>
                         <tr :class="{ 'active-rating-row': norm.performanceRating === 1 }">
-                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 4px 6px;">1-Below Expectations/ Unsatisfactory</td>
-                            <td style="text-align: center; border-right: 1px solid #000000; padding: 4px 6px;">
+                            <td class="scale-cell-band font-bold" style="border-right: 1px solid #000000; padding: 2.5px 5px;">1-Below Expectations/ Unsatisfactory</td>
+                            <td style="text-align: center; border-right: 1px solid #000000; padding: 2.5px 5px;">
                                 <span v-if="norm.performanceRating === 1" style="font-weight: 900; color: #002060; font-size: 9pt;">&#9745; 1</span>
                                 <span v-else style="color: #64748b; font-size: 9pt;">&#9744; 1</span>
                             </td>
-                            <td style="padding: 4px 6px; font-size: 8pt;">{{ norm.ratingComments[1] || '' }}</td>
+                            <td style="padding: 2.5px 5px; font-size: 8pt;">{{ norm.ratingComments[1] || '' }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -1233,7 +1233,7 @@ const dossierId = computed(() => {
 .form-table th, 
 .form-table td {
     border: 1px solid #000000 !important;
-    padding: 4px 6px;
+    padding: 2.5px 5px;
     vertical-align: middle;
     box-sizing: border-box;
     color: #000000 !important;
@@ -1620,7 +1620,7 @@ const dossierId = computed(() => {
 }
 .review-meta-vals td {
     font-size: 8.5pt;
-    padding: 4px 6px;
+    padding: 2.5px 5px;
     background-color: #ffffff;
 }
 
@@ -1742,34 +1742,112 @@ const dossierId = computed(() => {
     font-size: 7pt;
     color: #444444 !important;
     border-top: 1px solid #cccccc;
-    padding-top: 4px;
-    margin-top: 8px;
+    padding-top: 3px;
+    margin-top: auto !important;
     text-transform: uppercase;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 /* EXACT PRINT MEDIA RULES FOR A4 HARDCOPY                                */
 /* ═══════════════════════════════════════════════════════════════════════ */
 @media print {
+    @page {
+        size: A4 portrait;
+        margin: 4mm 5mm;
+    }
+
     .hardcopy-page {
         margin: 0 !important;
-        padding: 8mm 10mm !important;
+        padding: 5mm 7mm !important;
         width: 100% !important;
         min-height: auto !important;
         max-height: none !important;
         height: auto !important;
         page-break-after: always !important;
         break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
         box-shadow: none !important;
         border: none !important;
         display: flex !important;
         flex-direction: column !important;
-        overflow: visible !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
     }
 
     .hardcopy-page:last-child {
         page-break-after: avoid !important;
         break-after: avoid !important;
+    }
+
+    #hardcopy-page-2 {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        max-height: 288mm !important;
+        overflow: hidden !important;
+    }
+
+    #hardcopy-page-2 .form-table {
+        margin-bottom: 4px !important;
+    }
+
+    #hardcopy-page-2 .header-banner {
+        padding: 4px 8px !important;
+        margin-bottom: 4px !important;
+        font-size: 13pt !important;
+    }
+
+    #hardcopy-page-2 .meta-table td {
+        padding: 2px 4px !important;
+        font-size: 8pt !important;
+    }
+
+    #hardcopy-page-2 .comp-table th,
+    #hardcopy-page-2 .comp-table td {
+        padding: 2px 4px !important;
+    }
+
+    #hardcopy-page-2 .comp-row-title {
+        font-size: 8pt !important;
+    }
+
+    #hardcopy-page-2 .comp-crit-item {
+        font-size: 7pt !important;
+        line-height: 1.15 !important;
+    }
+
+    #hardcopy-page-2 .feedback-split-box {
+        margin-bottom: 4px !important;
+    }
+
+    #hardcopy-page-2 .feedback-col-header {
+        padding: 2px 6px !important;
+        font-size: 7.5pt !important;
+    }
+
+    #hardcopy-page-2 .feedback-col-body {
+        padding: 3px 6px !important;
+        font-size: 7.5pt !important;
+        min-height: 18px !important;
+    }
+
+    #hardcopy-page-2 .scale-table th,
+    #hardcopy-page-2 .scale-table td {
+        padding: 1.5px 4px !important;
+        font-size: 7.5pt !important;
+    }
+
+    .page-footer {
+        margin-top: auto !important;
+        padding-top: 2px !important;
+        page-break-before: avoid !important;
+        break-before: avoid !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
     }
 
     table {
@@ -1785,11 +1863,6 @@ const dossierId = computed(() => {
     .section-box, .quarterly-section, .feedback-split-box, .scale-guide-wrapper, .review-section-block, .auth-signoff-section {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-    }
-
-    @page {
-        size: A4 portrait;
-        margin: 6mm 6mm;
     }
 }
 </style>

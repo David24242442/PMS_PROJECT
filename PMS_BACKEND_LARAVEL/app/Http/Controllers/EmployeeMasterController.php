@@ -1044,88 +1044,13 @@ class EmployeeMasterController extends Controller
                     } catch (\Throwable $e) {}
                 }
 
-                // 4c. Automatic Goal & Appraisal Dossier Creation for FY 2026
-                if (Schema::hasTable('goals') && $empUser) {
-                    try {
-                        $empAppraisalData = [
-                            'competencies' => $competencies,
-                            'comments' => '',
-                            'impressedMost' => '',
-                            'impressedLeast' => '',
-                            'performanceRating' => 0,
-                            'rating_comments' => ['1' => '', '2' => '', '3' => '', '4' => '', '5' => ''],
-                            'candidate_signature_name' => $candName,
-                            'manager_signature_name' => $manager->name,
-                            'signature_date' => date('Y-m-d')
-                        ];
-
-                        $blankSmartCriteria = [
-                            'specific' => false,
-                            'measurable' => false,
-                            'attainable' => false,
-                            'relevant' => false,
-                            'time_bound' => false
-                        ];
-
-                        $existingGoal = $goalsMap[$code] ?? null;
-                        if ($existingGoal) {
-                            $updateGoal = [
-                                'created_by' => $manager->id,
-                                'manager_name' => $manager->name,
-                                'location' => $loc,
-                                'department' => $dept,
-                                'job_title' => $designation,
-                            ];
-                            // If currently in assigned status, ensure clean blank inputs for employee
-                            if ($existingGoal->status === 'assigned') {
-                                $descStr = is_array($existingGoal->description) ? ($existingGoal->description[0] ?? '') : (string)$existingGoal->description;
-                                if (empty($descStr) || str_contains($descStr, 'Achieve operational excellence')) {
-                                    $updateGoal['description'] = [''];
-                                    $updateGoal['purposes'] = [''];
-                                    $updateGoal['challenges'] = [''];
-                                    $updateGoal['smart_criteria'] = $blankSmartCriteria;
-                                }
-                            }
-                            if (empty($existingGoal->appraisal_data)) {
-                                $updateGoal['appraisal_data'] = $empAppraisalData;
-                            }
-                            $existingGoal->update($updateGoal);
-                            $goalsAssigned++;
-                        } else {
-                            Goal::create([
-                                'title' => 'Yearly SMART Goals FY ' . $year,
-                                'description' => [''],
-                                'purposes' => [''],
-                                'challenges' => [''],
-                                'category' => 'Operational',
-                                'target' => 100,
-                                'due_date' => $year . '-12-31',
-                                'year' => $year,
-                                'user_id' => $empUser->id,
-                                'created_by' => $manager->id,
-                                'candidate_name' => $candName,
-                                'employee_code' => $code,
-                                'location' => $loc,
-                                'department' => $dept,
-                                'job_title' => $designation,
-                                'manager_name' => $manager->name,
-                                'smart_criteria' => $blankSmartCriteria,
-                                'appraisal_data' => $empAppraisalData,
-                                'status' => 'assigned',
-                            ]);
-                            $goalsAssigned++;
-                        }
-                    } catch (\Throwable $gEx) {
-                        Log::error("Goal auto-assignment failed for {$code}: " . $gEx->getMessage());
-                    }
-                }
-
+                // 4c. Team assignment completed without auto-pushing goals (goals are pushed explicitly via Push Fresh Goals button)
                 $syncedCount++;
             }
 
             return response()->json([
                 'status' => 'success',
-                'message' => "Successfully synchronized {$syncedCount} team member(s) to {$manager->name}. User accounts provisioned (Username: Emp ID, Password: Password) and FY {$year} Goals & Appraisals automatically assigned.",
+                'message' => "Successfully assigned {$syncedCount} team member(s) to {$manager->name}.",
                 'synced_count' => $syncedCount,
                 'accounts_provisioned' => $accountsProvisioned,
                 'goals_assigned' => $goalsAssigned,

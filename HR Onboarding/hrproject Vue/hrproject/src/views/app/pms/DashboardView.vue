@@ -514,32 +514,36 @@ const calculateAverageRating = (appraisal) => {
 const getTimeProgress = (goal) => {
     if (!goal) return 0;
 
-    // 1. Fully completed goals are 100%
-    const completedStatuses = ['completed', 'review_completed', 'appraisal_completed'];
+    // 1. Fully completed reviews are 100%
+    const completedStatuses = ['completed', 'review_completed'];
     if (completedStatuses.includes(goal.status) || completedStatuses.includes(goal.display_status)) {
         return 100;
     }
 
-    // 2. Draft goals have not officially started yet
-    if (goal.status === 'draft' || goal.display_status === 'draft') {
+    // 2. Must have a completion_date set - if no completion date, progress is 0%
+    if (!goal.completion_date) {
         return 0;
     }
 
-    // 3. Quantitative achievement if target & actual values are recorded
+    // 3. Progress ONLY starts when goals and appraisal are submitted (or appraisal done)
+    const activeSubmittedStatuses = ['submitted', 'appraisal_completed'];
+    const isStarted = activeSubmittedStatuses.includes(goal.status) || activeSubmittedStatuses.includes(goal.display_status);
+    if (!isStarted) {
+        // Draft, assigned, rejected, or unsubmitted goals stay at 0%
+        return 0;
+    }
+
+    // 4. Quantitative achievement if target & actual values are explicitly recorded
     const target = Number(goal.target);
     const actual = Number(goal.actual);
     if (!isNaN(target) && target > 0 && !isNaN(actual) && actual > 0) {
         return Math.min(100, Math.round((actual / target) * 100));
     }
 
-    // 4. Time-based timeline progress across cycle toward due date / completion date
+    // 5. Time elapsed from submission (or creation) to employee's completion_date
     const now = new Date();
-    const fallbackYear = (typeof currentYear !== 'undefined' && currentYear?.value) 
-        ? currentYear.value 
-        : (goal.year || now.getFullYear());
-
-    const start = new Date(goal.start_date || `${fallbackYear}-01-01`);
-    const end = new Date(goal.completion_date || goal.due_date || `${fallbackYear}-12-31`);
+    const start = new Date(goal.submitted_at || goal.created_at);
+    const end = new Date(goal.completion_date);
 
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
         return 0;

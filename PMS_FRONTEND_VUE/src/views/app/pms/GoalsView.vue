@@ -143,32 +143,36 @@ const getRecordId = (goal) => {
 const getTimeProgress = (goal) => {
     if (!goal) return 0;
 
-    // 1. Fully completed goals are 100%
-    const completedStatuses = ['completed', 'review_completed', 'appraisal_completed'];
+    // 1. Fully completed reviews are 100%
+    const completedStatuses = ['completed', 'review_completed'];
     if (completedStatuses.includes(goal.status) || completedStatuses.includes(goal.display_status)) {
         return 100;
     }
 
-    // 2. Draft goals have not officially started yet
-    if (goal.status === 'draft' || goal.display_status === 'draft') {
+    // 2. Must have a completion_date set - if no completion date, progress is 0%
+    if (!goal.completion_date) {
         return 0;
     }
 
-    // 3. Quantitative achievement if target & actual values are recorded
+    // 3. Progress ONLY starts when goals and appraisal are submitted (or appraisal done)
+    const activeSubmittedStatuses = ['submitted', 'appraisal_completed'];
+    const isStarted = activeSubmittedStatuses.includes(goal.status) || activeSubmittedStatuses.includes(goal.display_status);
+    if (!isStarted) {
+        // Draft, assigned, rejected, or unsubmitted goals stay at 0%
+        return 0;
+    }
+
+    // 4. Quantitative achievement if target & actual values are explicitly recorded
     const target = Number(goal.target);
     const actual = Number(goal.actual);
     if (!isNaN(target) && target > 0 && !isNaN(actual) && actual > 0) {
         return Math.min(100, Math.round((actual / target) * 100));
     }
 
-    // 4. Time-based timeline progress across cycle toward due date / completion date
+    // 5. Time elapsed from submission (or creation) to employee's completion_date
     const now = new Date();
-    const fallbackYear = (typeof currentYear !== 'undefined' && currentYear?.value) 
-        ? currentYear.value 
-        : (goal.year || now.getFullYear());
-
-    const start = new Date(goal.start_date || `${fallbackYear}-01-01`);
-    const end = new Date(goal.completion_date || goal.due_date || `${fallbackYear}-12-31`);
+    const start = new Date(goal.submitted_at || goal.created_at);
+    const end = new Date(goal.completion_date);
 
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
         return 0;
@@ -1711,6 +1715,84 @@ const downloadAttachment = (file) => {
     <div class="h-full pb-6">
         <!-- LIST VIEW -->
         <template v-if="viewMode === 'list'">
+            <!-- PROFESSIONAL POPUP: GOALS & APPRAISAL REJECTED NOTIFICATION (EMPLOYEE) -->
+            <div v-if="isEmployee && pendingRejectedGoal && (pendingRejectedGoal.status === 'rejected' || pendingRejectedGoal.display_status === 'rejected') && showRejectedNotificationModal" 
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/50 backdrop-blur-sm animate-fadeIn">
+                <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col relative my-auto transform transition-all animate-scaleUp">
+                    <!-- Top Status Bar & Close -->
+                    <div class="flex items-center justify-between px-6 pt-5 pb-0">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 border border-rose-100 text-[11px] font-bold text-rose-700">
+                            <span class="w-2 h-2 rounded-full bg-rose-600 animate-pulse"></span>
+                            Action Required &bull; FY {{ pendingRejectedGoal.year || currentYear }}
+                        </span>
+                        <button @click="dismissRejectedModal" 
+                            class="w-8 h-8 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-all cursor-pointer"
+                            title="Close">
+                            <i class="pi pi-times text-xs"></i>
+                        </button>
+                    </div>
+
+                    <!-- Center Hero Icon & Title -->
+                    <div class="text-center px-6 pt-3 pb-2">
+                        <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-50 to-amber-50 border border-rose-100/80 flex items-center justify-center mx-auto mb-3.5 shadow-sm shadow-rose-100/50">
+                            <i class="pi pi-replay text-2xl text-rose-600"></i>
+                        </div>
+                        <h2 class="text-xl font-bold text-slate-800 tracking-tight">Goals &amp; Appraisal Returned for Revision</h2>
+                        <p class="text-xs text-slate-500 font-medium max-w-sm mx-auto mt-1">
+                            Your Line Manager has reviewed your submission and requested updates before approval.
+                        </p>
+                    </div>
+
+                    <!-- Line Manager Details Card -->
+                    <div class="px-6 py-2">
+                        <div class="bg-slate-50/80 rounded-2xl p-3 border border-slate-100 flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-9 h-9 rounded-xl bg-white border border-slate-200 text-rose-700 flex items-center justify-center font-black text-sm shrink-0 shadow-xs">
+                                    {{ (pendingRejectedGoal.manager_name || 'M').charAt(0).toUpperCase() }}
+                                </div>
+                                <div class="min-w-0">
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Line Manager</p>
+                                    <p class="text-xs font-bold text-slate-800 truncate">{{ pendingRejectedGoal.manager_name || 'Line Manager' }}</p>
+                                    <p class="text-[11px] text-slate-500 truncate">{{ formatDepartment(pendingRejectedGoal.department, pendingRejectedGoal.job_title, pendingRejectedGoal.location) }}</p>
+                                </div>
+                            </div>
+                            <div class="text-right shrink-0">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Record ID</span>
+                                <span class="inline-block mt-0.5 px-2.5 py-0.5 rounded-lg bg-rose-50 border border-rose-200/80 font-mono text-xs font-black text-rose-800">
+                                    {{ getRecordId(pendingRejectedGoal) }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manager Feedback Section -->
+                    <div class="px-6 py-2">
+                        <div class="bg-rose-50/50 rounded-2xl p-4 border border-rose-200/60 space-y-2">
+                            <p class="text-[11px] font-black uppercase tracking-wider text-rose-950 flex items-center gap-1.5">
+                                <i class="pi pi-comment text-rose-600 text-xs"></i>
+                                Manager Feedback &amp; Revision Notes:
+                            </p>
+                            <p class="text-xs text-slate-700 font-medium leading-relaxed bg-white/90 p-3 rounded-xl border border-rose-100">
+                                {{ pendingRejectedGoal.rejection_reason || 'Your Line Manager has requested revisions on your submitted SMART goals and self-appraisal. Please update your entries and resubmit.' }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Modal Actions -->
+                    <div class="p-6 pt-3 flex items-center gap-3">
+                        <button @click="dismissRejectedModal" 
+                            class="flex-1 py-3 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer text-center">
+                            Review Later
+                        </button>
+                        <button @click="handleStartRejectedCorrection" 
+                            class="flex-1 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-98 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-rose-600/20 flex items-center justify-center gap-2 transition-all cursor-pointer">
+                            <i class="pi pi-pencil text-xs"></i>
+                            <span>Make Corrections</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- PROFESSIONAL POPUP: NEW GOAL & APPRAISAL ASSIGNED NOTIFICATION (EMPLOYEE) -->
             <div v-if="isEmployee && pendingAssignedGoal && (pendingAssignedGoal.status === 'assigned' || pendingAssignedGoal.display_status === 'assigned') && showAssignedNotificationModal" 
                 class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/50 backdrop-blur-sm animate-fadeIn">

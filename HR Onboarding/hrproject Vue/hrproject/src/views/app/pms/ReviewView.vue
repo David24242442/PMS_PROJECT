@@ -12,6 +12,39 @@ const { loguser } = userstore;
 const currentYear = ref(new Date().getFullYear());
 const loading = ref(true);
 const saving = ref(false);
+const showRejectModal = ref(false);
+const rejectionComment = ref('');
+const rejecting = ref(false);
+
+const openRejectModal = () => {
+    rejectionComment.value = '';
+    showRejectModal.value = true;
+};
+
+const confirmRejectGoal = async () => {
+    if (!selectedGoal.value) return;
+    rejecting.value = true;
+    try {
+        const payload = {
+            status: 'rejected',
+            rejection_reason: rejectionComment.value || null
+        };
+        const response = await axios.patch('pms/goals/' + selectedGoal.value.id, payload);
+        if (response.data.status === 'success') {
+            showAlert('Submission Returned', 'The goals and appraisal have been returned to the employee for correction.', 'info');
+            selectedGoal.value.status = 'rejected';
+            selectedGoal.value.display_status = 'rejected';
+            showRejectModal.value = false;
+            viewMode.value = 'list';
+            fetchGoals();
+        }
+    } catch (error) {
+        console.error('Error rejecting goal:', error);
+        showAlert('Error', 'Failed to reject and return goals.', 'error');
+    } finally {
+        rejecting.value = false;
+    }
+};
 watch(loading, (val) => userstore.setIsLoading(val), { immediate: true });
 
 const showDossierModal = ref(false);
@@ -1511,6 +1544,64 @@ const downloadFile = (url, filename) => {
                 </div>
             </div>
         </Dialog>
+    
+        <!-- Manager Reject Confirmation Modal -->
+        <Dialog 
+            v-model:visible="showRejectModal" 
+            modal 
+            header="Reject & Request Revision" 
+            :style="{ width: '520px', maxWidth: '95vw' }" 
+            class="rounded-3xl overflow-hidden shadow-2xl">
+            
+            <div class="space-y-4 pt-1">
+                <div class="p-4 bg-rose-50 rounded-2xl border border-rose-100 flex items-start gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                        <i class="pi pi-exclamation-triangle text-base"></i>
+                    </div>
+                    <div class="text-xs text-rose-950">
+                        <p class="font-black text-sm mb-1">Return Submission to Employee?</p>
+                        <p class="text-rose-800 leading-relaxed">
+                            This will return the SMART Goals &amp; Appraisal to <strong>{{ selectedGoal?.employee_name || 'the employee' }}</strong> so they can make corrections and resubmit for review.
+                        </p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                        Reason for Rejection / Feedback Notes (Optional)
+                    </label>
+                    <textarea 
+                        v-model="rejectionComment" 
+                        rows="4" 
+                        placeholder="State what needs correction or improvement (e.g. Please clarify target metrics for objective #2 or adjust self-ratings)..."
+                        class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-xs text-slate-800 focus:bg-white focus:border-rose-400 focus:ring-2 focus:ring-rose-200 outline-none transition-all placeholder:text-slate-400 resize-none">
+                    </textarea>
+                    <p class="text-[11px] text-slate-400 mt-1 italic">
+                        This comment will be displayed to the employee in an alert popup when they view their goals.
+                    </p>
+                </div>
+            </div>
+
+            <template #footer>
+                <div class="flex justify-end gap-2.5 pt-3">
+                    <button 
+                        @click="showRejectModal = false" 
+                        :disabled="rejecting"
+                        class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider hover:bg-slate-50 transition-all cursor-pointer">
+                        Cancel
+                    </button>
+                    <button 
+                        @click="confirmRejectGoal" 
+                        :disabled="rejecting"
+                        class="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-rose-200 transition-all flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50">
+                        <i v-if="rejecting" class="pi pi-spin pi-spinner text-xs"></i>
+                        <i v-else class="pi pi-times-circle text-xs"></i>
+                        <span>{{ rejecting ? 'Rejecting...' : 'Confirm Reject' }}</span>
+                    </button>
+                </div>
+            </template>
+        </Dialog>
+
     </div>
 </template>
 

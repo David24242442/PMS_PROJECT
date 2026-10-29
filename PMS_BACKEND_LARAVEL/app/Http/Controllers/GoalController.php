@@ -120,6 +120,9 @@ class GoalController extends Controller
                     if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'overall_rating')) {
                         $table->decimal('overall_rating', 3, 2)->nullable();
                     }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('goals', 'rejection_reason')) {
+                        $table->text('rejection_reason')->nullable();
+                    }
                 });
             }
             if (\Illuminate\Support\Facades\Schema::hasTable('users')) {
@@ -175,6 +178,8 @@ class GoalController extends Controller
             return 'draft';
         } elseif ($goal->status === 'assigned') {
             return 'assigned';
+        } elseif ($goal->status === 'rejected') {
+            return 'rejected';
         } elseif ($goal->status === 'submitted') {
             return 'submitted';
         } elseif ($goal->status === 'review_completed') {
@@ -400,6 +405,10 @@ class GoalController extends Controller
             }
         }
 
+        if (isset($data['status']) && $data['status'] === 'submitted' && empty($data['submitted_at'])) {
+            $data['submitted_at'] = now();
+        }
+
         $goal = \App\Models\Goal::create($data);
         $goal->display_status = $this->computeDisplayStatus($goal);
 
@@ -456,6 +465,21 @@ class GoalController extends Controller
                     if (is_array($decoded)) {
                         $data[$jsonField] = $decoded;
                     }
+                }
+            }
+
+            // Timestamp submission when status is submitted
+            if (isset($data['status']) && $data['status'] === 'submitted') {
+                $data['submitted_at'] = now();
+            }
+
+            // Handle rejection comments
+            if (isset($data['status']) && $data['status'] === 'rejected') {
+                if (!empty($request->rejection_reason)) {
+                    $data['rejection_reason'] = $request->rejection_reason;
+                }
+                if (!empty($request->hr_comments)) {
+                    $data['hr_comments'] = $request->hr_comments;
                 }
             }
 
