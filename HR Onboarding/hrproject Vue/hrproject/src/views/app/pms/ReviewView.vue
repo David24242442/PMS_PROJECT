@@ -1433,9 +1433,18 @@ const downloadFile = (url, filename) => {
 
             <!-- Footer Action Bar -->
             <div class="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-100 shadow-xl shadow-indigo-900/5">
-                <button @click="viewMode = 'list'" class="px-6 py-3 border border-slate-200 rounded-2xl text-xs font-black text-slate-600 uppercase tracking-normal hover:bg-slate-50 transition-all">
-                    Cancel Review
-                </button>
+                <div class="flex items-center gap-3">
+                    <button @click="viewMode = 'list'" class="px-6 py-3 border border-slate-200 rounded-2xl text-xs font-black text-slate-600 uppercase tracking-normal hover:bg-slate-50 transition-all cursor-pointer">
+                        Cancel Review
+                    </button>
+                    <button v-if="selectedGoal && selectedGoal.display_status !== 'review_completed' && selectedGoal.status !== 'rejected'"
+                        @click="openRejectModal"
+                        type="button"
+                        class="px-5 py-3 border border-rose-300 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-sm active:scale-95">
+                        <i class="pi pi-times-circle text-xs"></i>
+                        <span>Reject</span>
+                    </button>
+                </div>
                 <div class="flex gap-3">
                     <button v-if="currentStep > 1" @click="prevStep" class="px-5 py-3 border border-indigo-200 text-indigo-600 rounded-2xl text-xs font-black uppercase hover:bg-indigo-50 transition-all">
                         PREVIOUS

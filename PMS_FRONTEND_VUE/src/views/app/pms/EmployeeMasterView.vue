@@ -155,7 +155,45 @@ const confirmPushAllFreshGoals = async () => {
 
 // Form Data for Manager's Team
 const form = ref({
-    team_members: [] 
+    team_members: []
+});
+const selectedCandidateToAdd = ref(null);
+const manageSearchQuery = ref('');
+
+const addSelectedCandidateToTeam = () => {
+    if (!selectedCandidateToAdd.value) return;
+    const emp = selectedCandidateToAdd.value;
+    const code = emp.employee_code || emp.emp_id;
+    if (!form.value.team_members) form.value.team_members = [];
+    if (!form.value.team_members.some(m => (m.employee_code || m.emp_id) === code)) {
+        form.value.team_members.push(emp);
+    }
+    selectedCandidateToAdd.value = null;
+};
+
+const removeMemberFromTeam = (emp) => {
+    if (!form.value.team_members) return;
+    const code = emp.employee_code || emp.emp_id;
+    form.value.team_members = form.value.team_members.filter(m => (m.employee_code || m.emp_id) !== code);
+};
+
+const clearAllTeamMembers = () => {
+    if (!form.value) return;
+    form.value.team_members = [];
+};
+
+const filteredManageMembers = computed(() => {
+    if (!form.value || !form.value.team_members) return [];
+    if (!manageSearchQuery.value) return form.value.team_members;
+    const q = manageSearchQuery.value.toLowerCase().trim();
+    return form.value.team_members.filter(m => 
+        (m.name && m.name.toLowerCase().includes(q)) ||
+        (m.employee_code && m.employee_code.toLowerCase().includes(q)) ||
+        (m.department && m.department.toLowerCase().includes(q)) ||
+        (m.designation && m.designation.toLowerCase().includes(q)) ||
+        (m.position && m.position.toLowerCase().includes(q)) ||
+        (m.location && m.location.toLowerCase().includes(q))
+    );
 });
 
 // Form Data for New User
@@ -664,7 +702,7 @@ onMounted(() => {
                                 <div class="flex flex-wrap items-center gap-2 mb-1">
                                     <span class="text-[9px] bg-purple-600 text-white font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-xs">Line Manager</span>
                                     <span class="text-[10px] bg-indigo-50 text-indigo-700 font-mono font-black px-2 py-0.5 rounded border border-indigo-100">{{ editingManager?.employee_code }}</span>
-                                    <span class="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded border border-emerald-100">{{ form.team_members.length }} Staff in Selection</span>
+                                    <span class="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded border border-emerald-100">{{ form?.team_members?.length || 0 }} Staff in Selection</span>
                                 </div>
                                 <h4 class="font-black text-xl text-gray-800 leading-tight">{{ editingManager?.name }}</h4>
                                 <div class="flex flex-wrap items-center gap-3 text-xs font-bold text-gray-500 mt-1">
@@ -774,7 +812,7 @@ onMounted(() => {
                             <div class="flex items-center gap-2.5">
                                 <span class="font-black text-xs text-gray-800 uppercase tracking-wider">Assigned Team Selection</span>
                                 <span class="text-[10px] font-black bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full border border-purple-200">
-                                    {{ form.team_members.length }} Staff
+                                    {{ form?.team_members?.length || 0 }} Staff
                                 </span>
                             </div>
                             <div class="flex items-center gap-3">
@@ -783,7 +821,7 @@ onMounted(() => {
                                     <input type="text" placeholder="Filter selection..." v-model="manageSearchQuery"
                                         class="w-full pl-8 pr-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-200 transition-all" />
                                 </div>
-                                <button v-if="form.team_members.length > 0" @click="clearAllTeamMembers" type="button"
+                                <button v-if="(form?.team_members?.length || 0) > 0" @click="clearAllTeamMembers" type="button"
                                     class="text-[10px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-200 transition-all uppercase tracking-wider cursor-pointer whitespace-nowrap">
                                     Clear All
                                 </button>
@@ -827,7 +865,7 @@ onMounted(() => {
                                             </button>
                                         </td>
                                     </tr>
-                                    <tr v-if="filteredManageMembers.length === 0">
+                                    <tr v-if="(!filteredManageMembers || filteredManageMembers.length === 0)">
                                         <td colspan="6" class="px-6 py-12 text-center">
                                             <div class="bg-gray-100 inline-flex p-4 rounded-full mb-2 text-gray-300">
                                                 <i class="pi pi-users text-2xl"></i>
