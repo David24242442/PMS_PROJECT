@@ -50,6 +50,9 @@ const stepTransition = ref('slide-next');
 
 // Read-only condition for submitted or reviewed goals
 const isFormReadOnly = computed(() => {
+    if (newGoal.value.status === 'rejected' || newGoal.value.display_status === 'rejected') {
+        return false;
+    }
     if (isManager.value) {
         // Managers can edit assigned, in_progress, and draft goals at will
         return ['review_completed', 'completed'].includes(newGoal.value.status) || newGoal.value.display_status === 'review_completed';
@@ -98,6 +101,43 @@ const handleStartAssignedGoal = () => {
         openEmployeeGoal(pendingAssignedGoal.value);
     }
 };
+
+// Helper to check if employee has a rejected goal requiring corrections
+const pendingRejectedGoal = computed(() => {
+    if (!goals.value || !goals.value.length) return null;
+    return goals.value.find(g => (g.status === 'rejected' || g.display_status === 'rejected')) || null;
+});
+
+// Professional Rejected Goal Notification Popup Modal State
+const showRejectedNotificationModal = ref(false);
+
+watch(pendingRejectedGoal, (goal) => {
+    if (goal && isEmployee.value && (goal.status === 'rejected' || goal.display_status === 'rejected')) {
+        const dismissedKey = `pms_notified_rejected_goal_${goal.id}_${goal.year || 2026}`;
+        if (!sessionStorage.getItem(dismissedKey)) {
+            showRejectedNotificationModal.value = true;
+        }
+    }
+}, { immediate: true });
+
+const dismissRejectedModal = () => {
+    if (pendingRejectedGoal.value) {
+        const dismissedKey = `pms_notified_rejected_goal_${pendingRejectedGoal.value.id}_${pendingRejectedGoal.value.year || 2026}`;
+        sessionStorage.setItem(dismissedKey, '1');
+    }
+    showRejectedNotificationModal.value = false;
+};
+
+const handleStartRejectedCorrection = () => {
+    showRejectedNotificationModal.value = false;
+    if (pendingRejectedGoal.value) {
+        openEmployeeGoal(pendingRejectedGoal.value);
+    }
+};
+
+const hasRejectedGoals = computed(() => {
+    return (goals.value || []).some(g => g.status === 'rejected' || g.display_status === 'rejected');
+});
 
 // Master Employee Data for Dropdown
 const masterEmployees = ref([]);
@@ -481,9 +521,12 @@ const openEmployeeGoal = (goal) => {
         }
     }
 
-    // Ensure fields and SMART checklist start clean and empty for the employee to fill in
-    if (goal.status === 'assigned' || isEmployee.value) {
-        if (!newGoal.value.title || newGoal.value.title.startsWith('Yearly SMART Goals FY') || goal.status === 'assigned') {
+    // Store rejection reason if present
+    newGoal.value.rejection_reason = goal.rejection_reason || '';
+
+    // Ensure fields and SMART checklist start clean and empty ONLY for freshly assigned goals
+    if (goal.status === 'assigned') {
+        if (!newGoal.value.title || newGoal.value.title.startsWith('Yearly SMART Goals FY')) {
             newGoal.value.title = '';
         }
         if (!newGoal.value.description || newGoal.value.description.some(d => !d || d.includes('Define key performance indicators'))) {
@@ -495,15 +538,13 @@ const openEmployeeGoal = (goal) => {
         if (!newGoal.value.challenges || newGoal.value.challenges.some(c => !c || c.includes('Potential obstacles and mitigations'))) {
             newGoal.value.challenges = [''];
         }
-        if (goal.status === 'assigned') {
-            newGoal.value.smart_criteria = {
-                specific: false,
-                measurable: false,
-                attainable: false,
-                relevant: false,
-                time_bound: false
-            };
-        }
+        newGoal.value.smart_criteria = {
+            specific: false,
+            measurable: false,
+            attainable: false,
+            relevant: false,
+            time_bound: false
+        };
     }
 
     currentStep.value = 1;
@@ -1038,6 +1079,7 @@ const isGoalSubmittedOrReviewed = (goal) => {
     if (!goal) return false;
     const st = (goal.status || '').toLowerCase();
     const dst = (goal.display_status || '').toLowerCase();
+    if (st === 'rejected' || dst === 'rejected') return false;
     return ['submitted', 'appraisal_completed', 'review_completed', 'completed'].includes(st) ||
            ['submitted', 'appraisal_completed', 'review_completed', 'completed'].includes(dst) ||
            isGoalReviewCompleted(goal);
@@ -1559,6 +1601,7 @@ const filteredGoals = computed(() => {
                     if (g.display_status !== 'submitted') return false;
                 }
             }
+            if (filterStatus.value === 'rejected' && g.display_status !== 'rejected' && g.status !== 'rejected') return false;
             if (filterStatus.value === 'goal_created' && g.display_status !== 'goal_created') return false;
             if (filterStatus.value === 'appraisal_completed' && g.display_status !== 'appraisal_completed') return false;
             if (filterStatus.value === 'review_completed' && g.display_status !== 'review_completed') return false;
@@ -2025,6 +2068,12 @@ const downloadAttachment = (file) => {
                                 class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal border-0 cursor-pointer">
                                 Submitted
                             </button>
+                            <button v-if="hasRejectedGoals" @click="filterStatus = 'rejected'" 
+                                :class="filterStatus === 'rejected' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-600 hover:bg-white hover:text-rose-600 hover:shadow-sm'" 
+                                class="px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-normal border-0 cursor-pointer flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                                Revisions Needed
+                            </button>
                             <template v-if="isManager">
                                 <button @click="filterStatus = 'goal_created'" 
                                     :class="filterStatus === 'goal_created' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-white hover:text-blue-600 hover:shadow-sm'" 
@@ -2159,6 +2208,9 @@ const downloadAttachment = (file) => {
                                     <span v-else-if="goal.display_status === 'review_completed'" class="px-3 py-1.5 rounded-xl bg-green-50 text-green-700 text-[10px] font-black uppercase tracking-widest border border-green-200 shadow-sm">
                                         <i class="pi pi-verified mr-1.5 text-xs"></i> Review Completed
                                     </span>
+                                    <span v-else-if="goal.display_status === 'rejected' || goal.status === 'rejected'" class="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 text-[10px] font-black uppercase tracking-widest border border-rose-200 shadow-sm inline-flex items-center gap-1.5" :title="goal.rejection_reason || 'Returned by manager for revisions'">
+                                        <i class="pi pi-times-circle text-xs text-rose-600"></i> Rejected / Revisions
+                                    </span>
                                     <span v-else class="px-3 py-1.5 rounded-xl bg-gray-50 text-gray-500 text-[10px] font-black uppercase tracking-widest border border-gray-100 shadow-sm">
                                         <i class="pi pi-minus mr-1.5 text-xs"></i> {{ goal.display_status }}
                                     </span>
@@ -2171,8 +2223,16 @@ const downloadAttachment = (file) => {
                                 </td>
                                 <td class="px-6 py-4 text-right whitespace-nowrap">
                                     <div class="flex items-center justify-end gap-2">
-                                        <!-- Fill / Edit Button (Hidden once submitted or reviewed; for managers, hidden when assigned) -->
-                                        <button v-if="!isGoalSubmittedOrReviewed(goal) && ((isManager && goal.status === 'draft') || (!isManager && (goal.status === 'assigned' || goal.status === 'draft' || goal.status === 'in_progress')))" @click="editGoal(goal)" 
+                                        <!-- Make Corrections Button (When Rejected by Line Manager) -->
+                                        <button v-if="!isManager && (goal.status === 'rejected' || goal.display_status === 'rejected')" 
+                                            @click="editGoal(goal)" 
+                                            class="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white rounded-lg border border-rose-300 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer active:scale-95"
+                                            title="Make Corrections & Resubmit">
+                                            <i class="pi pi-pencil text-[9px]"></i> Make Corrections
+                                        </button>
+
+                                        <!-- Fill / Edit Button (Hidden once submitted or reviewed; for managers, hidden when assigned; hidden when rejected) -->
+                                        <button v-if="!isGoalSubmittedOrReviewed(goal) && !(goal.status === 'rejected' || goal.display_status === 'rejected') && ((isManager && goal.status === 'draft') || (!isManager && (goal.status === 'assigned' || goal.status === 'draft' || goal.status === 'in_progress')))" @click="editGoal(goal)" 
                                             class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-200 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer"
                                             :title="isManager ? 'Edit SMART Goal' : (goal.status === 'assigned' ? 'Fill Goals & Self-Appraisal' : 'Edit')">
                                             <i class="pi pi-pencil text-[9px]"></i> {{ isManager ? 'Edit Goal' : (goal.status === 'assigned' ? 'Fill Goals & Appraisal' : 'Edit') }}
@@ -2291,6 +2351,26 @@ const downloadAttachment = (file) => {
                 <span class="px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-white border shadow-xs">
                     Status: {{ newGoal.status }}
                 </span>
+            </div>
+
+            <!-- Manager Rejection Feedback Banner for Employee -->
+            <div v-if="newGoal.status === 'rejected' || newGoal.display_status === 'rejected'" 
+                class="mb-5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 shadow-sm flex items-start justify-between gap-4">
+                <div class="flex items-start gap-3.5">
+                    <div class="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <i class="pi pi-exclamation-circle text-lg"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <h4 class="font-black text-sm uppercase tracking-wide text-rose-800">Returned by Line Manager for Revision</h4>
+                            <span class="px-2 py-0.5 rounded-full bg-rose-200 text-rose-900 text-[10px] font-black uppercase tracking-wider">Corrections Required</span>
+                        </div>
+                        <p class="text-xs text-rose-800 font-medium leading-relaxed">
+                            <span class="font-bold">Manager Feedback:</span> 
+                            {{ newGoal.rejection_reason || 'Please update your goals, target measures, or self-evaluations as discussed and click "Submit to Line Manager" below when ready.' }}
+                        </p>
+                    </div>
+                </div>
             </div>
 
             <Transition :name="stepTransition" mode="out-in">

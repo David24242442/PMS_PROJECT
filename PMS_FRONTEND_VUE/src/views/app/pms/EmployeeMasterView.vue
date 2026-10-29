@@ -455,6 +455,14 @@ const handleCsvUpload = async (event) => {
     }
 };
 
+const getInitials = (name) => {
+    if (!name) return '';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '';
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
+
 const downloadCsvTemplate = () => {
     const csvContent = 'employee_code\nEX001\nEX002\nEX003';
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -478,7 +486,7 @@ onMounted(() => {
             <div class="flex flex-col md:flex-row justify-between items-center gap-3">
                 <div>
                     <h1 class="text-lg font-black text-white flex items-center gap-2">
-                        <i class="pi pi-users text-purple-600 text-sm"></i> Line Manager Console
+                        <i class="pi pi-users text-blue-400 text-sm"></i> Line Manager Console
                     </h1>
                     <p class="text-xs font-bold text-white">Manage line manager accounts and their associated teams.</p>
                 </div>
@@ -486,7 +494,7 @@ onMounted(() => {
                     <button v-if="isAdmin" @click="triggerPushAllFreshGoals" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg shadow-emerald-900/20 transition-all flex items-center gap-2 cursor-pointer">
                         <i class="pi pi-send"></i> Push All Goals & Appraisal
                     </button>
-                    <button @click="showCreateModal = true" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg  transition-all flex items-center gap-2 cursor-pointer">
+                    <button @click="showCreateModal = true" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg transition-all flex items-center gap-2 cursor-pointer">
                         <i class="pi pi-user-plus"></i> Create Manager User
                     </button>
                     <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
@@ -494,7 +502,7 @@ onMounted(() => {
                     </span>
                     <div class="relative w-full md:w-64">
                         <input v-model="searchQuery" type="text" placeholder="Search managers..." 
-                            class="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-200 text-sm" />
+                            class="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm" />
                     </div>
                 </div>
             </div>
@@ -515,7 +523,7 @@ onMounted(() => {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-50">
-                        <tr v-for="user in filteredUsers" :key="user.id" class="hover:bg-purple-50/30 transition-colors">
+                        <tr v-for="user in filteredUsers" :key="user.id" class="hover:bg-blue-50/30 transition-colors">
                             <td class="px-5 py-3">
                                 <div class="flex items-center gap-2.5">
                                     <div class="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0"
@@ -552,7 +560,7 @@ onMounted(() => {
                                         <i class="pi pi-send text-xs"></i>
                                         <span class="text-[10px] font-black uppercase tracking-tight">Push Goals</span>
                                     </button>
-                                    <button @click="viewTeam(user)" class="px-2.5 py-1.5 rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-all flex items-center gap-1.5 shadow-xs" title="View Team">
+                                    <button @click="viewTeam(user)" class="px-2.5 py-1.5 rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all flex items-center gap-1.5 shadow-xs" title="View Team">
                                         <i class="pi pi-users text-xs"></i>
                                         <span class="text-[10px] font-black uppercase tracking-tight">View Team</span>
                                     </button>
@@ -570,8 +578,8 @@ onMounted(() => {
                 <div class="px-6 sm:px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
                     <div>
                         <h3 class="font-black text-xl sm:text-2xl text-gray-800 flex items-center gap-3">
-                            <i class="pi pi-users text-purple-600 font-black"></i> Associated Team Members
-                            <span class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-black border border-purple-200">
+                            <i class="pi pi-users text-blue-600 font-black"></i> Associated Team Members
+                            <span class="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-black border border-blue-200">
                                 {{ teamMembers.length }} Staff
                             </span>
                         </h3>
@@ -584,20 +592,22 @@ onMounted(() => {
 
                 <div class="p-6 sm:p-8 space-y-6 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     <!-- Manager Info Summary Card -->
-                    <div class="p-5 bg-gradient-to-r from-purple-50 via-indigo-50/40 to-white rounded-2xl border border-purple-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                    <div class="p-5 bg-gradient-to-r from-blue-50 via-indigo-50/40 to-white rounded-2xl border border-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
                          <div class="flex items-center gap-4">
                             <div class="relative shrink-0">
-                                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1A237E] to-purple-700 text-white shadow-sm flex items-center justify-center font-black text-xl">
-                                    {{ editingManager?.name?.charAt(0) }}
+                                <div class="w-12 h-12 rounded-2xl text-white shadow-sm flex items-center justify-center font-black text-lg border border-blue-900/20"
+                                     style="background: linear-gradient(135deg, #1A237E 0%, #283593 100%);">
+                                    <span v-if="editingManager?.name">{{ getInitials(editingManager.name) }}</span>
+                                    <i v-else class="pi pi-user text-xl text-blue-200"></i>
                                 </div>
                                 <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
                             </div>
                             <div>
                                 <p class="font-black text-gray-800 text-lg leading-tight">{{ editingManager?.name }}</p>
                                 <div class="flex flex-wrap items-center gap-2 mt-1">
-                                    <span class="text-[10px] font-black text-gray-600 uppercase tracking-wide bg-white px-2 py-0.5 rounded border border-purple-100">{{ editingManager?.department || 'General' }}</span>
+                                    <span class="text-[10px] font-black text-gray-600 uppercase tracking-wide bg-white px-2 py-0.5 rounded border border-blue-100">{{ editingManager?.department || 'General' }}</span>
                                     <span class="text-[10px] font-mono font-black text-indigo-600 uppercase tracking-wide bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{{ editingManager?.employee_code }}</span>
-                                    <span class="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">{{ teamMembers.length }} Members</span>
+                                    <span class="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">{{ teamMembers.length }} Members</span>
                                 </div>
                             </div>
                          </div>
@@ -606,7 +616,7 @@ onMounted(() => {
                                 <i class="pi pi-send"></i>
                                 <span>Push Fresh Goals</span>
                              </button>
-                             <button @click="editTeamFromView" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-purple-200 flex items-center gap-2">
+                             <button @click="editTeamFromView" class="bg-[#1A237E] hover:bg-blue-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-900/20 flex items-center gap-2">
                                 <i class="pi pi-user-edit"></i> Manage Assignments
                              </button>
                          </div>
@@ -618,7 +628,7 @@ onMounted(() => {
                         <div class="relative w-full sm:w-80">
                             <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
                             <input type="text" placeholder="Filter by name, code, dept, designation..." v-model="teamSearchQuery"
-                                class="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
+                                class="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-200 outline-none transition-all" />
                         </div>
                     </div>
 
@@ -636,10 +646,10 @@ onMounted(() => {
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 bg-white">
-                                    <tr v-for="emp in filteredTeamMembers" :key="emp.employee_code" class="hover:bg-purple-50/30 transition-colors group">
+                                    <tr v-for="emp in filteredTeamMembers" :key="emp.employee_code" class="hover:bg-blue-50/30 transition-colors group">
                                         <td class="px-5 py-3.5">
                                             <div class="flex items-center gap-3">
-                                                <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 text-gray-500 flex items-center justify-center text-[10px] font-black group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                                                <div class="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 text-gray-500 flex items-center justify-center text-[10px] font-black group-hover:bg-blue-600 group-hover:text-white transition-colors">
                                                     {{ emp.name?.charAt(0) || '?' }}
                                                 </div>
                                                 <span class="font-bold text-gray-800 text-xs">{{ emp.name }}</span>
@@ -681,7 +691,7 @@ onMounted(() => {
                 <div class="px-6 sm:px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
                     <div>
                         <h3 class="font-black text-xl sm:text-2xl text-gray-800 flex items-center gap-3">
-                            <i class="pi pi-users text-purple-600 font-black"></i> Manage Associated Team
+                            <i class="pi pi-users text-blue-600 font-black"></i> Manage Associated Team
                         </h3>
                         <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Assign employees to this manager's reporting line</p>
                     </div>
@@ -693,20 +703,22 @@ onMounted(() => {
                 <!-- Scrollable Modal Body -->
                 <div class="p-6 sm:p-8 space-y-5 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     <!-- Selected Manager Card -->
-                    <div class="p-5 bg-gradient-to-br from-purple-50 via-indigo-50/40 to-white rounded-2xl border border-purple-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div class="p-5 bg-gradient-to-br from-blue-50 via-indigo-50/40 to-white rounded-2xl border border-blue-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div class="flex items-center gap-4">
-                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#1A237E] to-purple-700 text-white shadow-md flex items-center justify-center text-xl font-black shrink-0">
-                                {{ editingManager?.name?.charAt(0) }}
+                            <div class="w-14 h-14 rounded-2xl text-white shadow-md flex items-center justify-center text-xl font-black shrink-0 border border-blue-900/20"
+                                 style="background: linear-gradient(135deg, #1A237E 0%, #283593 100%);">
+                                <span v-if="editingManager?.name">{{ getInitials(editingManager.name) }}</span>
+                                <i v-else class="pi pi-user text-2xl text-blue-200"></i>
                             </div>
                             <div class="flex-1">
                                 <div class="flex flex-wrap items-center gap-2 mb-1">
-                                    <span class="text-[9px] bg-purple-600 text-white font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-xs">Line Manager</span>
+                                    <span class="text-[9px] bg-[#1A237E] text-white font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-xs">Line Manager</span>
                                     <span class="text-[10px] bg-indigo-50 text-indigo-700 font-mono font-black px-2 py-0.5 rounded border border-indigo-100">{{ editingManager?.employee_code }}</span>
                                     <span class="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded border border-emerald-100">{{ form?.team_members?.length || 0 }} Staff in Selection</span>
                                 </div>
                                 <h4 class="font-black text-xl text-gray-800 leading-tight">{{ editingManager?.name }}</h4>
                                 <div class="flex flex-wrap items-center gap-3 text-xs font-bold text-gray-500 mt-1">
-                                    <span class="flex items-center gap-1"><i class="pi pi-briefcase text-purple-500"></i> {{ editingManager?.department || 'General' }}</span>
+                                    <span class="flex items-center gap-1"><i class="pi pi-briefcase text-blue-600"></i> {{ editingManager?.department || 'General' }}</span>
                                     <span v-if="editingManager?.email" class="flex items-center gap-1"><i class="pi pi-envelope text-indigo-500"></i> {{ editingManager?.email }}</span>
                                 </div>
                             </div>
@@ -811,7 +823,7 @@ onMounted(() => {
                         <div class="px-5 py-3.5 bg-gray-50/80 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div class="flex items-center gap-2.5">
                                 <span class="font-black text-xs text-gray-800 uppercase tracking-wider">Assigned Team Selection</span>
-                                <span class="text-[10px] font-black bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full border border-purple-200">
+                                <span class="text-[10px] font-black bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-200">
                                     {{ form?.team_members?.length || 0 }} Staff
                                 </span>
                             </div>
@@ -819,7 +831,7 @@ onMounted(() => {
                                 <div class="relative w-full sm:w-64">
                                     <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
                                     <input type="text" placeholder="Filter selection..." v-model="manageSearchQuery"
-                                        class="w-full pl-8 pr-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-200 transition-all" />
+                                        class="w-full pl-8 pr-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-200 transition-all" />
                                 </div>
                                 <button v-if="(form?.team_members?.length || 0) > 0" @click="clearAllTeamMembers" type="button"
                                     class="text-[10px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-200 transition-all uppercase tracking-wider cursor-pointer whitespace-nowrap">
@@ -842,11 +854,11 @@ onMounted(() => {
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
-                                    <tr v-for="emp in filteredManageMembers" :key="emp.employee_code || emp.emp_id" class="hover:bg-purple-50/20 transition-colors">
+                                    <tr v-for="emp in filteredManageMembers" :key="emp.employee_code || emp.emp_id" class="hover:bg-blue-50/20 transition-colors">
                                         <td class="px-4 py-2.5">
                                             <div class="flex items-center gap-2.5">
-                                                <div class="w-7 h-7 rounded-lg bg-purple-50 border border-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-black shrink-0">
-                                                    {{ emp.name?.charAt(0) || 'E' }}
+                                                <div class="w-7 h-7 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-black shrink-0">
+                                                    {{ getInitials(emp.name) || 'E' }}
                                                 </div>
                                                 <span class="font-bold text-gray-800 text-xs">{{ emp.name }}</span>
                                             </div>
@@ -887,7 +899,7 @@ onMounted(() => {
                     <button @click="showEditModal = false; showTeamModal = true" type="button" class="px-5 py-2.5 rounded-xl border border-gray-300 bg-white text-gray-600 font-black text-xs uppercase tracking-wider hover:bg-gray-100 transition-all cursor-pointer">
                         Back to Team Roster
                     </button>
-                    <button @click="updateTeam" :disabled="saving" type="button" class="px-7 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-purple-200 cursor-pointer active:scale-95">
+                    <button @click="updateTeam" :disabled="saving" type="button" class="px-7 py-2.5 rounded-xl bg-[#1A237E] hover:bg-blue-900 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-blue-900/20 cursor-pointer active:scale-95">
                         <i v-if="saving" class="pi pi-spin pi-spinner"></i>
                         <i v-else class="pi pi-check"></i>
                         <span>{{ saving ? 'Saving Assignments...' : 'Finalize Assignments' }}</span>
@@ -993,7 +1005,7 @@ onMounted(() => {
                 <div class="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                     <div>
                         <h3 class="font-black text-2xl text-gray-800 flex items-center gap-3">
-                            <i class="pi pi-user-plus text-purple-600 font-extrabold"></i> Enable Manager Portal
+                            <i class="pi pi-user-plus text-blue-600 font-extrabold"></i> Enable Manager Portal
                         </h3>
                         <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Assign manager role to an existing user identity</p>
                     </div>
@@ -1005,8 +1017,8 @@ onMounted(() => {
                 <div class="p-8">
                     <div class="space-y-6">
                         <!-- Step 1: Select Candidate -->
-                        <div class="p-5 bg-purple-50 rounded-2xl border border-purple-100 shadow-sm transition-all hover:shadow-md">
-                            <label class="block text-[10px] font-black text-purple-600 uppercase tracking-widest mb-3">1. Select Candidate from Portal Users</label>
+                        <div class="p-5 bg-blue-50 rounded-2xl border border-blue-100 shadow-sm transition-all hover:shadow-md">
+                            <label class="block text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3">1. Select Candidate from Portal Users</label>
                             <AutoComplete 
                                 v-model="createForm.candidate" 
                                 :suggestions="filteredUserCandidates" 
@@ -1015,11 +1027,11 @@ onMounted(() => {
                                 optionLabel="name"
                                 placeholder="Search by name, code or username..."
                                 class="w-full"
-                                inputClass="w-full px-4 py-3 border border-purple-200 rounded-xl focus:ring-4 focus:ring-purple-100 outline-none text-sm font-bold shadow-inner"
+                                inputClass="w-full px-4 py-3 border border-blue-200 rounded-xl focus:ring-4 focus:ring-blue-100 outline-none text-sm font-bold shadow-inner"
                             >
                                 <template #item="slotProps">
                                     <div class="flex items-center gap-3 py-1">
-                                        <div class="w-8 h-8 rounded-lg bg-white border border-purple-100 text-purple-600 flex items-center justify-center text-[10px] font-black shadow-sm">
+                                        <div class="w-8 h-8 rounded-lg bg-white border border-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-black shadow-sm">
                                             {{ slotProps.item.name.charAt(0) }}
                                         </div>
                                         <div>
@@ -1036,12 +1048,12 @@ onMounted(() => {
                             <div class="space-y-1.5 px-1">
                                 <label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Portal Username</label>
                                 <input v-model="createForm.username" type="text"
-                                    class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-xs font-black text-gray-800 shadow-sm focus:ring-4 focus:ring-purple-100 outline-none" placeholder="Username" />
+                                    class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-xs font-black text-gray-800 shadow-sm focus:ring-4 focus:ring-blue-100 outline-none" placeholder="Username" />
                             </div>
                             <div class="space-y-1.5 px-1">
                                 <label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Corporate Email (Optional)</label>
                                 <input v-model="createForm.email" type="email"
-                                    class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-xs font-black text-gray-800 shadow-sm focus:ring-4 focus:ring-purple-100 outline-none" placeholder="manager@company.com" />
+                                    class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-xs font-black text-gray-800 shadow-sm focus:ring-4 focus:ring-blue-100 outline-none" placeholder="manager@company.com" />
                             </div>
                         </div>
 
@@ -1059,7 +1071,7 @@ onMounted(() => {
                             <div class="flex items-center gap-4 ml-auto">
                                 <label class="relative inline-flex items-center cursor-pointer">
                                     <input type="checkbox" v-model="createForm.admin" class="sr-only peer">
-                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                                     <span class="ml-3 text-[10px] font-black text-gray-600 uppercase tracking-widest">Administrator</span>
                                 </label>
                             </div>
@@ -1071,7 +1083,7 @@ onMounted(() => {
                     <button @click="showCreateModal = false" class="px-8 py-3 rounded-xl border border-gray-200 text-gray-400 font-black text-[10px] uppercase tracking-widest hover:bg-white transition-all shadow-sm">Discard</button>
                     <button @click="createUser" 
                         :disabled="saving || !createForm.candidate"
-                        class="px-10 py-3 rounded-xl bg-purple-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-purple-700 hover:shadow-xl hover:shadow-purple-200 transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-purple-100">
+                        class="px-10 py-3 rounded-xl bg-[#1A237E] text-white font-black text-[10px] uppercase tracking-widest hover:bg-blue-900 hover:shadow-xl hover:shadow-blue-900/20 transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-blue-900/10">
                         <i v-if="saving" class="pi pi-spin pi-spinner"></i>
                         <span v-if="!saving">Finalize Manager Account</span>
                         <span v-else>Processing...</span>
