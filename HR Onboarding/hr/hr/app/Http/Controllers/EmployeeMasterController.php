@@ -195,40 +195,57 @@ class EmployeeMasterController extends Controller
             }
 
             if (\Schema::hasTable('users')) {
-                \Schema::table('users', function ($table) {
-                    if (!\Schema::hasColumn('users', 'employee_code')) {
-                        $table->string('employee_code')->nullable()->index();
+                $missingUsersCols = [];
+                foreach (['employee_code', 'line_manager_id', 'report_to', 'is_manager', 'permissions', 'appraisal_template'] as $col) {
+                    if (!\Schema::hasColumn('users', $col)) {
+                        $missingUsersCols[] = $col;
                     }
-                    if (!\Schema::hasColumn('users', 'line_manager_id')) {
-                        $table->unsignedBigInteger('line_manager_id')->nullable()->index();
-                    }
-                    if (!\Schema::hasColumn('users', 'report_to')) {
-                        $table->string('report_to')->nullable();
-                    }
-                    if (!\Schema::hasColumn('users', 'is_manager')) {
-                        $table->boolean('is_manager')->default(0);
-                    }
-                    if (!\Schema::hasColumn('users', 'permissions')) {
-                        $table->text('permissions')->nullable();
-                    }
-                    if (!\Schema::hasColumn('users', 'appraisal_template')) {
-                        $table->longText('appraisal_template')->nullable();
-                    }
-                });
+                }
+                if (!empty($missingUsersCols)) {
+                    \Schema::table('users', function ($table) use ($missingUsersCols) {
+                        if (in_array('employee_code', $missingUsersCols)) {
+                            $table->string('employee_code')->nullable()->index();
+                        }
+                        if (in_array('line_manager_id', $missingUsersCols)) {
+                            $table->unsignedBigInteger('line_manager_id')->nullable()->index();
+                        }
+                        if (in_array('report_to', $missingUsersCols)) {
+                            $table->string('report_to')->nullable();
+                        }
+                        if (in_array('is_manager', $missingUsersCols)) {
+                            $table->boolean('is_manager')->default(0);
+                        }
+                        if (in_array('permissions', $missingUsersCols)) {
+                            $table->text('permissions')->nullable();
+                        }
+                        if (in_array('appraisal_template', $missingUsersCols)) {
+                            $table->longText('appraisal_template')->nullable();
+                        }
+                    });
+                }
             }
 
             if (\Schema::hasTable('goals')) {
-                \Schema::table('goals', function ($table) {
-                    if (!\Schema::hasColumn('goals', 'appraisal_data')) {
-                        $table->longText('appraisal_data')->nullable();
+                $missingGoalsCols = [];
+                foreach (['appraisal_data', 'manager_name', 'employee_code'] as $col) {
+                    if (!\Schema::hasColumn('goals', $col)) {
+                        $missingGoalsCols[] = $col;
                     }
-                    if (!\Schema::hasColumn('goals', 'manager_name')) {
-                        $table->string('manager_name')->nullable();
-                    }
-                    if (!\Schema::hasColumn('goals', 'employee_code')) {
-                        $table->string('employee_code')->nullable()->index();
-                    }
-                });
+                }
+                if (!empty($missingGoalsCols)) {
+                    \Schema::table('goals', function ($table) use ($missingGoalsCols) {
+                        if (in_array('appraisal_data', $missingGoalsCols)) {
+                            $table->longText('appraisal_data')->nullable();
+                        }
+                        if (in_array('manager_name', $missingGoalsCols)) {
+                            $table->string('manager_name')->nullable();
+                        }
+                        if (in_array('employee_code', $missingGoalsCols)) {
+                            $table->string('employee_code')->nullable()->index();
+                        }
+                    });
+                }
+            }
 
                 // Automatic cleanup: reset any assigned goals with dummy text so fields and SMART criteria start blank
                 try {
@@ -401,17 +418,30 @@ class EmployeeMasterController extends Controller
             @set_time_limit(300);
 
             $this->ensureSchema();
-            $user = $request->user();
+            $user = $request->user() ?: Auth::user();
+            if (!$user && $request->bearerToken() && class_exists('\Laravel\Sanctum\PersonalAccessToken')) {
+                $tokenModel = \Laravel\Sanctum\PersonalAccessToken::findToken($request->bearerToken());
+                if ($tokenModel && $tokenModel->tokenable) {
+                    $user = $tokenModel->tokenable;
+                }
+            }
+
             $isAdmin = $user && ($user->admin == 1 || $user->position_id == 4 || in_array(strtolower($user->role ?? ''), ['admin', 'superadmin']) || strtolower($user->username ?? '') === 'admin');
             $search = $request->input('search');
             $teamOnly = $request->boolean('team_only', false);
 
             // STRICT LINE MANAGER ISOLATION:
-            // Non-admin managers (or any caller requesting team_only) must ONLY see their assigned team!
-            $mustScopeToTeam = (!$isAdmin || $teamOnly) && $user;
+            // Non-admin callers (or any caller requesting team_only) must ONLY see their assigned team!
+            $mustScopeToTeam = !$isAdmin || $teamOnly;
 
             $teamCodes = [];
             if ($mustScopeToTeam) {
+                if (!$user) {
+                    return response()->json([
+                        'status' => 'success',
+                        'data' => []
+                    ]);
+                }
                 // Collect all employee codes assigned to this manager across all sources
                 if (\Schema::hasTable('users') && \Schema::hasColumn('users', 'line_manager_id')) {
                     $uCodes = DB::table('users')

@@ -106,7 +106,7 @@
                     </div>
                 </div>
 
-                <!-- Right Column: SMART Table & Completion Date -->
+                <!-- Right Column: SMART Table & Completion Date & Vertical Key Steps -->
                 <div class="smart-table-col">
                     <table class="form-table smart-table">
                         <thead>
@@ -166,58 +166,45 @@
                     <div class="criteria-score-tag">
                         {{ smartCount }} / 5 Criteria Met
                     </div>
-                </div>
-            </div>
 
-            <!-- Lower Section: Quarterly Progress Tracking (Key Steps) -->
-            <div class="quarterly-section">
-                <div class="section-banner banner-sage">
-                    <span class="sec-title">GOAL START DATE - KEY STEPS</span>
-                    <span class="sec-subtitle">MEASURE (Growth Over Last Year &amp; Quarters)</span>
-                </div>
+                    <!-- Under MY GOAL IS...: Quarterly Progress Tracking (Key Steps) in Vertical Order -->
+                    <div class="quarterly-vertical-section">
+                        <div class="section-banner banner-sage">
+                            <span class="sec-title">GOAL START DATE - KEY STEPS</span>
+                            <span class="sec-subtitle">MEASURE (Growth Over Last Year &amp; Quarters)</span>
+                        </div>
 
-                <table class="form-table quarterly-table">
-                    <thead>
-                        <tr>
-                            <th class="q-head q1-banner" style="width: 25%;">Q1</th>
-                            <th class="q-head q2-banner" style="width: 25%;">Q2</th>
-                            <th class="q-head q3-banner" style="width: 25%;">Q3</th>
-                            <th class="q-head q4-banner" style="width: 25%;">Q4</th>
-                        </tr>
-                        <tr class="q-subhead-row">
-                            <th class="q-subhead">Date / Target / Evidence</th>
-                            <th class="q-subhead">Date / Target / Evidence</th>
-                            <th class="q-subhead">Date / Target / Evidence</th>
-                            <th class="q-subhead">Date / Target / Evidence</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td v-for="(q, qIdx) in norm.quarterly" :key="qIdx" class="q-cell align-top">
-                                <div class="q-date-range">
-                                    <strong>{{ q.quarter || ('Q' + (qIdx + 1)) }}</strong>:
-                                    {{ formatDate(q.start_date) }} &ndash; {{ formatDate(q.end_date) }}
-                                </div>
-                                <div class="q-measures-block">
-                                    <div class="q-sub-title">Target Measure:</div>
-                                    <ul class="q-measure-list" v-if="q.target_measures && q.target_measures.length">
-                                        <li v-for="(m, mIdx) in q.target_measures" :key="mIdx">{{ m }}</li>
-                                    </ul>
-                                    <span v-else class="empty-text">No target measures</span>
-                                </div>
-                                <div class="q-evidence-block">
-                                    <div class="q-sub-title">Attachments / Evidence:</div>
-                                    <div v-if="q.attachments && q.attachments.length" class="q-evidence-list">
-                                        <span v-for="(att, aIdx) in q.attachments" :key="aIdx" class="evidence-tag">
-                                            &bull; {{ typeof att === 'string' ? att.split('/').pop() : att.name || ('File ' + (aIdx + 1)) }}
-                                        </span>
-                                    </div>
-                                    <span v-else class="empty-text">None</span>
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                        <table class="form-table quarterly-vertical-table">
+                            <tbody>
+                                <tr v-for="(q, qIdx) in norm.quarterly" :key="qIdx" class="qv-row">
+                                    <td class="qv-badge-cell" :class="'q' + (qIdx + 1) + '-banner'" style="width: 25%;">
+                                        <div class="qv-badge-name">{{ q.quarter || ('Q' + (qIdx + 1)) }}</div>
+                                        <div class="qv-badge-dates">
+                                            {{ formatDate(q.start_date) }}<br>&ndash;<br>{{ formatDate(q.end_date) }}
+                                        </div>
+                                    </td>
+                                    <td class="qv-content-cell" style="width: 75%;">
+                                        <div class="qv-measure-block">
+                                            <div class="qv-sub-title">Target Measure:</div>
+                                            <ul class="q-measure-list" v-if="q.target_measures && q.target_measures.length">
+                                                <li v-for="(m, mIdx) in q.target_measures" :key="mIdx">{{ m }}</li>
+                                            </ul>
+                                            <span v-else class="empty-text">No target measures</span>
+                                        </div>
+                                        <div class="qv-evidence-block" v-if="q.attachments && q.attachments.length">
+                                            <div class="qv-sub-title">Evidence:</div>
+                                            <div class="q-evidence-list">
+                                                <span v-for="(att, aIdx) in q.attachments" :key="aIdx" class="evidence-tag">
+                                                    &bull; {{ typeof att === 'string' ? att.split('/').pop() : att.name || ('File ' + (aIdx + 1)) }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <!-- Page 1 Footer -->
@@ -1355,21 +1342,21 @@ const dossierId = computed(() => {
 .goals-smart-split {
     display: flex;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 .goals-narrative-col {
-    flex: 1 1 73%;
+    flex: 1 1 54%;
     min-width: 0;
 }
 .smart-table-col {
-    flex: 0 0 26%;
+    flex: 1 1 46%;
     min-width: 0;
 }
 
 /* SMART Table */
 .smart-table th {
     font-size: 8pt;
-    padding: 4px;
+    padding: 3px 4px;
 }
 .header-row-dark {
     background-color: #000000 !important;
@@ -1380,12 +1367,13 @@ const dossierId = computed(() => {
     font-size: 8pt;
     font-weight: bold;
     background-color: #ffffff;
+    padding: 2.5px 4px;
 }
 .smart-check {
     text-align: center;
     font-weight: 900;
-    font-size: 9pt;
-    padding: 3px;
+    font-size: 8.5pt;
+    padding: 2.5px 3px;
     position: relative;
 }
 .cell-s { background-color: #FAD2B8 !important; }
@@ -1394,7 +1382,7 @@ const dossierId = computed(() => {
 .cell-r { background-color: #E2D9F3 !important; }
 .cell-t { background-color: #F8D7DA !important; }
 .checkmark-symbol {
-    font-size: 11pt;
+    font-size: 10pt;
     font-weight: bold;
     color: #000000;
     margin-left: 2px;
@@ -1403,33 +1391,87 @@ const dossierId = computed(() => {
 /* Completion Date Box */
 .completion-date-box {
     border: 1px solid #000000;
-    margin-top: 4px;
+    margin-top: 3px;
     text-align: center;
 }
 .completion-header {
     background-color: #E8D5D5 !important;
     font-weight: 900;
-    font-size: 8pt;
-    padding: 3px;
+    font-size: 7.5pt;
+    padding: 2px;
     border-bottom: 1px solid #000000;
 }
 .completion-val {
-    padding: 6px;
-    font-size: 9.5pt;
+    padding: 4px;
+    font-size: 8.5pt;
     font-weight: bold;
     background-color: #ffffff;
 }
 .criteria-score-tag {
     text-align: center;
-    font-size: 7.5pt;
+    font-size: 7pt;
     font-weight: bold;
-    padding: 2px;
+    padding: 1.5px;
     background: #f1f5f9;
     border: 1px solid #000000;
-    margin-top: 4px;
+    margin-top: 3px;
 }
 
-/* Quarterly Table */
+/* Vertical Quarterly Section (Under MY GOAL IS... in Right Column) */
+.quarterly-vertical-section {
+    border: 1px solid #000000;
+    margin-top: 5px;
+}
+.quarterly-vertical-table {
+    margin-bottom: 0;
+    border-top: none !important;
+    width: 100%;
+}
+.qv-row {
+    border-bottom: 1px solid #000000;
+}
+.qv-row:last-child {
+    border-bottom: none;
+}
+.qv-badge-cell {
+    padding: 3px 2px !important;
+    text-align: center;
+    vertical-align: middle;
+    border-right: 1px solid #000000;
+}
+.qv-badge-name {
+    font-weight: 900;
+    font-size: 8.5pt;
+    line-height: 1.1;
+}
+.qv-badge-dates {
+    font-size: 6.5pt;
+    line-height: 1.1;
+    margin-top: 1px;
+    font-weight: 600;
+}
+.qv-content-cell {
+    padding: 2.5px 4px !important;
+    font-size: 7.5pt;
+    vertical-align: top;
+    background-color: #ffffff;
+}
+.qv-sub-title {
+    font-weight: bold;
+    font-size: 6.5pt;
+    text-transform: uppercase;
+    color: #002060 !important;
+    margin-top: 1px;
+}
+.qv-measure-block {
+    margin-bottom: 2px;
+}
+.qv-evidence-block {
+    font-size: 6.5pt;
+    color: #444444;
+}
+
+/* Quarterly Table (Legacy Fallback) */
 .quarterly-section {
     border: 1px solid #000000;
     margin-bottom: auto;
@@ -1755,25 +1797,23 @@ const dossierId = computed(() => {
 @media print {
     @page {
         size: A4 portrait;
-        margin: 4mm 5mm;
+        margin: 3mm 4mm;
     }
 
     .hardcopy-page {
         margin: 0 !important;
-        padding: 5mm 7mm !important;
+        padding: 3mm 5mm !important;
         width: 100% !important;
         min-height: auto !important;
         max-height: none !important;
         height: auto !important;
         page-break-after: always !important;
         break-after: page !important;
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
+        page-break-inside: auto !important;
         box-shadow: none !important;
         border: none !important;
-        display: flex !important;
-        flex-direction: column !important;
-        overflow: hidden !important;
+        display: block !important;
+        overflow: visible !important;
         box-sizing: border-box !important;
     }
 
@@ -1785,63 +1825,65 @@ const dossierId = computed(() => {
     #hardcopy-page-2 {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
-        max-height: 288mm !important;
-        overflow: hidden !important;
+        overflow: visible !important;
     }
 
     #hardcopy-page-2 .form-table {
-        margin-bottom: 4px !important;
+        margin-bottom: 2.5px !important;
     }
 
     #hardcopy-page-2 .header-banner {
-        padding: 4px 8px !important;
-        margin-bottom: 4px !important;
-        font-size: 13pt !important;
+        padding: 3px 6px !important;
+        margin-bottom: 3px !important;
+        font-size: 11pt !important;
     }
 
     #hardcopy-page-2 .meta-table td {
-        padding: 2px 4px !important;
-        font-size: 8pt !important;
+        padding: 1.5px 3.5px !important;
+        font-size: 7.5pt !important;
     }
 
     #hardcopy-page-2 .comp-table th,
     #hardcopy-page-2 .comp-table td {
-        padding: 2px 4px !important;
+        padding: 1.5px 3px !important;
+        font-size: 7.5pt !important;
     }
 
     #hardcopy-page-2 .comp-row-title {
-        font-size: 8pt !important;
+        font-size: 7.5pt !important;
     }
 
     #hardcopy-page-2 .comp-crit-item {
-        font-size: 7pt !important;
+        font-size: 6.8pt !important;
         line-height: 1.15 !important;
     }
 
     #hardcopy-page-2 .feedback-split-box {
-        margin-bottom: 4px !important;
+        margin-bottom: 2.5px !important;
     }
 
     #hardcopy-page-2 .feedback-col-header {
-        padding: 2px 6px !important;
-        font-size: 7.5pt !important;
+        padding: 1.5px 4px !important;
+        font-size: 7pt !important;
     }
 
     #hardcopy-page-2 .feedback-col-body {
-        padding: 3px 6px !important;
-        font-size: 7.5pt !important;
-        min-height: 18px !important;
+        padding: 2px 4px !important;
+        font-size: 7pt !important;
+        min-height: 14px !important;
+        line-height: 1.2 !important;
     }
 
     #hardcopy-page-2 .scale-table th,
     #hardcopy-page-2 .scale-table td {
-        padding: 1.5px 4px !important;
-        font-size: 7.5pt !important;
+        padding: 1px 3px !important;
+        font-size: 6.8pt !important;
     }
 
     .page-footer {
-        margin-top: auto !important;
+        margin-top: 4px !important;
         padding-top: 2px !important;
+        border-top: 1px solid #000000 !important;
         page-break-before: avoid !important;
         break-before: avoid !important;
         page-break-after: avoid !important;
@@ -1860,7 +1902,7 @@ const dossierId = computed(() => {
     thead {
         display: table-header-group !important;
     }
-    .section-box, .quarterly-section, .feedback-split-box, .scale-guide-wrapper, .review-section-block, .auth-signoff-section {
+    .section-box, .quarterly-vertical-section, .quarterly-section, .feedback-split-box, .scale-guide-wrapper, .review-section-block, .auth-signoff-section {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
     }

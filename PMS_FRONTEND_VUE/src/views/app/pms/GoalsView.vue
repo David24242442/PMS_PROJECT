@@ -414,8 +414,12 @@ const fetchGoals = async () => {
 };
 
 const fetchMasterEmployees = async () => {
+    const isAdm = !!(loguser?.admin || loguser?.position_id === 4 || ['admin', 'superadmin'].includes(loguser?.role?.toLowerCase()) || loguser?.username?.toLowerCase() === 'admin');
+    if (!isManager.value && !isAdm) {
+        masterEmployees.value = [];
+        return;
+    }
     try {
-        const isAdm = !!(loguser?.admin || loguser?.position_id === 4 || ['admin', 'superadmin'].includes(loguser?.role?.toLowerCase()) || loguser?.username?.toLowerCase() === 'admin');
         const response = await axios.get('pms/get-employees', {
             params: { team_only: isManager.value && !isAdm ? 1 : 0 }
         });
@@ -1815,7 +1819,7 @@ const downloadAttachment = (file) => {
                                 <i class="pi pi-comment text-rose-600 text-xs"></i>
                                 Manager Feedback &amp; Revision Notes:
                             </p>
-                            <p class="text-xs text-slate-700 font-medium leading-relaxed bg-white/90 p-3 rounded-xl border border-rose-100">
+                            <p class="text-xs text-slate-700 font-medium leading-relaxed bg-white/90 p-3 rounded-xl border border-rose-100 break-words break-all whitespace-pre-wrap max-h-48 overflow-y-auto">
                                 {{ pendingRejectedGoal.rejection_reason || 'Your Line Manager has requested revisions on your submitted SMART goals and self-appraisal. Please update your entries and resubmit.' }}
                             </p>
                         </div>
@@ -2224,7 +2228,7 @@ const downloadAttachment = (file) => {
                                 <td class="px-6 py-4 text-right whitespace-nowrap">
                                     <div class="flex items-center justify-end gap-2">
                                         <!-- Make Corrections Button (When Rejected by Line Manager) -->
-                                        <button v-if="!isManager && (goal.status === 'rejected' || goal.display_status === 'rejected')" 
+                                        <button v-if="String(goal.status).toLowerCase() === 'rejected' || String(goal.display_status).toLowerCase() === 'rejected'" 
                                             @click="editGoal(goal)" 
                                             class="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white rounded-lg border border-rose-300 transition-all text-[10px] font-black uppercase tracking-tight shadow-sm cursor-pointer active:scale-95"
                                             title="Make Corrections & Resubmit">
@@ -2365,7 +2369,7 @@ const downloadAttachment = (file) => {
                             <h4 class="font-black text-sm uppercase tracking-wide text-rose-800">Returned by Line Manager for Revision</h4>
                             <span class="px-2 py-0.5 rounded-full bg-rose-200 text-rose-900 text-[10px] font-black uppercase tracking-wider">Corrections Required</span>
                         </div>
-                        <p class="text-xs text-rose-800 font-medium leading-relaxed">
+                        <p class="text-xs text-rose-800 font-medium leading-relaxed break-words break-all whitespace-pre-wrap max-h-48 overflow-y-auto">
                             <span class="font-bold">Manager Feedback:</span> 
                             {{ newGoal.rejection_reason || 'Please update your goals, target measures, or self-evaluations as discussed and click "Submit to Line Manager" below when ready.' }}
                         </p>

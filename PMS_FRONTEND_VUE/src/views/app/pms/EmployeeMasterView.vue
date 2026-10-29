@@ -597,7 +597,7 @@ onMounted(() => {
                             <div class="relative shrink-0">
                                 <div class="w-12 h-12 rounded-2xl text-white shadow-sm flex items-center justify-center font-black text-lg border border-blue-900/20"
                                      style="background: linear-gradient(135deg, #1A237E 0%, #283593 100%);">
-                                    <span v-if="editingManager?.name">{{ getInitials(editingManager.name) }}</span>
+                                    <span v-if="editingManager?.name && getInitials(editingManager.name)">{{ getInitials(editingManager.name) }}</span>
                                     <i v-else class="pi pi-user text-xl text-blue-200"></i>
                                 </div>
                                 <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
@@ -707,7 +707,7 @@ onMounted(() => {
                         <div class="flex items-center gap-4">
                             <div class="w-14 h-14 rounded-2xl text-white shadow-md flex items-center justify-center text-xl font-black shrink-0 border border-blue-900/20"
                                  style="background: linear-gradient(135deg, #1A237E 0%, #283593 100%);">
-                                <span v-if="editingManager?.name">{{ getInitials(editingManager.name) }}</span>
+                                <span v-if="editingManager?.name && getInitials(editingManager.name)">{{ getInitials(editingManager.name) }}</span>
                                 <i v-else class="pi pi-user text-2xl text-blue-200"></i>
                             </div>
                             <div class="flex-1">
@@ -1138,8 +1138,8 @@ onMounted(() => {
 
 .p-multiselect-panel .p-multiselect-item.p-highlight,
 .custom-pms-panel .p-multiselect-item.p-highlight {
-    background: #f5f3ff !important;
-    color: #7c3aed !important;
+    background: #E8EAF6 !important;
+    color: #1A237E !important;
 }
 
 .p-multiselect-panel .p-multiselect-item:not(.p-highlight):not(.p-disabled):hover,
@@ -1201,8 +1201,8 @@ onMounted(() => {
 }
 
 :deep(.custom-pms-multiselect.p-focus) {
-    border-color: #7c3aed;
-    box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.1);
+    border-color: #1A237E;
+    box-shadow: 0 0 0 4px rgba(26, 35, 126, 0.1);
     background: #ffffff;
 }
 
